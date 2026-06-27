@@ -260,6 +260,11 @@ async function fetchSupabaseProspects(): Promise<{
     websiteIntakeCount:
       data?.filter((prospect) => prospect.source === "website_intake").length ??
       0,
+    newestWebsiteIntakeIds:
+      data
+        ?.filter((prospect) => prospect.source === "website_intake")
+        .slice(0, 5)
+        .map((prospect) => prospect.id) ?? [],
     newestCreatedAt: data?.[0]?.created_at ?? null,
     anonSelectableCount: anonProbe.count,
     anonSelectError: anonProbe.error?.message ?? null,

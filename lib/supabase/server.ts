@@ -50,11 +50,20 @@ export function getSupabaseServerDiagnostics() {
   };
 }
 
+const noStoreFetch: typeof fetch = (input, init) =>
+  fetch(input, {
+    ...init,
+    cache: "no-store",
+  });
+
 export function createServerClient() {
   return createClient(
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
     requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
     {
+      global: {
+        fetch: noStoreFetch,
+      },
       auth: {
         autoRefreshToken: false,
         persistSession: false,
@@ -68,6 +77,9 @@ export function createAnonServerClient() {
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
     requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     {
+      global: {
+        fetch: noStoreFetch,
+      },
       auth: {
         autoRefreshToken: false,
         persistSession: false,
