@@ -119,7 +119,7 @@ function mergeProspects(realProspects: Prospect[]) {
     (prospect) => !realKeys.has(prospectIdentity(prospect))
   );
 
-  return sortNewestFirst([...realProspects, ...demoOnly]);
+  return [...sortNewestFirst(realProspects), ...sortNewestFirst(demoOnly)];
 }
 
 function relationshipStatus(prospect: Prospect): RelationshipStatus {
