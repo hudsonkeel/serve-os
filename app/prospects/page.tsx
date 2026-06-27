@@ -1,13 +1,42 @@
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { PageContainer } from "@/components/PageContainer";
 import { ProspectInbox } from "@/components/prospects/ProspectInbox";
+import { Prospect } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const AMANDA_KEEL_PROSPECT_ID = "4603f025-9aa9-47f9-b5f9-802fa9033042";
+
+function prospectName(prospect: Prospect) {
+  return (
+    [
+      prospect.care_recipient_first_name ?? prospect.resident_first_name,
+      prospect.care_recipient_last_name ?? prospect.resident_last_name,
+    ]
+      .filter(Boolean)
+      .join(" ") || "Unknown Prospect"
+  );
+}
+
+function prospectDebugSummary(prospects: Prospect[]) {
+  return prospects.slice(0, 10).map((prospect) => ({
+    id: prospect.id,
+    name: prospectName(prospect),
+  }));
+}
+
 export default async function ProspectsPage() {
   const community = await getCommunityMetrics();
   const prospects = community.prospects;
+
+  console.log("[prospects:before-ProspectInbox]", {
+    count: prospects.length,
+    first10: prospectDebugSummary(prospects),
+    amandaPresent: prospects.some(
+      (prospect) => prospect.id === AMANDA_KEEL_PROSPECT_ID
+    ),
+  });
 
   return (
     <PageContainer title="Prospects">

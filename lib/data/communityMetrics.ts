@@ -58,6 +58,7 @@ const ACTIVE_PROSPECT_STATUSES: ProspectStatus[] = [
   "contacted",
   "assessment_scheduled",
 ];
+const AMANDA_KEEL_PROSPECT_ID = "4603f025-9aa9-47f9-b5f9-802fa9033042";
 
 function isActiveProspect(prospect: Prospect) {
   return ACTIVE_PROSPECT_STATUSES.includes(prospect.status);
@@ -113,13 +114,37 @@ function sortNewestFirst(prospects: Prospect[]) {
   );
 }
 
+function prospectDebugSummary(prospects: Prospect[]) {
+  return prospects.slice(0, 10).map((prospect) => ({
+    id: prospect.id,
+    name: displayName(
+      careRecipientFirstName(prospect),
+      careRecipientLastName(prospect),
+      "Unknown Prospect"
+    ),
+  }));
+}
+
 function mergeProspects(realProspects: Prospect[]) {
   const realKeys = new Set(realProspects.map(prospectIdentity));
   const demoOnly = DEMO_PROSPECTS.filter(
     (prospect) => !realKeys.has(prospectIdentity(prospect))
   );
 
-  return [...sortNewestFirst(realProspects), ...sortNewestFirst(demoOnly)];
+  const prospects = [
+    ...sortNewestFirst(realProspects),
+    ...sortNewestFirst(demoOnly),
+  ];
+
+  console.log("[prospects:after-merge]", {
+    count: prospects.length,
+    first10: prospectDebugSummary(prospects),
+    amandaPresent: prospects.some(
+      (prospect) => prospect.id === AMANDA_KEEL_PROSPECT_ID
+    ),
+  });
+
+  return prospects;
 }
 
 function relationshipStatus(prospect: Prospect): RelationshipStatus {

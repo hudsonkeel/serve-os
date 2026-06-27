@@ -18,14 +18,41 @@ const HEADERS = [
   "Received",
   "",
 ];
+const AMANDA_KEEL_PROSPECT_ID = "4603f025-9aa9-47f9-b5f9-802fa9033042";
 
 interface ProspectInboxProps {
   prospects: Prospect[];
 }
 
+function prospectName(prospect: Prospect) {
+  return (
+    [
+      prospect.care_recipient_first_name ?? prospect.resident_first_name,
+      prospect.care_recipient_last_name ?? prospect.resident_last_name,
+    ]
+      .filter(Boolean)
+      .join(" ") || "Unknown Prospect"
+  );
+}
+
+function prospectDebugSummary(prospects: Prospect[]) {
+  return prospects.slice(0, 10).map((prospect) => ({
+    id: prospect.id,
+    name: prospectName(prospect),
+  }));
+}
+
 export function ProspectInbox({ prospects }: ProspectInboxProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterValue>("all");
+
+  console.log("[prospects:ProspectInbox-received]", {
+    count: prospects.length,
+    first10: prospectDebugSummary(prospects),
+    amandaPresent: prospects.some(
+      (prospect) => prospect.id === AMANDA_KEEL_PROSPECT_ID
+    ),
+  });
 
   function toggle(id: string) {
     setExpandedId((prev) => (prev === id ? null : id));
@@ -52,6 +79,15 @@ export function ProspectInbox({ prospects }: ProspectInboxProps) {
     activeFilter === "all"
       ? prospects
       : prospects.filter((p) => p.status === activeFilter);
+
+  console.log("[prospects:ProspectInbox-visible]", {
+    activeFilter,
+    count: visible.length,
+    first10: prospectDebugSummary(visible),
+    amandaPresent: visible.some(
+      (prospect) => prospect.id === AMANDA_KEEL_PROSPECT_ID
+    ),
+  });
 
   return (
     <div className="space-y-4">
