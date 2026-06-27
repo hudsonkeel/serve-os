@@ -1,4 +1,4 @@
-import { cache } from "react";
+import { connection } from "next/server";
 import { COMMUNITY, DEMO_PROSPECTS } from "@/lib/demo/communityData";
 import { createServerClient } from "@/lib/supabase/server";
 import { Prospect, ProspectStatus } from "@/lib/supabase/types";
@@ -232,32 +232,45 @@ async function fetchSupabaseProspects(): Promise<{
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("[getCommunityMetrics]", error.message);
+    console.error("[getCommunityMetrics:supabase:error]", {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
     return {
       prospects: [],
       error: "Failed to load live Supabase prospects.",
     };
   }
 
+  console.log("[getCommunityMetrics:supabase:success]", {
+    rowCount: data?.length ?? 0,
+    websiteIntakeCount:
+      data?.filter((prospect) => prospect.source === "website_intake").length ??
+      0,
+    newestCreatedAt: data?.[0]?.created_at ?? null,
+  });
+
   return { prospects: data ?? [] };
 }
 
-export const getCommunityMetrics = cache(
-  async (): Promise<CommunityMetricsData> => {
-    const { prospects: realProspects, error } = await fetchSupabaseProspects();
-    const prospects = mergeProspects(realProspects);
-    const metrics = buildMetrics(prospects, realProspects);
+export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
+  await connection();
 
-    return {
-      communityName: COMMUNITY.name,
-      metrics,
-      residentTabCounts: buildResidentTabCounts(metrics),
-      prospects,
-      residentRecords: prospects.map(mapProspectToResidentRecord),
-      error,
-    };
-  }
-);
+  const { prospects: realProspects, error } = await fetchSupabaseProspects();
+  const prospects = mergeProspects(realProspects);
+  const metrics = buildMetrics(prospects, realProspects);
+
+  return {
+    communityName: COMMUNITY.name,
+    metrics,
+    residentTabCounts: buildResidentTabCounts(metrics),
+    prospects,
+    residentRecords: prospects.map(mapProspectToResidentRecord),
+    error,
+  };
+}
 
 export async function getCommunityResidentById(id: string) {
   const data = await getCommunityMetrics();
