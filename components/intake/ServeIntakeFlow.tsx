@@ -225,7 +225,7 @@ function ContactSection({
             Contact
           </p>
           <h2 className="mt-1 font-serif text-2xl font-light text-navy">
-            Where should we reach you?
+            How can we reach you?
           </h2>
         </div>
         {completed && (
