@@ -1,6 +1,10 @@
 import { connection } from "next/server";
 import { COMMUNITY, DEMO_PROSPECTS } from "@/lib/demo/communityData";
-import { createServerClient } from "@/lib/supabase/server";
+import {
+  createAnonServerClient,
+  createServerClient,
+  getSupabaseServerDiagnostics,
+} from "@/lib/supabase/server";
 import { Prospect, ProspectStatus } from "@/lib/supabase/types";
 
 export type ResidentTabValue =
@@ -225,6 +229,7 @@ async function fetchSupabaseProspects(): Promise<{
   error?: string;
 }> {
   const supabase = createServerClient();
+  const diagnostics = getSupabaseServerDiagnostics();
 
   const { data, error } = await supabase
     .from("prospects")
@@ -233,6 +238,7 @@ async function fetchSupabaseProspects(): Promise<{
 
   if (error) {
     console.error("[getCommunityMetrics:supabase:error]", {
+      ...diagnostics,
       message: error.message,
       code: error.code,
       details: error.details,
@@ -244,12 +250,19 @@ async function fetchSupabaseProspects(): Promise<{
     };
   }
 
+  const anonProbe = await createAnonServerClient()
+    .from("prospects")
+    .select("id", { count: "exact", head: true });
+
   console.log("[getCommunityMetrics:supabase:success]", {
+    ...diagnostics,
     rowCount: data?.length ?? 0,
     websiteIntakeCount:
       data?.filter((prospect) => prospect.source === "website_intake").length ??
       0,
     newestCreatedAt: data?.[0]?.created_at ?? null,
+    anonSelectableCount: anonProbe.count,
+    anonSelectError: anonProbe.error?.message ?? null,
   });
 
   return { prospects: data ?? [] };

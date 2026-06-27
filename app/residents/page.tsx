@@ -2,6 +2,9 @@ import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { PageContainer } from "@/components/PageContainer";
 import { ResidentsInbox } from "@/components/residents/ResidentsInbox";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function ResidentsPage() {
   const community = await getCommunityMetrics();
 

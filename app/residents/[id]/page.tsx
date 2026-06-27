@@ -5,6 +5,9 @@ import { PageContainer } from "@/components/PageContainer";
 import { StatusBadge } from "@/components/prospects/StatusBadge";
 import { WorkflowActions } from "@/components/prospects/WorkflowActions";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const SUPPORT_LABELS: Record<string, string> = {
   home_care: "Home Care",
   concierge: "Concierge Support",

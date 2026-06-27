@@ -14,6 +14,9 @@ import {
   getCentralTimeGreeting,
 } from "@/lib/utils/date";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const quickActions = [
   { icon: Users,         label: "View Residents",      description: "Browse the full community roster" },
   { icon: HeartPulse,    label: "Log Wellness Check",  description: "Record a resident wellness note" },
