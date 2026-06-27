@@ -1,17 +1,10 @@
-import { createServerClient } from "@/lib/supabase/server";
-import { Prospect } from "@/lib/supabase/types";
+import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { PageContainer } from "@/components/PageContainer";
 import { ProspectInbox } from "@/components/prospects/ProspectInbox";
 
 export default async function ProspectsPage() {
-  const supabase = createServerClient();
-
-  const { data, error } = await supabase
-    .from("prospects")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  const prospects: Prospect[] = data ?? [];
+  const community = await getCommunityMetrics();
+  const prospects = community.prospects;
 
   return (
     <PageContainer title="Prospects">
@@ -27,13 +20,13 @@ export default async function ProspectsPage() {
         </span>
       </div>
 
-      {error && (
+      {community.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
-          Failed to load prospects. Please refresh the page.
+          Failed to load live prospects. Showing demo records only.
         </div>
       )}
 
-      {!error && prospects.length === 0 && (
+      {!community.error && prospects.length === 0 && (
         <div className="rounded-xl border border-ivory-border bg-white px-8 py-16 text-center shadow-card">
           <p className="font-serif text-xl text-muted">No prospects yet</p>
           <p className="mt-2 font-sans text-sm text-muted">

@@ -42,9 +42,13 @@ function formatReferral(value: string | null) {
 }
 
 export function ProspectCard({ prospect }: ProspectCardProps) {
-  const residentName = [prospect.resident_first_name, prospect.resident_last_name]
-    .filter(Boolean)
-    .join(" ") || "—";
+  const prospectName =
+    [
+      prospect.care_recipient_first_name ?? prospect.resident_first_name,
+      prospect.care_recipient_last_name ?? prospect.resident_last_name,
+    ]
+      .filter(Boolean)
+      .join(" ") || "—";
 
   const contactName = [prospect.contact_first_name, prospect.contact_last_name]
     .filter(Boolean)
@@ -65,12 +69,12 @@ export function ProspectCard({ prospect }: ProspectCardProps) {
 
       {/* Body — 3 columns */}
       <div className="grid grid-cols-1 gap-5 px-5 py-5 sm:grid-cols-3">
-        {/* Resident */}
+        {/* Prospect */}
         <div>
           <p className="mb-2 font-sans text-[10px] font-semibold uppercase tracking-widest text-muted">
-            Resident
+            Prospect
           </p>
-          <p className="font-sans text-sm font-medium text-body">{residentName}</p>
+          <p className="font-sans text-sm font-medium text-body">{prospectName}</p>
           {prospect.resident_relationship && (
             <p className="mt-0.5 font-sans text-xs text-muted capitalize">
               {prospect.resident_relationship.replace(/_/g, " ")}

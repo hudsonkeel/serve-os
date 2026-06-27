@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Prospect } from "@/lib/supabase/types";
+import { CommunityResidentRecord } from "@/lib/data/communityMetrics";
 import { StatusBadge } from "@/components/prospects/StatusBadge";
 
 const SUPPORT_SHORT: Record<string, string> = {
@@ -33,20 +33,13 @@ function shortDate(iso: string) {
 }
 
 interface ResidentRowProps {
-  prospect: Prospect;
+  record: CommunityResidentRecord;
 }
 
-export function ResidentRow({ prospect }: ResidentRowProps) {
-  const residentName =
-    [prospect.resident_first_name, prospect.resident_last_name]
-      .filter(Boolean)
-      .join(" ") || "Unknown Resident";
-
+export function ResidentRow({ record }: ResidentRowProps) {
+  const { prospect } = record;
   const contactName =
-    [prospect.contact_first_name, prospect.contact_last_name]
-      .filter(Boolean)
-      .join(" ") || null;
-
+    record.familyContact === "No contact on file" ? null : record.familyContact;
   const community =
     (prospect.raw_submission as Record<string, string> | null)?.community ?? null;
 
@@ -55,17 +48,16 @@ export function ResidentRow({ prospect }: ResidentRowProps) {
     prospect.resident_relationship !== "myself";
 
   const supportLine = [
-    prospect.support_type ? SUPPORT_SHORT[prospect.support_type] : null,
-    prospect.start_timing ? TIMING_SHORT[prospect.start_timing] : null,
+    record.supportType ? SUPPORT_SHORT[record.supportType] : null,
+    record.startTiming ? TIMING_SHORT[record.startTiming] : null,
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(" | ");
 
   const nextAction = NEXT_ACTION[prospect.status];
 
   return (
     <div className="flex items-start gap-6 px-6 py-5 transition-colors hover:bg-ivory">
-      {/* ─── Identity ─── */}
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex flex-wrap items-center gap-2">
           <StatusBadge status={prospect.status} />
@@ -75,7 +67,9 @@ export function ResidentRow({ prospect }: ResidentRowProps) {
             </span>
           )}
         </div>
-        <p className="font-sans text-base font-semibold text-navy">{residentName}</p>
+        <p className="font-sans text-base font-semibold text-navy">
+          {record.residentName}
+        </p>
         {isForSomeoneElse && (
           <p className="mt-0.5 font-sans text-xs capitalize text-muted">
             Inquiring on behalf of {prospect.resident_relationship?.replace(/_/g, " ")}
@@ -86,7 +80,6 @@ export function ResidentRow({ prospect }: ResidentRowProps) {
         )}
       </div>
 
-      {/* ─── Family Contact ─── */}
       <div className="w-48 shrink-0">
         {contactName ? (
           <>
@@ -94,31 +87,30 @@ export function ResidentRow({ prospect }: ResidentRowProps) {
               Family Contact
             </p>
             <p className="mt-1 font-sans text-sm text-body">{contactName}</p>
-            {prospect.contact_phone && (
-              <p className="font-sans text-xs text-muted">{prospect.contact_phone}</p>
+            {record.phone && (
+              <p className="font-sans text-xs text-muted">{record.phone}</p>
             )}
-            {!prospect.contact_phone && prospect.contact_email && (
-              <p className="truncate font-sans text-xs text-muted">{prospect.contact_email}</p>
+            {!record.phone && record.email && (
+              <p className="truncate font-sans text-xs text-muted">{record.email}</p>
             )}
           </>
         ) : (
           <p className="font-sans text-xs text-muted">No contact on file</p>
         )}
-        {prospect.referral_source && (
+        {record.referralSource && (
           <p className="mt-2 font-sans text-[11px] text-muted">
             via{" "}
-            {prospect.referral_source
+            {record.referralSource
               .split("_")
-              .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
               .join(" ")}
           </p>
         )}
       </div>
 
-      {/* ─── Action + Date ─── */}
       <div className="w-44 shrink-0 text-right">
         <p className="mb-2 font-sans text-[11px] text-muted">
-          {shortDate(prospect.created_at)}
+          {shortDate(record.createdAt)}
         </p>
         {nextAction && nextAction !== "No action needed" && (
           <p className="mb-3 font-sans text-xs text-muted">
@@ -126,10 +118,10 @@ export function ResidentRow({ prospect }: ResidentRowProps) {
           </p>
         )}
         <Link
-          href={`/residents/${prospect.id}`}
+          href={`/residents/${record.id}`}
           className="inline-flex items-center rounded-md border border-ivory-border px-3 py-1.5 font-sans text-xs text-body transition-colors hover:border-navy/20 hover:bg-navy hover:text-white"
         >
-          View Resident →
+          View Record
         </Link>
       </div>
     </div>

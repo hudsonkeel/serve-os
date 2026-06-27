@@ -1,364 +1,520 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Check, Edit3, Phone } from "lucide-react";
+import { saveProspectDraft } from "@/lib/actions/intake";
+import { Logo } from "@/components/Logo";
+import { Confirmation } from "./Confirmation";
+import { FormField, FormInput } from "./FormField";
 import {
-  IntakeFormData,
-  IntakePath,
+  IntakeConversationStep,
+  ProgressiveCareConversation,
+} from "./ProgressiveCareConversation";
+import {
   FormErrors,
   initialFormData,
+  IntakeFormData,
+  IntakeSaveMilestone,
 } from "./types";
-import { insertProspect } from "@/lib/actions/intake";
-import { PathSelector } from "./steps/PathSelector";
-import { ZipStep } from "./steps/care/ZipStep";
-import { CareForStep } from "./steps/care/CareForStep";
-import { TimingStep } from "./steps/care/TimingStep";
-import { ReferralStep } from "./steps/care/ReferralStep";
-import { ContactStep } from "./steps/care/ContactStep";
-import { CareersScreen } from "./steps/CareersScreen";
-import { ClientContactStep } from "./steps/client/ClientContactStep";
-import { ClientCommunityStep } from "./steps/client/ClientCommunityStep";
-import { Confirmation } from "./Confirmation";
-import { StepNav } from "./StepNav";
-import { Logo } from "@/components/Logo";
 
-/* ─── Validation ─── */
-function validate(
-  step: number,
-  path: IntakePath,
+const CONSENT_TEXT =
+  "I agree to the Terms of Service/Privacy Policy and consent to Serve Caregiving contacting me by email, phone, or text about a free care consultation. Message frequency varies. Message and data rates may apply.";
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+type CompletedMilestones = Partial<Record<IntakeSaveMilestone, boolean>>;
+
+function createInitialData(): IntakeFormData {
+  return {
+    ...initialFormData,
+    path: "care",
+  };
+}
+
+function isValidEmail(value: string) {
+  return /\S+@\S+\.\S+/.test(value.trim());
+}
+
+function phoneDigits(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function hasContactMethod(data: IntakeFormData) {
+  return phoneDigits(data.phone).length >= 10 || isValidEmail(data.email);
+}
+
+function validateMilestone(
+  milestone: IntakeSaveMilestone,
   data: IntakeFormData
 ): FormErrors {
-  const e: FormErrors = {};
+  const errors: FormErrors = {};
 
-  if (step === 0) {
-    if (!path) e.path = "Please select one of the options above.";
-    return e;
+  if (milestone === "contact_completed") {
+    if (!data.firstName.trim()) errors.firstName = "First name is required.";
+    if (!data.lastName.trim()) errors.lastName = "Last name is required.";
+    if (!hasContactMethod(data))
+      errors.phone = "Please enter a valid phone number or email address.";
+    if (data.email.trim() && !isValidEmail(data.email))
+      errors.email = "Please enter a valid email address.";
+    if (!/^\d{5}$/.test(data.zipCode.trim()))
+      errors.zipCode = "Please enter a valid 5-digit ZIP code.";
   }
 
-  if (path === "care") {
-    if (step === 1) {
-      if (!data.zipCode.trim()) e.zipCode = "ZIP code is required.";
-      else if (!/^\d{5}$/.test(data.zipCode.trim()))
-        e.zipCode = "Please enter a valid 5-digit ZIP code.";
+  if (milestone === "relationship_completed" && !data.careFor) {
+    errors.careFor = "Please select who the care is for.";
+  }
+
+  if (
+    milestone === "relationship_completed" &&
+    data.careFor &&
+    data.careFor !== "myself"
+  ) {
+    if (!data.careRecipientFirstName.trim()) {
+      errors.careRecipientFirstName = "First name is required.";
     }
-    if (step === 2) {
-      if (!data.careFor) e.careFor = "Please select who the care is for.";
-      if (data.careFor && data.careFor !== "myself") {
-        if (!data.careRecipientFirst.trim())
-          e.careRecipientFirst = "First name is required.";
-        if (!data.careRecipientLast.trim())
-          e.careRecipientLast = "Last name is required.";
-      }
-      if (!data.supportType) e.supportType = "Please select a type of support.";
-    }
-    if (step === 3) {
-      if (!data.startTiming) e.startTiming = "Please select when you hope to start.";
-    }
-    if (step === 4) {
-      if (!data.referralSource) e.referralSource = "Please let us know how you heard about us.";
-      if (data.referralSource === "Other" && !data.referralOther.trim())
-        e.referralOther = "Please provide more details.";
-    }
-    if (step === 5) {
-      if (!data.firstName.trim()) e.firstName = "First name is required.";
-      if (!data.lastName.trim()) e.lastName = "Last name is required.";
-      if (!data.phone.trim()) e.phone = "Phone number is required.";
-      if (!data.email.trim()) e.email = "Email address is required.";
-      else if (!/\S+@\S+\.\S+/.test(data.email))
-        e.email = "Please enter a valid email address.";
-      if (!data.consentGiven) e.consentGiven = "Please agree to the terms to continue.";
+    if (!data.careRecipientLastName.trim()) {
+      errors.careRecipientLastName = "Last name is required.";
     }
   }
 
-  if (path === "existing_client") {
-    if (step === 1) {
-      if (!data.firstName.trim()) e.firstName = "First name is required.";
-      if (!data.lastName.trim()) e.lastName = "Last name is required.";
-      if (!data.phone.trim()) e.phone = "Phone number is required.";
-      if (!data.email.trim()) e.email = "Email address is required.";
-      else if (!/\S+@\S+\.\S+/.test(data.email))
-        e.email = "Please enter a valid email address.";
-    }
-    if (step === 2) {
-      if (!data.community) e.community = "Please select your community.";
-      if (data.community === "other" && !data.communityOther.trim())
-        e.communityOther = "Please tell us where you live.";
-      if (!data.clientMessage.trim()) e.clientMessage = "Please tell us how we can help.";
+  if (milestone === "support_completed" && !data.supportType) {
+    errors.supportType = "Please select a type of support.";
+  }
+
+  if (milestone === "timing_completed") {
+    if (!data.startTiming) {
+      errors.startTiming = "Please select when you hope to start.";
     }
   }
 
-  return e;
+  if (milestone === "referral_completed" && !data.referralSource) {
+    errors.referralSource = "Please let us know how you heard about us.";
+  }
+
+  if (milestone === "intake_completed") {
+    const milestones: IntakeSaveMilestone[] = [
+      "contact_completed",
+      "relationship_completed",
+      "support_completed",
+      "timing_completed",
+      "referral_completed",
+    ];
+
+    for (const step of milestones) {
+      Object.assign(errors, validateMilestone(step, data));
+    }
+
+    if (!data.consentGiven)
+      errors.consentGiven = "Please agree to the terms to continue.";
+  }
+
+  return errors;
 }
 
-/* ─── Left panel copy ─── */
 function LeftPanel() {
   return (
-    <div className="flex flex-col justify-center lg:pr-8">
-      <div className="mb-7">
-        <Logo width={120} />
-      </div>
-      <p className="font-sans text-[10px] font-medium uppercase tracking-[0.22em] text-gold/70">
-        Serving North Texas Families
-      </p>
-      <h1 className="mt-3 font-serif text-4xl font-light leading-tight text-white lg:text-[2.75rem]">
-        Begin Your Care Journey
-      </h1>
-      <p className="mt-4 font-serif text-lg font-light italic leading-snug text-white/80">
-        Tell us a little about your situation, and a Serve Care Advisor will follow up shortly.
-      </p>
-      <p className="mt-5 font-sans text-sm leading-relaxed text-white/55">
-        Whether you need a quick check-in, scheduled concierge support, or help planning
-        next steps, we&rsquo;ll help you find the right starting point.
-      </p>
-
-      {/* Divider */}
-      <div className="my-8 h-px w-12 bg-gold/30" />
-
-      {/* Contact block */}
+    <div className="flex h-full flex-col justify-between gap-8 lg:pr-4">
       <div>
-        <p className="font-sans text-xs text-white/45">Prefer to talk with someone?</p>
+        <Logo width={108} />
+        <h1 className="mt-8 font-serif text-4xl font-light leading-tight text-white lg:text-[2.5rem]">
+          Tell Us How We Can Serve You
+        </h1>
+        <p className="mt-4 max-w-sm font-sans text-sm leading-relaxed text-white/72">
+          We&rsquo;ll learn a little about your situation so we can connect you
+          with the right care.
+        </p>
+      </div>
+
+      <div className="border-t border-white/10 pt-6">
+        <p className="font-sans text-xs text-white/45">
+          Prefer to speak with someone?
+        </p>
         <a
           href="tel:+12148318384"
-          className="mt-1 flex items-center gap-2 font-sans text-sm font-medium text-gold/90 transition-colors hover:text-gold"
+          className="mt-2 inline-flex items-center gap-2 font-sans text-sm font-medium text-gold/90 transition-colors hover:text-gold"
         >
-          <svg
-            viewBox="0 0 16 16"
-            fill="none"
-            className="h-3.5 w-3.5"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M2 2.5C2 2.5 3 1 4.5 1C5.5 1 6 2 6.5 3L7 4.5C7.5 5.5 7 6 6.5 6.5C6 7 5.5 7.5 6.5 9C7.5 10.5 9 11.5 10 11.5C11 11.5 11.5 11 12 10.5L13.5 9.5C14.5 9 15 9.5 15 10.5C15 12 13.5 13 13.5 13C13.5 13 12 15 9.5 14C7 13 3.5 9.5 2.5 7C1.5 4.5 2 2.5 2 2.5Z"
-              stroke="currentColor"
-              strokeWidth="1.25"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <Phone className="h-3.5 w-3.5" />
           Call Serve Caregiving
         </a>
-        <p className="mt-0.5 font-sans text-sm text-white/60">(214) 831-8384</p>
+        <a
+          href="tel:+12148318384"
+          className="mt-1 block font-sans text-sm text-white/70 transition-colors hover:text-white"
+        >
+          (214) 831-8384
+        </a>
       </div>
     </div>
   );
 }
 
-/* ─── Progress indicator ─── */
-function StepProgress({
-  current,
-  total,
-}: {
-  current: number;
-  total: number;
-}) {
+function SaveStatusLine({ saveStatus }: { saveStatus: SaveStatus }) {
+  const statusText: Record<SaveStatus, string> = {
+    idle: "",
+    saving: "Saving...",
+    saved: "",
+    error: "We could not save just now",
+  };
+
+  if (saveStatus === "idle" || saveStatus === "saved") {
+    return null;
+  }
+
   return (
-    <div className="mb-6 flex items-center gap-3">
-      <div className="flex gap-1.5">
-        {Array.from({ length: total }).map((_, i) => (
-          <div
-            key={i}
-            className={`h-1 rounded-full transition-all duration-300 ${
-              i < current ? "w-6 bg-gold" : i === current - 1 ? "w-6 bg-gold" : "w-3 bg-ivory-warm"
-            }`}
-          />
-        ))}
-      </div>
-      <span className="font-sans text-[11px] text-muted">
-        Step {current} of {total}
-      </span>
-    </div>
+    <p
+      className={`mb-5 text-right font-sans text-xs ${
+        saveStatus === "error" ? "text-red-500" : "text-muted"
+      }`}
+      aria-live="polite"
+    >
+      {statusText[saveStatus]}
+    </p>
   );
 }
 
-/* ─── Main component ─── */
+function ContactSection({
+  data,
+  onChange,
+  errors,
+  completed,
+  saving,
+  onContinue,
+}: {
+  data: IntakeFormData;
+  onChange: (updates: Partial<IntakeFormData>) => void;
+  errors: FormErrors;
+  completed: boolean;
+  saving: boolean;
+  onContinue: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const showFields = editing || !completed;
+
+  if (!showFields) {
+    const contact = data.phone || data.email;
+
+    return (
+      <div className="flex gap-3 rounded-lg bg-ivory px-4 py-3">
+        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold-subtle text-gold-dark">
+          <Check className="h-3 w-3" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-sans text-sm leading-relaxed text-body">
+            Thanks, {data.firstName}. We&rsquo;ll reach out at{" "}
+            <span className="font-medium text-navy">{contact}</span>.
+          </p>
+          <p className="mt-1 font-sans text-xs text-muted">
+            Serving ZIP code {data.zipCode}.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-ivory-border bg-white text-muted transition-colors hover:border-gold/50 hover:text-navy"
+          aria-label="Edit contact details"
+        >
+          <Edit3 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-gold/30 bg-white p-5 shadow-card">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold-dark">
+            Contact
+          </p>
+          <h2 className="mt-1 font-serif text-2xl font-light text-navy">
+            Where should we reach you?
+          </h2>
+        </div>
+        {completed && (
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gold-subtle text-gold-dark"
+            aria-label="Done editing contact details"
+          >
+            <Check className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <FormField label="First Name" error={errors.firstName}>
+          <FormInput
+            type="text"
+            placeholder="Jane"
+            value={data.firstName}
+            onChange={(event) => onChange({ firstName: event.target.value })}
+            hasError={!!errors.firstName}
+          />
+        </FormField>
+        <FormField label="Last Name" error={errors.lastName}>
+          <FormInput
+            type="text"
+            placeholder="Smith"
+            value={data.lastName}
+            onChange={(event) => onChange({ lastName: event.target.value })}
+            hasError={!!errors.lastName}
+          />
+        </FormField>
+        <FormField label="Phone" error={errors.phone}>
+          <FormInput
+            type="tel"
+            placeholder="(214) 555-0000"
+            value={data.phone}
+            onChange={(event) => onChange({ phone: event.target.value })}
+            hasError={!!errors.phone}
+          />
+        </FormField>
+        <FormField label="Email" error={errors.email}>
+          <FormInput
+            type="email"
+            placeholder="jane@example.com"
+            value={data.email}
+            onChange={(event) => onChange({ email: event.target.value })}
+            hasError={!!errors.email}
+          />
+        </FormField>
+        <div className="sm:max-w-[12rem]">
+          <FormField label="ZIP Code" error={errors.zipCode}>
+            <FormInput
+              type="text"
+              inputMode="numeric"
+              maxLength={5}
+              placeholder="75001"
+              value={data.zipCode}
+              onChange={(event) =>
+                onChange({ zipCode: event.target.value.replace(/\D/g, "") })
+              }
+              hasError={!!errors.zipCode}
+            />
+          </FormField>
+        </div>
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={saving}
+          className="rounded-lg bg-gold px-5 py-2.5 font-sans text-sm font-medium text-white shadow-sm transition-all duration-150 hover:bg-gold-dark disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Continue"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function ServeIntakeFlow() {
-  const [formData, setFormData] = useState<IntakeFormData>(initialFormData);
-  const [step, setStep] = useState(0);
+  const [formData, setFormData] = useState<IntakeFormData>(createInitialData);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [completed, setCompleted] = useState<CompletedMilestones>({});
+  const [activeStep, setActiveStep] =
+    useState<IntakeConversationStep>("relationship");
+  const [prospectId, setProspectId] = useState<string | null>(null);
+  const [savingMilestone, setSavingMilestone] =
+    useState<IntakeSaveMilestone | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const path = formData.path;
-
   const update = (updates: Partial<IntakeFormData>) => {
-    setFormData((prev) => ({ ...prev, ...updates }));
-    // Clear errors for changed fields
-    const cleared = Object.fromEntries(
-      Object.keys(updates).map((k) => [k, ""])
-    );
-    setErrors((prev) => ({ ...prev, ...cleared }));
+    setFormData((previous) => ({ ...previous, ...updates }));
+    setSubmitError(null);
+    const cleared = Object.fromEntries(Object.keys(updates).map((key) => [key, ""]));
+    setErrors((previous) => ({ ...previous, ...cleared }));
   };
 
-  const handleNext = () => {
-    const errs = validate(step, path, formData);
-    if (Object.values(errs).some(Boolean)) {
-      setErrors(errs);
+  const persistMilestone = (
+    milestone: IntakeSaveMilestone,
+    nextData: IntakeFormData = formData,
+    nextStep?: IntakeConversationStep
+  ) => {
+    const nextErrors = validateMilestone(milestone, nextData);
+    if (Object.values(nextErrors).some(Boolean)) {
+      setErrors(nextErrors);
       return;
     }
-    setErrors({});
-    setStep((s) => s + 1);
-  };
 
-  const handleBack = () => {
-    setErrors({});
-    setStep((s) => Math.max(0, s - 1));
-  };
-
-  const handleReset = () => {
-    setFormData(initialFormData);
-    setStep(0);
-    setErrors({});
-    setSubmitted(false);
+    setSaveStatus("saving");
+    setSavingMilestone(milestone);
     setSubmitError(null);
-  };
 
-  const handleSubmit = () => {
-    const errs = validate(step, path, formData);
-    if (Object.values(errs).some(Boolean)) {
-      setErrors(errs);
-      return;
-    }
-    setSubmitError(null);
     startTransition(async () => {
-      const result = await insertProspect(formData);
+      const result = await saveProspectDraft(nextData, milestone, prospectId);
+      setSavingMilestone(null);
+
       if (result.error) {
         setSubmitError(result.error);
-      } else {
+        setSaveStatus("error");
+        return;
+      }
+
+      if (result.id) {
+        setProspectId(result.id);
+      }
+
+      setCompleted((previous) => ({ ...previous, [milestone]: true }));
+      setSaveStatus("saved");
+
+      if (nextStep) {
+        setActiveStep(nextStep);
+      }
+
+      if (milestone === "intake_completed") {
         setSubmitted(true);
       }
     });
   };
 
-  /* ─── Render step content ─── */
-  function renderContent() {
-    // Confirmation
-    if (submitted) {
-      return (
-        <>
-          <Confirmation />
-          <div className="mt-8">
+  const advanceLocally = (
+    updates: Partial<IntakeFormData>,
+    nextStep: IntakeConversationStep
+  ) => {
+    update(updates);
+    setActiveStep(nextStep);
+  };
+
+  const handleNotesContinue = () => {
+    persistMilestone("timing_completed", formData, "referral");
+  };
+
+  const handleRecipientNameContinue = () => {
+    persistMilestone("relationship_completed", formData, "support");
+  };
+
+  const handleReset = () => {
+    setFormData(createInitialData());
+    setErrors({});
+    setSubmitted(false);
+    setSubmitError(null);
+    setSaveStatus("idle");
+    setCompleted({});
+    setActiveStep("relationship");
+    setProspectId(null);
+    setSavingMilestone(null);
+  };
+
+  if (submitted) {
+    return (
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-0">
+        <div className="rounded-2xl bg-navy p-7 lg:col-span-2 lg:rounded-none lg:rounded-l-2xl lg:p-8">
+          <LeftPanel />
+        </div>
+        <div className="lg:col-span-3">
+          <div className="h-full rounded-2xl bg-white p-7 shadow-card lg:rounded-none lg:rounded-r-2xl lg:p-8">
+            <Confirmation />
             <button
               type="button"
               onClick={handleReset}
-              className="font-sans text-xs text-muted transition-colors hover:text-body"
+              className="mt-8 font-sans text-xs text-muted transition-colors hover:text-body"
             >
-              Start a new request →
+              Start a new conversation
             </button>
           </div>
-        </>
-      );
-    }
-
-    // Step 0: path selector
-    if (step === 0) {
-      return (
-        <>
-          <PathSelector
-            selected={path}
-            onSelect={(p) => update({ path: p })}
-            error={errors.path}
-          />
-          <StepNav
-            onNext={() => {
-              if (!path) {
-                setErrors({ path: "Please select one of the options above." });
-                return;
-              }
-              if (path === "careers") {
-                setStep(1);
-              } else {
-                setStep(1);
-              }
-            }}
-            nextLabel="Continue →"
-            showBack={false}
-          />
-        </>
-      );
-    }
-
-    // Careers path
-    if (path === "careers") {
-      return <CareersScreen onBack={handleReset} />;
-    }
-
-    // Care path
-    if (path === "care") {
-      const totalSteps = 5;
-      const isLastStep = step === totalSteps;
-
-      return (
-        <>
-          <StepProgress current={step} total={totalSteps} />
-          {step === 1 && <ZipStep data={formData} onChange={update} errors={errors} />}
-          {step === 2 && <CareForStep data={formData} onChange={update} errors={errors} />}
-          {step === 3 && <TimingStep data={formData} onChange={update} errors={errors} />}
-          {step === 4 && <ReferralStep data={formData} onChange={update} errors={errors} />}
-          {step === 5 && <ContactStep data={formData} onChange={update} errors={errors} />}
-          {submitError && (
-            <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
-              {submitError}
-            </p>
-          )}
-          <StepNav
-            onBack={handleBack}
-            onNext={isLastStep ? handleSubmit : handleNext}
-            nextLabel={isLastStep ? "Submit Request" : "Continue →"}
-            submitting={isPending}
-          />
-        </>
-      );
-    }
-
-    // Existing client path
-    if (path === "existing_client") {
-      const totalSteps = 2;
-      const isLastStep = step === totalSteps;
-
-      return (
-        <>
-          <StepProgress current={step} total={totalSteps} />
-          {step === 1 && (
-            <ClientContactStep data={formData} onChange={update} errors={errors} />
-          )}
-          {step === 2 && (
-            <ClientCommunityStep data={formData} onChange={update} errors={errors} />
-          )}
-          {submitError && (
-            <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
-              {submitError}
-            </p>
-          )}
-          <StepNav
-            onBack={step === 1 ? handleReset : handleBack}
-            onNext={isLastStep ? handleSubmit : handleNext}
-            nextLabel={isLastStep ? "Send Message" : "Continue →"}
-            submitting={isPending}
-          />
-        </>
-      );
-    }
-
-    return null;
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="grid grid-cols-1 gap-10 lg:grid-cols-5 lg:gap-0">
-      {/* ─── Left panel ─── */}
-      <div className="rounded-2xl bg-navy p-10 lg:col-span-2 lg:rounded-none lg:rounded-l-2xl">
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-0">
+      <div className="rounded-2xl bg-navy p-7 lg:col-span-2 lg:rounded-none lg:rounded-l-2xl lg:p-8">
         <LeftPanel />
       </div>
 
-      {/* ─── Right: form card ─── */}
       <div className="lg:col-span-3">
-        <div className="h-full rounded-2xl bg-white p-8 shadow-card lg:rounded-none lg:rounded-r-2xl lg:p-10">
-          {/* Logo — only shown on initial path-selector screen */}
-          {!submitted && step === 0 && (
-            <div className="mb-6">
-              <Logo variant="transparent" width={90} />
-            </div>
-          )}
-          {renderContent()}
+        <div className="h-full rounded-2xl bg-white p-5 shadow-card sm:p-7 lg:rounded-none lg:rounded-r-2xl lg:p-8">
+          <SaveStatusLine saveStatus={saveStatus} />
+
+          <div className="space-y-3">
+            <ContactSection
+              data={formData}
+              onChange={update}
+              errors={errors}
+              completed={Boolean(completed.contact_completed)}
+              saving={savingMilestone === "contact_completed"}
+              onContinue={() =>
+                persistMilestone("contact_completed", formData, "relationship")
+              }
+            />
+
+            {completed.contact_completed && (
+              <ProgressiveCareConversation
+                data={formData}
+                onChange={update}
+                errors={errors}
+                completed={completed}
+                savingMilestone={savingMilestone}
+                activeStep={activeStep}
+                onSelect={(milestone, updates, nextStep) => {
+                  const nextData = { ...formData, ...updates };
+                  setFormData(nextData);
+                  persistMilestone(milestone, nextData, nextStep);
+                }}
+                onLocalAdvance={advanceLocally}
+                onRecipientNameContinue={handleRecipientNameContinue}
+                onNotesContinue={handleNotesContinue}
+              />
+            )}
+
+            {activeStep === "submit" && (
+              <section className="rounded-xl border border-gold/30 bg-white p-5 shadow-card">
+                <p className="font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold-dark">
+                  Connect
+                </p>
+                <h2 className="mt-1 font-serif text-2xl font-light text-navy">
+                  May we connect you with Serve?
+                </h2>
+
+                <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-ivory-border bg-ivory/60 p-3">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-gold"
+                    checked={formData.consentGiven}
+                    onChange={(event) => update({ consentGiven: event.target.checked })}
+                  />
+                  <span className="font-sans text-xs leading-relaxed text-muted">
+                    {CONSENT_TEXT}
+                  </span>
+                </label>
+                {errors.consentGiven && (
+                  <p className="mt-2 font-sans text-xs text-red-500">
+                    {errors.consentGiven}
+                  </p>
+                )}
+                {errors.careNeeds && (
+                  <p className="mt-2 font-sans text-xs text-red-500">
+                    {errors.careNeeds}
+                  </p>
+                )}
+
+                {submitError && (
+                  <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
+                    {submitError}
+                  </p>
+                )}
+
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="font-sans text-sm text-muted">
+                    We&rsquo;ll use this to make the first conversation more helpful.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => persistMilestone("intake_completed")}
+                    disabled={isPending}
+                    className="rounded-lg bg-gold px-6 py-3 font-sans text-sm font-medium text-white shadow-sm transition-all duration-150 hover:bg-gold-dark hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isPending ? "Saving..." : "Connect With Serve"}
+                  </button>
+                </div>
+              </section>
+            )}
+          </div>
         </div>
       </div>
     </div>

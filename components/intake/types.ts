@@ -1,13 +1,31 @@
 export type IntakePath = "care" | "careers" | "existing_client" | null;
 
+export type IntakeSaveMilestone =
+  | "contact_completed"
+  | "relationship_completed"
+  | "support_completed"
+  | "timing_completed"
+  | "referral_completed"
+  | "intake_completed";
+
 export interface IntakeFormData {
   path: IntakePath;
 
   // Care path
   zipCode: string;
-  careFor: "" | "myself" | "parent" | "spouse_partner" | "other_family";
-  careRecipientFirst: string;
-  careRecipientLast: string;
+  careFor:
+    | ""
+    | "myself"
+    | "parent"
+    | "spouse_partner"
+    | "other_family"
+    | "friend"
+    | "neighbor"
+    | "client_referral"
+    | "professional_referral"
+    | "someone_else";
+  careRecipientFirstName: string;
+  careRecipientLastName: string;
   supportType: "" | "home_care" | "concierge" | "geriatric" | "not_sure";
   startTiming: "" | "immediately" | "coming_weeks" | "future" | "not_sure";
   careNeeds: string;
@@ -31,8 +49,8 @@ export const initialFormData: IntakeFormData = {
   path: null,
   zipCode: "",
   careFor: "",
-  careRecipientFirst: "",
-  careRecipientLast: "",
+  careRecipientFirstName: "",
+  careRecipientLastName: "",
   supportType: "",
   startTiming: "",
   careNeeds: "",

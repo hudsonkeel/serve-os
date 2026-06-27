@@ -46,8 +46,11 @@ export function ProspectRow({
   const isMissingContact = !prospect.contact_phone && !prospect.contact_email;
   const isWebsite = prospect.source === "website_intake";
 
-  const residentName =
-    [prospect.resident_first_name, prospect.resident_last_name]
+  const prospectName =
+    [
+      prospect.care_recipient_first_name ?? prospect.resident_first_name,
+      prospect.care_recipient_last_name ?? prospect.resident_last_name,
+    ]
       .filter(Boolean)
       .join(" ") || "—";
 
@@ -84,10 +87,10 @@ export function ProspectRow({
         )}
       </div>
 
-      {/* Resident */}
+      {/* Prospect */}
       <div className="min-w-0">
         <p className="truncate font-sans text-sm font-medium text-body">
-          {residentName}
+          {prospectName}
         </p>
         {prospect.resident_relationship && (
           <p className="truncate font-sans text-[11px] capitalize text-muted">

@@ -1,15 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Prospect, ProspectStatus } from "@/lib/supabase/types";
-import { RESIDENT_TAB_COUNTS } from "@/lib/demo/communityData";
+import { ProspectStatus } from "@/lib/supabase/types";
+import {
+  CommunityResidentRecord,
+  ResidentTabValue,
+} from "@/lib/data/communityMetrics";
 import { ResidentRow } from "./ResidentRow";
-
-type TabValue = "all" | "wellness_watch" | "prospects" | "active_clients" | "former_clients";
 
 const PROSPECT_STATUSES: ProspectStatus[] = ["new", "reviewing", "contacted", "assessment_scheduled"];
 
-const TABS: { value: TabValue; label: string }[] = [
+const TABS: { value: ResidentTabValue; label: string }[] = [
   { value: "all",             label: "All Residents" },
   { value: "wellness_watch",  label: "Wellness Watch" },
   { value: "prospects",       label: "Prospects" },
@@ -17,31 +18,39 @@ const TABS: { value: TabValue; label: string }[] = [
   { value: "former_clients",  label: "Former Clients" },
 ];
 
-function filterByTab(prospects: Prospect[], tab: TabValue): Prospect[] {
+function filterByTab(
+  records: CommunityResidentRecord[],
+  tab: ResidentTabValue
+): CommunityResidentRecord[] {
+  const demoRecords = records.filter((record) => record.source === "Demo Data");
+
   switch (tab) {
     case "wellness_watch":
-      return prospects.filter((p) => p.start_timing === "immediately");
+      return demoRecords.filter(
+        (record) => record.prospect.start_timing === "immediately"
+      );
     case "prospects":
-      return prospects.filter((p) =>
-        (PROSPECT_STATUSES as string[]).includes(p.status)
+      return records.filter((record) =>
+        (PROSPECT_STATUSES as string[]).includes(record.prospect.status)
       );
     case "active_clients":
-      return prospects.filter((p) => p.status === "converted");
+      return demoRecords.filter((record) => record.prospect.status === "converted");
     case "former_clients":
-      return prospects.filter((p) => p.status === "closed");
+      return demoRecords.filter((record) => record.prospect.status === "closed");
     default:
-      return prospects;
+      return demoRecords;
   }
 }
 
 interface ResidentsInboxProps {
-  prospects: Prospect[];
+  records: CommunityResidentRecord[];
+  tabCounts: Record<ResidentTabValue, number>;
 }
 
-export function ResidentsInbox({ prospects }: ResidentsInboxProps) {
-  const [activeTab, setActiveTab] = useState<TabValue>("all");
+export function ResidentsInbox({ records, tabCounts }: ResidentsInboxProps) {
+  const [activeTab, setActiveTab] = useState<ResidentTabValue>("all");
 
-  const visible = filterByTab(prospects, activeTab);
+  const visible = filterByTab(records, activeTab);
 
   return (
     <div className="space-y-4">
@@ -49,7 +58,7 @@ export function ResidentsInbox({ prospects }: ResidentsInboxProps) {
       <div className="flex items-center gap-1 border-b border-ivory-border">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.value;
-          const count = RESIDENT_TAB_COUNTS[tab.value] ?? 0;
+          const count = tabCounts[tab.value] ?? 0;
           return (
             <button
               key={tab.value}
@@ -78,8 +87,8 @@ export function ResidentsInbox({ prospects }: ResidentsInboxProps) {
       <div className="rounded-xl border border-ivory-border bg-white shadow-card">
         {visible.length > 0 ? (
           <div className="divide-y divide-ivory-border">
-            {visible.map((prospect) => (
-              <ResidentRow key={prospect.id} prospect={prospect} />
+            {visible.map((record) => (
+              <ResidentRow key={record.id} record={record} />
             ))}
           </div>
         ) : (

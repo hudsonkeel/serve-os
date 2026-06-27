@@ -66,8 +66,11 @@ interface ProspectDetailProps {
 }
 
 export function ProspectDetail({ prospect }: ProspectDetailProps) {
-  const residentName =
-    [prospect.resident_first_name, prospect.resident_last_name]
+  const prospectName =
+    [
+      prospect.care_recipient_first_name ?? prospect.resident_first_name,
+      prospect.care_recipient_last_name ?? prospect.resident_last_name,
+    ]
       .filter(Boolean)
       .join(" ") || "—";
 
@@ -95,7 +98,7 @@ export function ProspectDetail({ prospect }: ProspectDetailProps) {
           )}
 
           <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-            <Field label="Resident" value={residentName} />
+            <Field label="Care Recipient" value={prospectName} />
             <Field
               label="Relationship"
               value={prospect.resident_relationship?.replace(/_/g, " ") ?? "—"}

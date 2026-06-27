@@ -7,6 +7,11 @@ const careForOptions = [
   { value: "parent",        label: "A parent" },
   { value: "spouse_partner",label: "A spouse / partner" },
   { value: "other_family",  label: "Another family member" },
+  { value: "friend",        label: "Friend" },
+  { value: "neighbor",      label: "Neighbor" },
+  { value: "client_referral", label: "Client referral" },
+  { value: "professional_referral", label: "Professional referral" },
+  { value: "someone_else",  label: "Someone else" },
 ] as const;
 
 const supportOptions = [
@@ -20,6 +25,11 @@ const recipientLabel: Record<string, string> = {
   parent:        "Your Parent",
   spouse_partner: "Your Spouse / Partner",
   other_family:  "Your Family Member",
+  friend: "Your Friend",
+  neighbor: "Your Neighbor",
+  client_referral: "The Person You Are Referring",
+  professional_referral: "The Person You Are Referring",
+  someone_else: "The Person You Are Helping",
 };
 
 interface CareForStepProps {
@@ -44,7 +54,11 @@ export function CareForStep({ data, onChange, errors }: CareForStepProps) {
               label={o.label}
               selected={data.careFor === o.value}
               onClick={() =>
-                onChange({ careFor: o.value, careRecipientFirst: "", careRecipientLast: "" })
+                onChange({
+                  careFor: o.value,
+                  careRecipientFirstName: "",
+                  careRecipientLastName: "",
+                })
               }
             />
           ))}
@@ -61,22 +75,26 @@ export function CareForStep({ data, onChange, errors }: CareForStepProps) {
             {nameLabel}&rsquo;s Name
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <FormField label="First Name" error={errors.careRecipientFirst}>
+            <FormField label="First Name" error={errors.careRecipientFirstName}>
               <FormInput
                 type="text"
                 placeholder="Jane"
-                value={data.careRecipientFirst}
-                onChange={(e) => onChange({ careRecipientFirst: e.target.value })}
-                hasError={!!errors.careRecipientFirst}
+                value={data.careRecipientFirstName}
+                onChange={(e) =>
+                  onChange({ careRecipientFirstName: e.target.value })
+                }
+                hasError={!!errors.careRecipientFirstName}
               />
             </FormField>
-            <FormField label="Last Name" error={errors.careRecipientLast}>
+            <FormField label="Last Name" error={errors.careRecipientLastName}>
               <FormInput
                 type="text"
                 placeholder="Smith"
-                value={data.careRecipientLast}
-                onChange={(e) => onChange({ careRecipientLast: e.target.value })}
-                hasError={!!errors.careRecipientLast}
+                value={data.careRecipientLastName}
+                onChange={(e) =>
+                  onChange({ careRecipientLastName: e.target.value })
+                }
+                hasError={!!errors.careRecipientLastName}
               />
             </FormField>
           </div>
