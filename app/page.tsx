@@ -9,6 +9,10 @@ import {
   DEMO_STARTING_THIS_WEEK,
 } from "@/lib/demo/communityData";
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
+import {
+  formatCentralDashboardDate,
+  getCentralTimeGreeting,
+} from "@/lib/utils/date";
 
 const quickActions = [
   { icon: Users,         label: "View Residents",      description: "Browse the full community roster" },
@@ -20,6 +24,8 @@ const quickActions = [
 export default async function DashboardPage() {
   const community = await getCommunityMetrics();
   const { metrics } = community;
+  const dashboardDate = formatCentralDashboardDate();
+  const greeting = getCentralTimeGreeting();
 
   const communityStats = [
     { label: "Residents",        value: String(metrics.totalResidents),   description: community.communityName,        accent: true },
@@ -39,10 +45,10 @@ export default async function DashboardPage() {
     <PageContainer title="Dashboard">
       <div className="mb-10">
         <p className="mb-2 font-sans text-[10px] font-medium uppercase tracking-[0.22em] text-gold">
-          Friday, June 26
+          {dashboardDate}
         </p>
         <h1 className="font-serif text-[2.6rem] font-light leading-tight text-navy">
-          Good morning, Elizabeth.
+          {greeting}, Elizabeth.
         </h1>
         <p className="mt-2 font-sans text-sm text-body">
           {community.communityName} - {metrics.activeProspects} active prospects,{" "}
