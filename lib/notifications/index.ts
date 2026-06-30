@@ -16,14 +16,21 @@ export type { NotificationEventType, NotificationEvent } from "./types";
 // To add a new channel: add a handler branch below and define its rule fields
 // in types.ts. No other files need to change.
 
-export async function emitEvent(event: NotificationEvent): Promise<void> {
+export async function emitEvent(
+  event: NotificationEvent
+): Promise<{ ok: boolean }> {
   const matchingRules = RULES.filter((r) => r.event === event.type);
-  if (matchingRules.length === 0) return;
+  if (matchingRules.length === 0) return { ok: true };
 
-  await Promise.allSettled(
-    matchingRules.map((rule) => {
+  const results = await Promise.allSettled(
+    matchingRules.map(async (rule) => {
       const to = rule.getRecipients();
-      if (to.length === 0) return Promise.resolve();
+      if (to.length === 0) {
+        console.warn(
+          `[notifications] No recipients configured for "${event.type}" — check the recipient env var for this rule.`
+        );
+        return false;
+      }
 
       if (rule.channel === "email") {
         const p = event.payload as unknown as Record<string, unknown>;
@@ -35,7 +42,13 @@ export async function emitEvent(event: NotificationEvent): Promise<void> {
       }
 
       // Future channels (sms, push, slack) handled here — no caller changes needed.
-      return Promise.resolve();
+      return true;
     })
   );
+
+  const ok = results.every((r) => r.status === "fulfilled" && r.value === true);
+  if (!ok) {
+    console.warn(`[notifications] One or more notifications failed for "${event.type}".`);
+  }
+  return { ok };
 }

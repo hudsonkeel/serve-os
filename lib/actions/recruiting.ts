@@ -76,7 +76,7 @@ function buildLeadUpdateRow(data: RecruitingLeadFormData, completedAt: string) {
 
 export async function saveRecruitingLead(
   data: RecruitingLeadFormData
-): Promise<{ id?: string; error?: string }> {
+): Promise<{ id?: string; error?: string; notificationWarning?: string }> {
   const supabase = createServerClient();
 
   if (!data.roleInterest) {
@@ -139,31 +139,53 @@ export async function saveRecruitingLead(
     };
   }
 
-  void emitEvent({
-    type:
-      data.roleInterest === "caregiver"
-        ? "recruiting_lead.caregiver_created"
-        : "recruiting_lead.md_created",
-    payload: {
-      leadId: inserted.id,
-      role: data.roleInterest,
-      firstName: data.firstName.trim(),
-      lastName: data.lastName.trim(),
-      phone: data.phone || undefined,
-      email: data.email || undefined,
-      zipCode: data.zipCode,
-      cityState: data.cityState,
-      availability: data.availability,
-      experienceLevel: data.experienceLevel,
-      linkedinUrl: data.linkedinUrl,
-      resumeUrl: data.resumeUrl,
-      resumeFilename: data.resumeFilename,
-      explorationTimeline: data.explorationTimeline,
-      message: data.message,
-    },
-  });
+  // Awaited (not fire-and-forget): in Netlify's serverless runtime, the function's
+  // execution context can be frozen the instant a response is returned, which
+  // silently kills any unawaited background promise — including this email send.
+  // The database insert above is already complete, so this cannot block it.
+  let notificationOk = true;
+  try {
+    const result = await emitEvent({
+      type:
+        data.roleInterest === "caregiver"
+          ? "recruiting_lead.caregiver_created"
+          : "recruiting_lead.md_created",
+      payload: {
+        leadId: inserted.id,
+        role: data.roleInterest,
+        firstName: data.firstName.trim(),
+        lastName: data.lastName.trim(),
+        phone: data.phone || undefined,
+        email: data.email || undefined,
+        zipCode: data.zipCode,
+        cityState: data.cityState,
+        availability: data.availability,
+        experienceLevel: data.experienceLevel,
+        linkedinUrl: data.linkedinUrl,
+        resumeUrl: data.resumeUrl,
+        resumeFilename: data.resumeFilename,
+        explorationTimeline: data.explorationTimeline,
+        message: data.message,
+      },
+    });
+    notificationOk = result.ok;
+  } catch (err) {
+    console.error("[saveRecruitingLead] Notification dispatch threw:", err);
+    notificationOk = false;
+  }
 
-  return { id: inserted.id };
+  if (!notificationOk) {
+    console.warn(
+      `[saveRecruitingLead] Lead ${inserted.id} saved, but the notification email may not have been delivered.`
+    );
+  }
+
+  return {
+    id: inserted.id,
+    notificationWarning: notificationOk
+      ? undefined
+      : "Lead saved, but the notification email may not have been delivered.",
+  };
 }
 
 export async function markApploiRedirect(

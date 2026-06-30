@@ -527,7 +527,7 @@ function ConfirmationStep({
       </div>
 
       <h2 className="mt-6 font-serif text-2xl font-light text-navy">
-        Thank you, {firstName}.
+        Thank you.
       </h2>
       <p className="mt-2 max-w-xs font-sans text-sm leading-relaxed text-body">
         {bodyText}

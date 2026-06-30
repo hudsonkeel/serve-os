@@ -17,15 +17,15 @@ export interface EmailPayload {
   html: string;
 }
 
-export async function sendEmail(payload: EmailPayload): Promise<void> {
+export async function sendEmail(payload: EmailPayload): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.log("[notifications:email] RESEND_API_KEY not set — skipping:", payload.subject);
-    return;
+    console.warn("[notifications:email] RESEND_API_KEY not set — skipping:", payload.subject);
+    return false;
   }
   if (payload.to.length === 0) {
-    console.log("[notifications:email] No recipients configured — skipping:", payload.subject);
-    return;
+    console.warn("[notifications:email] No recipients configured — skipping:", payload.subject);
+    return false;
   }
 
   const from = process.env.SERVE_NOTIFICATION_FROM ?? "Serve OS <alerts@servecaregiving.com>";
@@ -52,8 +52,15 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
     if (!res.ok) {
       const text = await res.text();
       console.error("[notifications:email] Resend error:", res.status, text);
+      return false;
     }
+
+    console.log(
+      `[notifications:email] Sent "${payload.subject}" to ${payload.to.length} recipient(s).`
+    );
+    return true;
   } catch (err) {
     console.error("[notifications:email] Failed to deliver:", err);
+    return false;
   }
 }
