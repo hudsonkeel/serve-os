@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   BarChart2,
   Sparkles,
   Calendar,
@@ -18,6 +19,7 @@ import { UserAvatar } from "./UserAvatar";
 const primaryNav = [
   { icon: LayoutDashboard, label: "Dashboard",              href: "/" },
   { icon: Users,           label: "Residents",             href: "/residents" },
+  { icon: UserPlus,        label: "Recruiting",            href: "/recruiting" },
   { icon: BarChart2,       label: "Community Intelligence", href: "/community-intelligence" },
   { icon: Sparkles,        label: "Ask Serve",             href: "/ask-serve" },
 ];

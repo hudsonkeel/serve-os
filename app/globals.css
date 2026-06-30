@@ -53,6 +53,12 @@ body {
   grid-template-columns: 3.5rem 1fr 1.2fr 6.5rem 7.5rem 5.5rem 6rem 5.5rem 5.5rem 2.5rem;
 }
 
+/* ─── Recruiting Inbox ─── */
+.recruiting-inbox-grid {
+  /* Name+Role | Phone | Email | Location | Status | Apploi | Actions | Received */
+  grid-template-columns: 1fr 8rem 11rem 7rem 6.5rem 4rem 5.5rem 5.5rem;
+}
+
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {

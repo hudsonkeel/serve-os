@@ -16,6 +16,7 @@ import {
   IntakeFormData,
   IntakeSaveMilestone,
 } from "./types";
+import { RecruitingPanel } from "./steps/RecruitingPanel";
 
 const CONSENT_TEXT =
   "I agree to the Terms of Service/Privacy Policy and consent to Serve Caregiving contacting me by email, phone, or text about a free care consultation. Message frequency varies. Message and data rates may apply.";
@@ -110,17 +111,30 @@ function validateMilestone(
   return errors;
 }
 
-function LeftPanel() {
+const LEFT_PANEL_CONTENT = {
+  care: {
+    headline: "Tell Us How We Can Serve You",
+    subtext:
+      "We'll learn a little about your situation so we can connect you with the right care.",
+  },
+  careers: {
+    headline: "Build a Career Worth Having",
+    subtext:
+      "Tell us about yourself and we'll connect you with the right opportunity.",
+  },
+} as const;
+
+function LeftPanel({ mode }: { mode: "care" | "careers" }) {
+  const { headline, subtext } = LEFT_PANEL_CONTENT[mode];
   return (
     <div className="flex h-full flex-col justify-between gap-8 lg:pr-4">
       <div>
         <Logo width={108} />
         <h1 className="mt-8 font-serif text-4xl font-light leading-tight text-white lg:text-[2.5rem]">
-          Tell Us How We Can Serve You
+          {headline}
         </h1>
         <p className="mt-4 max-w-sm font-sans text-sm leading-relaxed text-white/72">
-          We&rsquo;ll learn a little about your situation so we can connect you
-          with the right care.
+          {subtext}
         </p>
       </div>
 
@@ -308,7 +322,116 @@ function ContactSection({
   );
 }
 
-export function ServeIntakeFlow() {
+function ServeHeart({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M12 2.7 L3.5 10.3 L1 15.8 L1 32.6 L8.5 44 L32 62 L40 70.1 L47 81.5 L49.5 89.1 L50 98.9 L52.5 99.5 L72.5 79.3 L92.5 51.6 L99.5 32.1 L99.5 21.7 L97 13.6 L88.5 3.3 L81.5 0 L72.5 0 L65.5 3.3 L57 13.6 L53 24.5 L47 10.9 L37.5 2.7 L29.5 0 L20 0 Z" />
+    </svg>
+  );
+}
+
+function ServePersonMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="50" cy="27" r="21" />
+      <path d="M4 96C4 63 20 54 50 54 80 54 96 63 96 96Z" />
+    </svg>
+  );
+}
+
+function RelationshipSelector({
+  mode,
+  onSelect,
+}: {
+  mode: "care" | "careers";
+  onSelect: (newMode: "care" | "careers") => void;
+}) {
+  const tiles: {
+    key: "care" | "careers";
+    mark: typeof ServeHeart;
+    title: string;
+    subtitle: string;
+    nextStep: string;
+  }[] = [
+    {
+      key: "care",
+      mark: ServeHeart,
+      title: "I need care",
+      subtitle: "For myself or someone I love",
+      nextStep: "A Care Advisor will reach out to learn about your situation.",
+    },
+    {
+      key: "careers",
+      mark: ServePersonMark,
+      title: "Join Our Team",
+      subtitle: "As a caregiver or managing director",
+      nextStep: "Our team will follow up about the right opportunity for you.",
+    },
+  ];
+
+  return (
+    <div className="mb-8">
+      <div className="mb-6 text-center">
+        <h2 className="font-serif text-3xl font-light text-navy">
+          How can we help you today?
+        </h2>
+        <div className="mx-auto mt-3 h-px w-9 bg-gold/50" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {tiles.map(({ key, mark: Mark, title, subtitle, nextStep }) => {
+          const isActive = mode === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onSelect(key)}
+              className={`group flex flex-col items-center rounded-2xl border px-6 pb-10 pt-12 text-center transition-all duration-200 ${
+                isActive
+                  ? "border-gold/20 bg-white shadow-card"
+                  : "border-transparent bg-ivory/40 shadow-sm hover:-translate-y-0.5 hover:border-gold/20 hover:bg-white hover:shadow-card"
+              }`}
+            >
+              <Mark
+                className={`h-20 w-20 transition-colors duration-200 ${
+                  isActive
+                    ? "text-[#C8A15A]"
+                    : "text-[#C8A15A]/35 group-hover:text-[#C8A15A]/60"
+                }`}
+              />
+              <p className="mt-8 font-serif text-2xl font-light leading-snug text-navy">
+                {title}
+              </p>
+              <p className="mt-2 font-sans text-xs leading-relaxed text-body">
+                {subtitle}
+              </p>
+              <p className="mt-3 font-sans text-xs leading-relaxed text-muted">
+                {nextStep}
+              </p>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function ServeIntakeFlow({
+  initialMode = "care",
+}: {
+  initialMode?: "care" | "careers";
+}) {
+  const [mode, setMode] = useState<"care" | "careers">(initialMode);
   const [formData, setFormData] = useState<IntakeFormData>(createInitialData);
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitted, setSubmitted] = useState(false);
@@ -327,6 +450,20 @@ export function ServeIntakeFlow() {
     setSubmitError(null);
     const cleared = Object.fromEntries(Object.keys(updates).map((key) => [key, ""]));
     setErrors((previous) => ({ ...previous, ...cleared }));
+  };
+
+  const switchMode = (newMode: "care" | "careers") => {
+    if (newMode === mode) return;
+    setFormData(createInitialData());
+    setErrors({});
+    setSubmitted(false);
+    setSubmitError(null);
+    setSaveStatus("idle");
+    setCompleted({});
+    setActiveStep("relationship");
+    setProspectId(null);
+    setSavingMilestone(null);
+    setMode(newMode);
   };
 
   const persistMilestone = (
@@ -403,7 +540,7 @@ export function ServeIntakeFlow() {
     return (
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-0">
         <div className="rounded-2xl bg-navy p-7 lg:col-span-2 lg:rounded-none lg:rounded-l-2xl lg:p-8">
-          <LeftPanel />
+          <LeftPanel mode={mode} />
         </div>
         <div className="lg:col-span-3">
           <div className="h-full rounded-2xl bg-white p-7 shadow-card lg:rounded-none lg:rounded-r-2xl lg:p-8">
@@ -424,97 +561,105 @@ export function ServeIntakeFlow() {
   return (
     <div className="grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-0">
       <div className="rounded-2xl bg-navy p-7 lg:col-span-2 lg:rounded-none lg:rounded-l-2xl lg:p-8">
-        <LeftPanel />
+        <LeftPanel mode={mode} />
       </div>
 
       <div className="lg:col-span-3">
         <div className="h-full rounded-2xl bg-white p-5 shadow-card sm:p-7 lg:rounded-none lg:rounded-r-2xl lg:p-8">
-          <SaveStatusLine saveStatus={saveStatus} />
+          <RelationshipSelector mode={mode} onSelect={switchMode} />
 
-          <div className="space-y-3">
-            <ContactSection
-              data={formData}
-              onChange={update}
-              errors={errors}
-              completed={Boolean(completed.contact_completed)}
-              saving={savingMilestone === "contact_completed"}
-              onContinue={() =>
-                persistMilestone("contact_completed", formData, "relationship")
-              }
-            />
+          {mode === "careers" ? (
+            <RecruitingPanel />
+          ) : (
+            <>
+              <SaveStatusLine saveStatus={saveStatus} />
 
-            {completed.contact_completed && (
-              <ProgressiveCareConversation
-                data={formData}
-                onChange={update}
-                errors={errors}
-                completed={completed}
-                savingMilestone={savingMilestone}
-                activeStep={activeStep}
-                onSelect={(milestone, updates, nextStep) => {
-                  const nextData = { ...formData, ...updates };
-                  setFormData(nextData);
-                  persistMilestone(milestone, nextData, nextStep);
-                }}
-                onLocalAdvance={advanceLocally}
-                onRecipientNameContinue={handleRecipientNameContinue}
-                onNotesContinue={handleNotesContinue}
-              />
-            )}
+              <div className="space-y-3">
+                <ContactSection
+                  data={formData}
+                  onChange={update}
+                  errors={errors}
+                  completed={Boolean(completed.contact_completed)}
+                  saving={savingMilestone === "contact_completed"}
+                  onContinue={() =>
+                    persistMilestone("contact_completed", formData, "relationship")
+                  }
+                />
 
-            {activeStep === "submit" && (
-              <section className="rounded-xl border border-gold/30 bg-white p-5 shadow-card">
-                <p className="font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold-dark">
-                  Connect
-                </p>
-                <h2 className="mt-1 font-serif text-2xl font-light text-navy">
-                  May we connect you with Serve?
-                </h2>
-
-                <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-ivory-border bg-ivory/60 p-3">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-gold"
-                    checked={formData.consentGiven}
-                    onChange={(event) => update({ consentGiven: event.target.checked })}
+                {completed.contact_completed && (
+                  <ProgressiveCareConversation
+                    data={formData}
+                    onChange={update}
+                    errors={errors}
+                    completed={completed}
+                    savingMilestone={savingMilestone}
+                    activeStep={activeStep}
+                    onSelect={(milestone, updates, nextStep) => {
+                      const nextData = { ...formData, ...updates };
+                      setFormData(nextData);
+                      persistMilestone(milestone, nextData, nextStep);
+                    }}
+                    onLocalAdvance={advanceLocally}
+                    onRecipientNameContinue={handleRecipientNameContinue}
+                    onNotesContinue={handleNotesContinue}
                   />
-                  <span className="font-sans text-xs leading-relaxed text-muted">
-                    {CONSENT_TEXT}
-                  </span>
-                </label>
-                {errors.consentGiven && (
-                  <p className="mt-2 font-sans text-xs text-red-500">
-                    {errors.consentGiven}
-                  </p>
-                )}
-                {errors.careNeeds && (
-                  <p className="mt-2 font-sans text-xs text-red-500">
-                    {errors.careNeeds}
-                  </p>
                 )}
 
-                {submitError && (
-                  <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
-                    {submitError}
-                  </p>
-                )}
+                {activeStep === "submit" && (
+                  <section className="rounded-xl border border-gold/30 bg-white p-5 shadow-card">
+                    <p className="font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold-dark">
+                      Connect
+                    </p>
+                    <h2 className="mt-1 font-serif text-2xl font-light text-navy">
+                      May we connect you with Serve?
+                    </h2>
 
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="font-sans text-sm text-muted">
-                    We&rsquo;ll use this to make the first conversation more helpful.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => persistMilestone("intake_completed")}
-                    disabled={isPending}
-                    className="rounded-lg bg-gold px-6 py-3 font-sans text-sm font-medium text-white shadow-sm transition-all duration-150 hover:bg-gold-dark hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isPending ? "Saving..." : "Connect With Serve"}
-                  </button>
-                </div>
-              </section>
-            )}
-          </div>
+                    <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-ivory-border bg-ivory/60 p-3">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-gold"
+                        checked={formData.consentGiven}
+                        onChange={(event) => update({ consentGiven: event.target.checked })}
+                      />
+                      <span className="font-sans text-xs leading-relaxed text-muted">
+                        {CONSENT_TEXT}
+                      </span>
+                    </label>
+                    {errors.consentGiven && (
+                      <p className="mt-2 font-sans text-xs text-red-500">
+                        {errors.consentGiven}
+                      </p>
+                    )}
+                    {errors.careNeeds && (
+                      <p className="mt-2 font-sans text-xs text-red-500">
+                        {errors.careNeeds}
+                      </p>
+                    )}
+
+                    {submitError && (
+                      <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
+                        {submitError}
+                      </p>
+                    )}
+
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="font-sans text-sm text-muted">
+                        We&rsquo;ll use this to make the first conversation more helpful.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => persistMilestone("intake_completed")}
+                        disabled={isPending}
+                        className="rounded-lg bg-gold px-6 py-3 font-sans text-sm font-medium text-white shadow-sm transition-all duration-150 hover:bg-gold-dark hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isPending ? "Saving..." : "Connect With Serve"}
+                      </button>
+                    </div>
+                  </section>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

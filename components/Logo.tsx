@@ -1,15 +1,17 @@
 import Image from "next/image";
 
 const variants = {
+  // For dark/navy backgrounds — white "Serve" wordmark + gold accents
   navy: {
-    src: "/Serve Logo - Navy.png",
-    width: 196,
-    height: 101,
+    src: "/serve-logo-white.png",
+    width: 2492,
+    height: 894,
   },
+  // For light/white/ivory backgrounds — navy "Serve" wordmark + gold accents
   transparent: {
-    src: "/Serve Logo - Transparent.png",
-    width: 163,
-    height: 95,
+    src: "/serve-logo-color.png",
+    width: 2492,
+    height: 894,
   },
 } as const;
 

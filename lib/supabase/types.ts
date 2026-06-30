@@ -1,3 +1,49 @@
+// ─── Recruiting Leads ────────────────────────────────────────────────────────
+
+export type RecruitingLeadStatus =
+  | "new"
+  | "contacted"
+  | "in_review"
+  | "applied"
+  | "not_a_fit"
+  | "hired"
+  | "archived";
+
+export type RecruitingLeadRole = "caregiver" | "managing_director";
+
+export interface RecruitingLead {
+  id: string;
+  created_at: string;
+  role_interest: RecruitingLeadRole;
+  source: string;
+  status: RecruitingLeadStatus;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  email: string | null;
+  zip_code: string | null;
+  city_state: string | null;
+  availability: string | null;
+  experience_level: string | null;
+  certification_license: string | null;
+  linkedin_url: string | null;
+  resume_url: string | null;
+  resume_filename: string | null;
+  resume_uploaded_at: string | null;
+  exploration_timeline: string | null;
+  message: string | null;
+  raw_submission: Record<string, unknown> | null;
+  form_started_at: string | null;
+  form_completed_at: string | null;
+  apploi_redirected_at: string | null;
+}
+
+export type RecruitingLeadInsert = Partial<
+  Omit<RecruitingLead, "id" | "created_at">
+>;
+
+// ─── Prospects ───────────────────────────────────────────────────────────────
+
 export type ProspectStatus =
   | "new"
   | "reviewing"
