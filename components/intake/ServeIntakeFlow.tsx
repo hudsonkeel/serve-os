@@ -129,8 +129,10 @@ function LeftPanel({ mode }: { mode: "care" | "careers" }) {
   return (
     <div className="flex h-full flex-col justify-between gap-8 lg:pr-4">
       <div>
-        <Logo width={108} />
-        <h1 className="mt-8 font-serif text-4xl font-light leading-tight text-white lg:text-[2.5rem]">
+        <div className="mb-8">
+          <Logo width={108} />
+        </div>
+        <h1 className="font-serif text-4xl font-light leading-tight text-white lg:text-[2.5rem]">
           {headline}
         </h1>
         <p className="mt-4 max-w-sm font-sans text-sm leading-relaxed text-white/72">
@@ -191,6 +193,7 @@ function ContactSection({
   completed,
   saving,
   onContinue,
+  isEmbed = false,
 }: {
   data: IntakeFormData;
   onChange: (updates: Partial<IntakeFormData>) => void;
@@ -198,6 +201,7 @@ function ContactSection({
   completed: boolean;
   saving: boolean;
   onContinue: () => void;
+  isEmbed?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const showFields = editing || !completed;
@@ -232,13 +236,21 @@ function ContactSection({
   }
 
   return (
-    <section className="rounded-xl border border-gold/30 bg-white p-5 shadow-card">
+    <section
+      className={`rounded-xl border border-gold/30 bg-white shadow-card ${
+        isEmbed ? "p-3.5" : "p-5"
+      }`}
+    >
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold-dark">
             Contact
           </p>
-          <h2 className="mt-1 font-serif text-2xl font-light text-navy">
+          <h2
+            className={`mt-1 font-serif font-light text-navy ${
+              isEmbed ? "text-xl" : "text-2xl"
+            }`}
+          >
             How can we reach you?
           </h2>
         </div>
@@ -254,44 +266,58 @@ function ContactSection({
         )}
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <FormField label="First Name" error={errors.firstName}>
-          <FormInput
-            type="text"
-            placeholder="Jane"
-            value={data.firstName}
-            onChange={(event) => onChange({ firstName: event.target.value })}
-            hasError={!!errors.firstName}
-          />
-        </FormField>
-        <FormField label="Last Name" error={errors.lastName}>
-          <FormInput
-            type="text"
-            placeholder="Smith"
-            value={data.lastName}
-            onChange={(event) => onChange({ lastName: event.target.value })}
-            hasError={!!errors.lastName}
-          />
-        </FormField>
-        <FormField label="Phone" error={errors.phone}>
-          <FormInput
-            type="tel"
-            placeholder="(214) 555-0000"
-            value={data.phone}
-            onChange={(event) => onChange({ phone: event.target.value })}
-            hasError={!!errors.phone}
-          />
-        </FormField>
-        <FormField label="Email" error={errors.email}>
-          <FormInput
-            type="email"
-            placeholder="jane@example.com"
-            value={data.email}
-            onChange={(event) => onChange({ email: event.target.value })}
-            hasError={!!errors.email}
-          />
-        </FormField>
-        <div className="sm:max-w-[12rem]">
+      <div
+        className={`grid grid-cols-1 ${
+          isEmbed ? "sm:grid-cols-6" : "sm:grid-cols-2"
+        } ${
+          isEmbed ? "mt-3 gap-2.5" : "mt-5 gap-3"
+        }`}
+      >
+        <div className={isEmbed ? "sm:col-span-2" : ""}>
+          <FormField label="First Name" error={errors.firstName}>
+            <FormInput
+              type="text"
+              placeholder="Jane"
+              value={data.firstName}
+              onChange={(event) => onChange({ firstName: event.target.value })}
+              hasError={!!errors.firstName}
+            />
+          </FormField>
+        </div>
+        <div className={isEmbed ? "sm:col-span-2" : ""}>
+          <FormField label="Last Name" error={errors.lastName}>
+            <FormInput
+              type="text"
+              placeholder="Smith"
+              value={data.lastName}
+              onChange={(event) => onChange({ lastName: event.target.value })}
+              hasError={!!errors.lastName}
+            />
+          </FormField>
+        </div>
+        <div className={isEmbed ? "sm:col-span-2" : ""}>
+          <FormField label="Phone" error={errors.phone}>
+            <FormInput
+              type="tel"
+              placeholder="(214) 555-0000"
+              value={data.phone}
+              onChange={(event) => onChange({ phone: event.target.value })}
+              hasError={!!errors.phone}
+            />
+          </FormField>
+        </div>
+        <div className={isEmbed ? "sm:col-span-3" : ""}>
+          <FormField label="Email" error={errors.email}>
+            <FormInput
+              type="email"
+              placeholder="jane@example.com"
+              value={data.email}
+              onChange={(event) => onChange({ email: event.target.value })}
+              hasError={!!errors.email}
+            />
+          </FormField>
+        </div>
+        <div className={isEmbed ? "sm:col-span-2" : "sm:max-w-[12rem]"}>
           <FormField label="ZIP Code" error={errors.zipCode}>
             <FormInput
               type="text"
@@ -308,12 +334,14 @@ function ContactSection({
         </div>
       </div>
 
-      <div className="mt-5 flex justify-end">
+      <div className={`${isEmbed ? "mt-3" : "mt-5"} flex justify-end`}>
         <button
           type="button"
           onClick={onContinue}
           disabled={saving}
-          className="rounded-lg bg-gold px-5 py-2.5 font-sans text-sm font-medium text-white shadow-sm transition-all duration-150 hover:bg-gold-dark disabled:cursor-not-allowed disabled:opacity-50"
+          className={`rounded-lg bg-gold font-sans text-sm font-medium text-white shadow-sm transition-all duration-150 hover:bg-gold-dark disabled:cursor-not-allowed disabled:opacity-50 ${
+            isEmbed ? "px-5 py-2" : "px-5 py-2.5"
+          }`}
         >
           {saving ? "Saving..." : "Continue"}
         </button>
@@ -352,9 +380,11 @@ function ServePersonMark({ className }: { className?: string }) {
 function RelationshipSelector({
   mode,
   onSelect,
+  isEmbed = false,
 }: {
   mode: "care" | "careers";
   onSelect: (newMode: "care" | "careers") => void;
+  isEmbed?: boolean;
 }) {
   const tiles: {
     key: "care" | "careers";
@@ -380,15 +410,19 @@ function RelationshipSelector({
   ];
 
   return (
-    <div className="mb-8">
-      <div className="mb-6 text-center">
-        <h2 className="font-serif text-3xl font-light text-navy">
+    <div className={isEmbed ? "mb-3 md:mb-2" : "mb-8"}>
+      <div className={`${isEmbed ? "mb-3" : "mb-6"} text-center`}>
+        <h2
+          className={`font-serif font-light text-navy ${
+            isEmbed ? "text-2xl" : "text-3xl"
+          }`}
+        >
           How can we help you today?
         </h2>
         <div className="mx-auto mt-3 h-px w-9 bg-gold/50" />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className={`grid grid-cols-2 ${isEmbed ? "gap-3" : "gap-4"}`}>
         {tiles.map(({ key, mark: Mark, title, subtitle, nextStep }) => {
           const isActive = mode === key;
           return (
@@ -396,26 +430,42 @@ function RelationshipSelector({
               key={key}
               type="button"
               onClick={() => onSelect(key)}
-              className={`group flex flex-col items-center rounded-2xl border px-6 pb-10 pt-12 text-center transition-all duration-200 ${
+              className={`group flex flex-col items-center border text-center transition-all duration-200 ${
                 isActive
                   ? "border-gold/20 bg-white shadow-card"
                   : "border-transparent bg-ivory/40 shadow-sm hover:-translate-y-0.5 hover:border-gold/20 hover:bg-white hover:shadow-card"
+              } ${
+                isEmbed
+                  ? "rounded-xl px-4 pb-5 pt-5"
+                  : "rounded-2xl px-6 pb-10 pt-12"
               }`}
             >
               <Mark
-                className={`h-20 w-20 transition-colors duration-200 ${
+                className={`transition-colors duration-200 ${
                   isActive
                     ? "text-[#C8A15A]"
                     : "text-[#C8A15A]/35 group-hover:text-[#C8A15A]/60"
-                }`}
+                } ${isEmbed ? "h-12 w-12" : "h-20 w-20"}`}
               />
-              <p className="mt-8 font-serif text-2xl font-light leading-snug text-navy">
+              <p
+                className={`font-serif font-light leading-snug text-navy ${
+                  isEmbed ? "mt-3 text-xl" : "mt-8 text-2xl"
+                }`}
+              >
                 {title}
               </p>
-              <p className="mt-2 font-sans text-xs leading-relaxed text-body">
+              <p
+                className={`mt-2 font-sans leading-relaxed text-body ${
+                  isEmbed ? "text-[11px]" : "text-xs"
+                }`}
+              >
                 {subtitle}
               </p>
-              <p className="mt-3 font-sans text-xs leading-relaxed text-muted">
+              <p
+                className={`font-sans leading-relaxed text-muted ${
+                  isEmbed ? "mt-2" : "mt-3"
+                } ${isEmbed ? "text-[11px]" : "text-xs"}`}
+              >
                 {nextStep}
               </p>
             </button>
@@ -428,8 +478,10 @@ function RelationshipSelector({
 
 export function ServeIntakeFlow({
   initialMode = "care",
+  isEmbed = false,
 }: {
   initialMode?: "care" | "careers";
+  isEmbed?: boolean;
 }) {
   const [mode, setMode] = useState<"care" | "careers">(initialMode);
   const [formData, setFormData] = useState<IntakeFormData>(createInitialData);
@@ -536,14 +588,27 @@ export function ServeIntakeFlow({
     setSavingMilestone(null);
   };
 
+  const shellClass = isEmbed
+    ? "serve-embed-card mx-auto grid grid-cols-1 items-stretch overflow-hidden rounded-[1.25rem] border border-white/20 bg-white shadow-[0_24px_80px_rgb(20_32_48_/_0.24)] md:grid-cols-5"
+    : "grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-0";
+  const leftPanelClass = isEmbed
+    ? "serve-embed-left bg-navy p-6 sm:p-7 md:col-span-2 lg:p-8"
+    : "rounded-2xl bg-navy p-7 lg:col-span-2 lg:rounded-none lg:rounded-l-2xl lg:p-8";
+  const rightPanelClass = isEmbed
+    ? "serve-embed-right flex min-w-0 md:col-span-3"
+    : "min-w-0 lg:col-span-3";
+  const contentClass = isEmbed
+    ? "serve-embed-content flex min-h-full w-full flex-col bg-white p-5"
+    : "h-full rounded-2xl bg-white p-5 shadow-card sm:p-7 lg:rounded-none lg:rounded-r-2xl lg:p-8";
+
   if (submitted) {
     return (
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-0">
-        <div className="rounded-2xl bg-navy p-7 lg:col-span-2 lg:rounded-none lg:rounded-l-2xl lg:p-8">
+      <div className={shellClass}>
+        <div className={leftPanelClass}>
           <LeftPanel mode={mode} />
         </div>
-        <div className="lg:col-span-3">
-          <div className="h-full rounded-2xl bg-white p-7 shadow-card lg:rounded-none lg:rounded-r-2xl lg:p-8">
+        <div className={rightPanelClass}>
+          <div className={contentClass}>
             <Confirmation />
             <button
               type="button"
@@ -559,14 +624,18 @@ export function ServeIntakeFlow({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-0">
-      <div className="rounded-2xl bg-navy p-7 lg:col-span-2 lg:rounded-none lg:rounded-l-2xl lg:p-8">
+    <div className={shellClass}>
+      <div className={leftPanelClass}>
         <LeftPanel mode={mode} />
       </div>
 
-      <div className="lg:col-span-3">
-        <div className="h-full rounded-2xl bg-white p-5 shadow-card sm:p-7 lg:rounded-none lg:rounded-r-2xl lg:p-8">
-          <RelationshipSelector mode={mode} onSelect={switchMode} />
+      <div className={rightPanelClass}>
+        <div className={contentClass}>
+          <RelationshipSelector
+            mode={mode}
+            onSelect={switchMode}
+            isEmbed={isEmbed}
+          />
 
           {mode === "careers" ? (
             <RecruitingPanel />
@@ -584,6 +653,7 @@ export function ServeIntakeFlow({
                   onContinue={() =>
                     persistMilestone("contact_completed", formData, "relationship")
                   }
+                  isEmbed={isEmbed}
                 />
 
                 {completed.contact_completed && (
