@@ -50,10 +50,12 @@ body {
 html:has(.serve-embed-page),
 body:has(.serve-embed-page) {
   background: transparent;
+  height: 100%;
+  overflow: hidden;
 }
 
 .serve-embed-page {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -66,6 +68,7 @@ body:has(.serve-embed-page) {
 @media (min-width: 768px) {
   .serve-embed-card {
     width: clamp(680px, calc(100vw - 520px), 900px);
+    height: min(640px, calc(100vh - 32px));
     max-height: calc(100vh - 32px);
     align-items: stretch;
   }
@@ -75,14 +78,18 @@ body:has(.serve-embed-page) {
   }
 
   .serve-embed-content {
+    height: 100%;
     min-height: 0;
     max-height: 100%;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     overscroll-behavior: contain;
   }
 
   .serve-embed-right {
+    height: 100%;
     min-height: 0;
+    overflow: hidden;
   }
 
   .serve-embed-content input,
@@ -93,14 +100,16 @@ body:has(.serve-embed-page) {
   }
 
   .serve-embed-left {
+    height: 100%;
     min-height: 0;
+    overflow: hidden;
   }
 }
 
 @media (max-width: 767px) {
   .serve-embed-page {
-    min-height: 100vh;
-    overflow-y: auto;
+    height: 100vh;
+    overflow: hidden;
     padding: 8px;
   }
 }
