@@ -6,6 +6,7 @@ import {
   IntakeSaveMilestone,
 } from "@/components/intake/types";
 import { IntakeCurrentStep, ProspectInsert } from "@/lib/supabase/types";
+import { emitEvent } from "@/lib/notifications";
 
 interface FunnelFields {
   id: string;
@@ -179,6 +180,49 @@ function buildFunnelState(
 
 const funnelSelect = "id,raw_submission";
 
+function getProspectName(data: IntakeFormData) {
+  if (
+    data.path === "care" &&
+    data.careFor &&
+    data.careFor !== "myself" &&
+    (data.careRecipientFirstName.trim() || data.careRecipientLastName.trim())
+  ) {
+    return `${data.careRecipientFirstName.trim()} ${data.careRecipientLastName.trim()}`.trim();
+  }
+
+  return `${data.firstName.trim()} ${data.lastName.trim()}`.trim();
+}
+
+async function emitProspectCompleted(
+  prospectId: string,
+  data: IntakeFormData,
+  milestone: IntakeSaveMilestone
+) {
+  if (milestone !== "intake_completed") return;
+
+  try {
+    const result = await emitEvent({
+      type: "prospect.completed",
+      payload: {
+        prospectId,
+        name: getProspectName(data),
+        contactEmail: data.email || undefined,
+        contactPhone: data.phone || undefined,
+        zipCode: data.zipCode || undefined,
+        supportType: data.supportType || undefined,
+      },
+    });
+
+    if (!result.ok) {
+      console.warn(
+        `[saveProspectDraft] Prospect ${prospectId} saved, but the care inquiry notification email may not have been delivered.`
+      );
+    }
+  } catch (err) {
+    console.error("[saveProspectDraft] Prospect notification dispatch threw:", err);
+  }
+}
+
 export async function saveProspectDraft(
   data: IntakeFormData,
   milestone: IntakeSaveMilestone,
@@ -221,6 +265,7 @@ export async function saveProspectDraft(
       .single();
 
     if (!error && updated?.id) {
+      await emitProspectCompleted(updated.id, normalizedData, milestone);
       return { id: updated.id };
     }
   }
@@ -259,6 +304,7 @@ export async function saveProspectDraft(
         };
       }
 
+      await emitProspectCompleted(updated.id, normalizedData, milestone);
       return { id: updated.id };
     }
   }
@@ -279,6 +325,7 @@ export async function saveProspectDraft(
     };
   }
 
+  await emitProspectCompleted(inserted.id, normalizedData, milestone);
   return { id: inserted.id };
 }
 
