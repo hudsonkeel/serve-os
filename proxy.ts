@@ -9,7 +9,13 @@ import {
   isAuthRole,
 } from "@/lib/auth/constants";
 
-const PUBLIC_PATHS = ["/login", "/get-started", "/careers"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/forgot-password",
+  "/reset-password",
+  "/get-started",
+  "/careers",
+];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some(

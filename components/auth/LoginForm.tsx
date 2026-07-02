@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { loginAction, type LoginState } from "@/lib/auth/actions";
@@ -39,12 +40,20 @@ export function LoginForm() {
       </div>
 
       <div>
-        <label
-          htmlFor="password"
-          className="mb-1.5 block font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold-dark"
-        >
-          Password
-        </label>
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+          <label
+            htmlFor="password"
+            className="block font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold-dark"
+          >
+            Password
+          </label>
+          <Link
+            href="/forgot-password"
+            className="font-sans text-xs text-muted underline-offset-4 transition-colors hover:text-navy hover:underline"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <input
           id="password"
           name="password"
