@@ -116,3 +116,46 @@ Deploy Serve OS (unlocks email links, live prospect pipeline, and all future sta
 - [ ] Verify live recruiting lead submission → Supabase → email notification flow
 - [ ] Verify Serve OS `/recruiting` page reads live data
 - [ ] Confirm Supabase connection strings point to production (not development)
+# Current Status
+
+Overall
+
+Serve OS is operational for pilot usage.
+
+Completed
+
+✓ Authentication
+✓ Employee login
+✓ Website integration
+✓ Employee Portal
+✓ Workspace
+✓ Resident database
+✓ Live resident detail pages
+✓ Live resident directory
+✓ Resident relationship staging
+✓ Contact staging
+✓ External system launchers
+✓ Community Intelligence foundation
+
+Current focus
+
+- Employee usability
+- Resident relationship refinement
+- Proposal Builder
+- Assessment workflow
+- Timeline / Activity feed
+
+Not yet complete
+
+- Native proposal engine
+- Timeline
+- Relationship intelligence
+- Native care management
+- Native recruiting
+
+Employee authentication complete.
+
+Employees can:
+- Sign in
+- Reset forgotten passwords
+- Recover accounts without administrator assistance

@@ -246,3 +246,46 @@ Completed:
 - Status workflow
 
 This marks the first fully production-verified module of Serve OS.
+
+Current readiness
+
+Website
+
+✓ Ready
+
+Serve OS
+
+✓ Pilot Ready
+
+Authentication
+
+✓ Ready
+
+Resident database
+
+✓ Ready
+
+Workspace
+
+✓ Ready
+
+Employee Portal
+
+✓ Ready
+
+Notifications
+
+✓ Ready
+
+Live resident data
+
+✓ Ready
+
+Remaining before wider rollout
+
+- Proposal Builder refinement
+- Timeline
+- Relationship history
+- Assessment improvements
+- Additional operational testing with Elizabeth
+

@@ -20,3 +20,66 @@ This log is append-only — do not modify past entries; add new ones at the bott
 | 2026-06-29 | Apploi redirect is optional and tracked; MD role has no Apploi path | Caregiver formal application lives in Apploi. MD pipeline is manual and relationship-driven — no external portal. `apploi_redirected_at` timestamp enables funnel tracking. |
 | 2026-06-29 | `/careers` URL redirects to `/get-started?mode=careers` rather than hosting a separate page | External links and marketing materials pointing to `/careers` continue working. Avoids duplicating the entry experience. |
 | 2026-06-29 | Recruiting status vocabulary: `new → contacted → in_review → applied → not_a_fit → hired → archived` | Mirrors the actual Serve recruiting workflow. Initial migration used generic terms that did not match operations; second migration aligned them. |
+
+# 2026-07-01
+
+Decision
+
+Residents are the canonical business object.
+
+Reason
+
+Every workflow ultimately relates back to a resident.
+
+Result
+
+Assessments
+Proposals
+Wellness
+Clients
+Care
+Timeline
+Communications
+
+all attach to Resident.
+
+--------------------------------
+
+Decision
+
+Workspace becomes the operational home.
+
+Dashboard remains executive intelligence.
+
+Reason
+
+Employees need operational workflow more than analytics.
+
+--------------------------------
+
+Decision
+
+Organize by business process instead of software.
+
+Reason
+
+Employees should not think about Cinch, Apploi or Viventium.
+
+They should think about:
+
+Residents
+Care Delivery
+Recruiting
+Communications
+People
+
+--------------------------------
+
+Decision
+
+External systems are temporary execution platforms.
+
+Serve OS owns workflow.
+
+External systems will be gradually replaced.
+

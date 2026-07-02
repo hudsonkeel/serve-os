@@ -841,4 +841,55 @@ Before changing architecture:
 6. Optimize for long-term maintainability rather than short-term convenience.
 7. If unsure, favor modular, composable architecture over tightly coupled implementations.
 
-End of document.
+## July 1, 2026
+
+Serve OS entered Operational Pilot.
+
+Major philosophy shift
+
+The project is no longer focused primarily on building software.
+
+The project is focused on simplifying daily work.
+
+Current priority order
+
+1. Employee usability
+
+2. Operational workflow
+
+3. Live data
+
+4. AI assistance
+
+5. Intelligence
+
+Artificial intelligence should support work rather than become the product.
+
+Current design philosophy
+
+Employees should begin every day inside Serve OS.
+
+Workspace becomes the operational starting point.
+
+Dashboard becomes executive intelligence.
+
+Residents remain the canonical business object.
+
+External systems execute work.
+
+Serve OS organizes work.
+
+Long-term vision
+
+Replace external execution platforms gradually while preserving employee workflow.
+
+Success metric
+
+Employees no longer ask:
+
+"Where do I go?"
+
+Instead they ask:
+
+"What work do I need to complete today?"
+
