@@ -34,7 +34,7 @@ export function LoginForm() {
           autoComplete="email"
           required
           className="h-11 w-full rounded-lg border border-ivory-border bg-white px-4 font-sans text-sm text-navy outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
-          placeholder="hudson.keel@servecaregiving.com"
+          placeholder="name@servecaregiving.com"
         />
       </div>
 
