@@ -1,6 +1,9 @@
 "use server";
 
-import { createServerClient } from "@/lib/supabase/server";
+import {
+  createServerClient,
+  getSupabaseServerDiagnostics,
+} from "@/lib/supabase/server";
 import {
   RecruitingLeadInsert,
   RecruitingLeadRole,
@@ -70,10 +73,6 @@ function buildLeadInsertRow(
   };
 }
 
-function buildLeadUpdateRow(data: RecruitingLeadFormData, completedAt: string) {
-  return buildFormFields(data, completedAt);
-}
-
 export async function saveRecruitingLead(
   data: RecruitingLeadFormData
 ): Promise<{ id?: string; error?: string; notificationWarning?: string }> {
@@ -90,47 +89,29 @@ export async function saveRecruitingLead(
   }
 
   const now = new Date().toISOString();
-  const normalizedEmail = data.email.trim().toLowerCase();
+  const insertRow = buildLeadInsertRow(data, now);
 
-  if (normalizedEmail && /\S+@\S+\.\S+/.test(normalizedEmail)) {
-    const { data: existing, error: lookupError } = await supabase
-      .from("recruiting_leads")
-      .select("id")
-      .eq("email", normalizedEmail)
-      .eq("role_interest", data.roleInterest)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle<{ id: string }>();
-
-    if (lookupError) {
-      console.error("[saveRecruitingLead:lookup]", lookupError);
-    }
-
-    if (existing?.id) {
-      const { data: updated, error } = await supabase
-        .from("recruiting_leads")
-        .update(buildLeadUpdateRow(data, now))
-        .eq("id", existing.id)
-        .select("id")
-        .single();
-
-      if (error) {
-        console.error("[saveRecruitingLead:update]", error);
-        return { error: "Something went wrong. Please try again." };
-      }
-
-      return { id: updated.id };
-    }
-  }
+  console.log("[saveRecruitingLead:insert:attempt]", {
+    roleInterest: data.roleInterest,
+    email: data.email.trim().toLowerCase() || null,
+    hasPhone: data.phone.replace(/\D/g, "").length >= 10,
+    diagnostics: getSupabaseServerDiagnostics(),
+  });
 
   const { data: inserted, error } = await supabase
     .from("recruiting_leads")
-    .insert(buildLeadInsertRow(data, now))
+    .insert(insertRow)
     .select("id")
     .single();
 
   if (error) {
-    console.error("[saveRecruitingLead:insert]", error);
+    console.error("[saveRecruitingLead:insert:error]", {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      roleInterest: data.roleInterest,
+    });
     return {
       error:
         process.env.NODE_ENV === "development"
@@ -138,6 +119,19 @@ export async function saveRecruitingLead(
           : "Something went wrong. Please try again.",
     };
   }
+
+  if (!inserted?.id) {
+    console.error("[saveRecruitingLead:insert:missing_id]", {
+      inserted,
+      roleInterest: data.roleInterest,
+    });
+    return { error: "Something went wrong. Please try again." };
+  }
+
+  console.log("[saveRecruitingLead:insert:success]", {
+    id: inserted.id,
+    roleInterest: data.roleInterest,
+  });
 
   // Awaited (not fire-and-forget): in Netlify's serverless runtime, the function's
   // execution context can be frozen the instant a response is returned, which
