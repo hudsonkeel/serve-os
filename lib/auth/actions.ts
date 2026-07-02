@@ -9,7 +9,6 @@ import {
   AUTH_COOKIE_OPTIONS,
   AUTH_REFRESH_COOKIE,
   AUTH_USER_EMAIL_COOKIE,
-  AUTHORIZED_EMAIL,
 } from "./constants";
 import { getAuthorizedProfileForEmail } from "./profiles";
 
@@ -38,7 +37,7 @@ export async function loginAction(
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
 
-  if (email !== AUTHORIZED_EMAIL) {
+  if (!email) {
     return { error: genericLoginError() };
   }
 

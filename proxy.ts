@@ -5,7 +5,8 @@ import {
   AUTH_COOKIE_OPTIONS,
   AUTH_REFRESH_COOKIE,
   AUTH_USER_EMAIL_COOKIE,
-  AUTHORIZED_EMAIL,
+  AUTH_ROLES,
+  isAuthRole,
 } from "@/lib/auth/constants";
 
 const PUBLIC_PATHS = ["/login", "/get-started", "/careers"];
@@ -56,25 +57,25 @@ function createServiceClient() {
 async function hasAuthorizedProfile(email: string) {
   const normalizedEmail = email.trim().toLowerCase();
 
-  if (normalizedEmail !== AUTHORIZED_EMAIL) {
+  if (!normalizedEmail) {
     return false;
   }
 
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("user_profiles")
-    .select("email")
+    .select("email,role,status")
     .eq("email", normalizedEmail)
-    .eq("role", "admin")
+    .in("role", AUTH_ROLES)
     .eq("status", "active")
-    .maybeSingle<{ email: string }>();
+    .maybeSingle<{ email: string; role: string; status: string }>();
 
   if (error) {
     console.error("[auth:proxy:user_profiles]", error);
     return false;
   }
 
-  return Boolean(data?.email);
+  return Boolean(data?.email && isAuthRole(data.role) && data.status === "active");
 }
 
 export async function proxy(request: NextRequest) {

@@ -1,10 +1,10 @@
 import { createServerClient } from "@/lib/supabase/server";
-import { AUTHORIZED_EMAIL } from "./constants";
+import { AUTH_ROLES, type AuthRole, isAuthRole } from "./constants";
 
 export interface AuthorizedProfile {
   email: string;
   full_name: string | null;
-  role: "admin";
+  role: AuthRole;
   status: "active";
 }
 
@@ -12,8 +12,7 @@ export async function getAuthorizedProfileForEmail(
   email: string
 ): Promise<AuthorizedProfile | null> {
   const normalizedEmail = email.trim().toLowerCase();
-
-  if (normalizedEmail !== AUTHORIZED_EMAIL) {
+  if (!normalizedEmail) {
     return null;
   }
 
@@ -22,14 +21,27 @@ export async function getAuthorizedProfileForEmail(
     .from("user_profiles")
     .select("email,full_name,role,status")
     .eq("email", normalizedEmail)
-    .eq("role", "admin")
+    .in("role", AUTH_ROLES)
     .eq("status", "active")
-    .maybeSingle<AuthorizedProfile>();
+    .maybeSingle<{
+      email: string;
+      full_name: string | null;
+      role: string;
+      status: string;
+    }>();
 
   if (error) {
     console.error("[auth:getAuthorizedProfileForEmail]", error);
     return null;
   }
 
-  return data;
+  if (!data || !isAuthRole(data.role) || data.status !== "active") {
+    return null;
+  }
+
+  return {
+    ...data,
+    role: data.role,
+    status: "active",
+  };
 }
