@@ -136,18 +136,22 @@ function LeftPanel({ mode }: { mode: "care" | "careers" }) {
     >
       <div>
         <div className={isCareers ? "mb-6" : "mb-8"}>
-          <Logo width={108} />
+          <Logo width={isCareers ? 96 : 108} />
         </div>
         <h1
-          className={`font-serif text-4xl font-light text-white lg:text-[2.5rem] ${
-            isCareers ? "leading-[1.04]" : "leading-tight"
+          className={`font-serif font-light text-white ${
+            isCareers
+              ? "text-[2rem] leading-[1] lg:text-[2.2rem]"
+              : "text-4xl leading-tight lg:text-[2.5rem]"
           }`}
         >
           {headline}
         </h1>
         <p
-          className={`max-w-sm font-sans text-sm text-white/72 ${
-            isCareers ? "mt-3 leading-[1.55]" : "mt-4 leading-relaxed"
+          className={`max-w-sm font-sans text-white/72 ${
+            isCareers
+              ? "mt-2 text-[13px] leading-[1.45]"
+              : "mt-4 text-sm leading-relaxed"
           }`}
         >
           {subtext}
@@ -155,21 +159,25 @@ function LeftPanel({ mode }: { mode: "care" | "careers" }) {
       </div>
 
       <div
-        className={`border-t border-white/10 ${isCareers ? "pt-5" : "pt-6"}`}
+        className={`border-t border-white/10 ${isCareers ? "pt-4" : "pt-6"}`}
       >
         <p className="font-sans text-xs text-white/45">
           Prefer to speak with someone?
         </p>
         <a
           href="tel:+12148318384"
-          className="mt-2 inline-flex items-center gap-2 font-sans text-sm font-medium text-gold/90 transition-colors hover:text-gold"
+          className={`inline-flex items-center gap-2 font-sans font-medium text-gold/90 transition-colors hover:text-gold ${
+            isCareers ? "mt-1.5 text-xs" : "mt-2 text-sm"
+          }`}
         >
           <Phone className="h-3.5 w-3.5" />
           Call Serve Caregiving
         </a>
         <a
           href="tel:+12148318384"
-          className="mt-1 block font-sans text-sm text-white/70 transition-colors hover:text-white"
+          className={`mt-1 block font-sans text-white/70 transition-colors hover:text-white ${
+            isCareers ? "text-xs" : "text-sm"
+          }`}
         >
           (214) 831-8384
         </a>
@@ -424,10 +432,11 @@ function RelationshipSelector({
       nextStep: "Our team will follow up about the right opportunity for you.",
     },
   ];
+  const isCareersEmbed = isEmbed && mode === "careers";
 
   return (
-    <div className={isEmbed ? "mb-3 md:mb-2" : "mb-8"}>
-      <div className={`${isEmbed ? "mb-3" : "mb-6"} text-center`}>
+    <div className={isEmbed ? (isCareersEmbed ? "mb-2" : "mb-3 md:mb-2") : "mb-8"}>
+      <div className={`${isEmbed ? (isCareersEmbed ? "mb-2" : "mb-3") : "mb-6"} text-center`}>
         <h2
           className={`font-serif font-light text-navy ${
             isEmbed ? "text-2xl" : "text-3xl"
@@ -435,10 +444,10 @@ function RelationshipSelector({
         >
           How can we help you today?
         </h2>
-        <div className="mx-auto mt-3 h-px w-9 bg-gold/50" />
+        <div className={`mx-auto h-px w-9 bg-gold/50 ${isCareersEmbed ? "mt-2" : "mt-3"}`} />
       </div>
 
-      <div className={`grid grid-cols-2 ${isEmbed ? "gap-3" : "gap-4"}`}>
+      <div className={`grid grid-cols-2 ${isEmbed ? (isCareersEmbed ? "gap-2.5" : "gap-3") : "gap-4"}`}>
         {tiles.map(({ key, mark: Mark, title, subtitle, nextStep }) => {
           const isActive = mode === key;
           return (
@@ -452,7 +461,9 @@ function RelationshipSelector({
                   : "border-transparent bg-ivory/40 shadow-sm hover:-translate-y-0.5 hover:border-gold/20 hover:bg-white hover:shadow-card"
               } ${
                 isEmbed
-                  ? "rounded-xl px-4 pb-5 pt-5"
+                  ? isCareersEmbed
+                    ? "rounded-xl px-3 pb-3 pt-3"
+                    : "rounded-xl px-4 pb-5 pt-5"
                   : "rounded-2xl px-6 pb-10 pt-12"
               }`}
             >
@@ -461,26 +472,26 @@ function RelationshipSelector({
                   isActive
                     ? "text-[#C8A15A]"
                     : "text-[#C8A15A]/35 group-hover:text-[#C8A15A]/60"
-                } ${isEmbed ? "h-12 w-12" : "h-20 w-20"}`}
+                } ${isEmbed ? (isCareersEmbed ? "h-9 w-9" : "h-12 w-12") : "h-20 w-20"}`}
               />
               <p
                 className={`font-serif font-light leading-snug text-navy ${
-                  isEmbed ? "mt-3 text-xl" : "mt-8 text-2xl"
+                  isEmbed ? (isCareersEmbed ? "mt-2 text-lg" : "mt-3 text-xl") : "mt-8 text-2xl"
                 }`}
               >
                 {title}
               </p>
               <p
                 className={`mt-2 font-sans leading-relaxed text-body ${
-                  isEmbed ? "text-[11px]" : "text-xs"
+                  isEmbed ? (isCareersEmbed ? "text-[10px]" : "text-[11px]") : "text-xs"
                 }`}
               >
                 {subtitle}
               </p>
               <p
                 className={`font-sans leading-relaxed text-muted ${
-                  isEmbed ? "mt-2" : "mt-3"
-                } ${isEmbed ? "text-[11px]" : "text-xs"}`}
+                  isEmbed ? (isCareersEmbed ? "mt-1.5" : "mt-2") : "mt-3"
+                } ${isEmbed ? (isCareersEmbed ? "text-[10px]" : "text-[11px]") : "text-xs"}`}
               >
                 {nextStep}
               </p>
@@ -608,13 +619,17 @@ export function ServeIntakeFlow({
     ? "serve-embed-card mx-auto grid grid-cols-1 items-stretch overflow-hidden rounded-[1.25rem] border border-white/20 bg-white shadow-[0_24px_80px_rgb(20_32_48_/_0.24)] md:grid-cols-5"
     : "grid grid-cols-1 gap-8 lg:grid-cols-5 lg:gap-0";
   const leftPanelClass = isEmbed
-    ? "serve-embed-left bg-navy p-6 sm:p-7 md:col-span-2 lg:p-8"
+    ? `serve-embed-left bg-navy md:col-span-2 ${
+        mode === "careers" ? "p-5 sm:p-6 lg:p-7" : "p-6 sm:p-7 lg:p-8"
+      }`
     : "rounded-2xl bg-navy p-7 lg:col-span-2 lg:rounded-none lg:rounded-l-2xl lg:p-8";
   const rightPanelClass = isEmbed
     ? "serve-embed-right flex min-w-0 md:col-span-3"
     : "min-w-0 lg:col-span-3";
   const contentClass = isEmbed
-    ? "serve-embed-content flex min-h-full w-full flex-col bg-white p-5"
+    ? `serve-embed-content flex min-h-full w-full flex-col bg-white ${
+        mode === "careers" ? "p-4" : "p-5"
+      }`
     : "h-full rounded-2xl bg-white p-5 shadow-card sm:p-7 lg:rounded-none lg:rounded-r-2xl lg:p-8";
 
   if (submitted) {

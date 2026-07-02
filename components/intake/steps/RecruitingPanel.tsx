@@ -48,7 +48,7 @@ function RoleSelectStep({
   const roles: RecruitingLeadRole[] = ["caregiver", "managing_director"];
 
   return (
-    <div className="space-y-4 pb-5">
+    <div className="space-y-3 pb-6">
       <div>
         <p className="font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold-dark">
           Select a Role
@@ -58,30 +58,30 @@ function RoleSelectStep({
         </h2>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {roles.map((role) => {
           const meta = ROLE_META[role];
           return (
             <div
               key={role}
-              className="flex flex-col justify-between rounded-xl border border-ivory-border bg-ivory/40 p-5"
+              className="flex flex-col justify-between rounded-xl border border-ivory-border bg-ivory/40 p-3.5"
             >
               <div>
                 <p className="font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold-dark">
                   {meta.label}
                 </p>
-                <h3 className="mt-2 font-serif text-xl font-light text-navy">
+                <h3 className="mt-1.5 font-serif text-lg font-light leading-tight text-navy">
                   {meta.tagline}
                 </h3>
-                <p className="mt-2 font-sans text-sm leading-relaxed text-body">
+                <p className="mt-1.5 font-sans text-xs leading-relaxed text-body">
                   {meta.description}
                 </p>
               </div>
-              <div className="mt-5">
+              <div className="mt-3">
                 <button
                   type="button"
                   onClick={() => onSelect(role)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-navy px-4 py-2.5 font-sans text-sm font-medium text-white shadow-sm transition-colors duration-150 hover:bg-navy/90"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-navy px-4 py-2 font-sans text-sm font-medium text-white shadow-sm transition-colors duration-150 hover:bg-navy/90"
                 >
                   {meta.cta}
                   <ArrowRight className="h-3.5 w-3.5" />
