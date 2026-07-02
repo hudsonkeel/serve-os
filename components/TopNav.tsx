@@ -1,4 +1,5 @@
-import { Search, Bell } from "lucide-react";
+import { Search, Bell, LogOut } from "lucide-react";
+import { logoutAction } from "@/lib/auth/actions";
 
 interface TopNavProps {
   title?: string;
@@ -46,6 +47,16 @@ export function TopNav({ title = "Dashboard" }: TopNavProps) {
           </div>
           <span className="font-sans text-sm font-medium text-navy">Elizabeth</span>
         </button>
+
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            aria-label="Log out"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-ivory hover:text-navy"
+          >
+            <LogOut size={16} strokeWidth={1.5} />
+          </button>
+        </form>
       </div>
     </header>
   );
