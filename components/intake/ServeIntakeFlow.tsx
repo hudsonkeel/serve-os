@@ -126,21 +126,37 @@ const LEFT_PANEL_CONTENT = {
 
 function LeftPanel({ mode }: { mode: "care" | "careers" }) {
   const { headline, subtext } = LEFT_PANEL_CONTENT[mode];
+  const isCareers = mode === "careers";
+
   return (
-    <div className="flex h-full flex-col justify-between gap-8 lg:pr-4">
+    <div
+      className={`flex h-full flex-col justify-between lg:pr-4 ${
+        isCareers ? "gap-5" : "gap-8"
+      }`}
+    >
       <div>
-        <div className="mb-8">
+        <div className={isCareers ? "mb-6" : "mb-8"}>
           <Logo width={108} />
         </div>
-        <h1 className="font-serif text-4xl font-light leading-tight text-white lg:text-[2.5rem]">
+        <h1
+          className={`font-serif text-4xl font-light text-white lg:text-[2.5rem] ${
+            isCareers ? "leading-[1.04]" : "leading-tight"
+          }`}
+        >
           {headline}
         </h1>
-        <p className="mt-4 max-w-sm font-sans text-sm leading-relaxed text-white/72">
+        <p
+          className={`max-w-sm font-sans text-sm text-white/72 ${
+            isCareers ? "mt-3 leading-[1.55]" : "mt-4 leading-relaxed"
+          }`}
+        >
           {subtext}
         </p>
       </div>
 
-      <div className="border-t border-white/10 pt-6">
+      <div
+        className={`border-t border-white/10 ${isCareers ? "pt-5" : "pt-6"}`}
+      >
         <p className="font-sans text-xs text-white/45">
           Prefer to speak with someone?
         </p>

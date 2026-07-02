@@ -48,7 +48,7 @@ function RoleSelectStep({
   const roles: RecruitingLeadRole[] = ["caregiver", "managing_director"];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-5">
       <div>
         <p className="font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold-dark">
           Select a Role
