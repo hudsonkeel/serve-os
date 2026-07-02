@@ -14,7 +14,7 @@ import {
   Settings,
 } from "lucide-react";
 import { Logo } from "./Logo";
-import { UserAvatar } from "./UserAvatar";
+import type { CurrentUserDisplay } from "@/lib/auth/display";
 
 const primaryNav = [
   { icon: LayoutDashboard, label: "Dashboard",              href: "/" },
@@ -30,7 +30,7 @@ const futureNav = [
   { icon: ClipboardList,   label: "Care Plans" },
 ];
 
-export function Sidebar() {
+export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
   const pathname = usePathname();
 
   const isActive = (href: string) =>
@@ -87,30 +87,29 @@ export function Sidebar() {
 
         {/* Settings */}
         <div className="mt-6 border-t border-white/6 pt-6">
-          <Link
-            href="/settings"
-            className={`flex items-center gap-3 rounded-lg border-l-2 px-4 py-2.5 font-sans text-sm tracking-wide transition-all duration-150 ${
-              isActive("/settings")
-                ? "border-l-gold bg-gold/10 text-gold"
-                : "border-l-transparent text-white/35 hover:text-white/60"
-            }`}
+          <span
+            aria-disabled="true"
+            title="Settings coming soon"
+            className="flex cursor-default items-center gap-3 rounded-lg border-l-2 border-l-transparent px-4 py-2.5 font-sans text-sm tracking-wide text-white/20"
           >
             <Settings size={15} strokeWidth={1.5} className="shrink-0" />
             <span>Settings</span>
-          </Link>
+          </span>
         </div>
       </nav>
 
       {/* ─── User ─── */}
       <div className="border-t border-white/8 px-4 py-5">
-        <div className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-white/5">
-          <UserAvatar firstName="Elizabeth" lastName="Butler" size={40} />
+        <div className="flex items-center gap-3 rounded-lg px-3 py-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ivory font-sans text-sm font-medium text-navy">
+            {currentUser.initials}
+          </div>
           <div className="min-w-0 flex-1">
             <p className="truncate font-sans text-xs font-medium text-white/80">
-              Elizabeth Butler
+              {currentUser.fullName}
             </p>
             <p className="truncate font-sans text-[11px] text-white/32">
-              Care Coordinator
+              {currentUser.roleLabel}
             </p>
           </div>
         </div>

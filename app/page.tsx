@@ -13,6 +13,8 @@ import {
   formatCentralDashboardDate,
   getCentralTimeGreeting,
 } from "@/lib/utils/date";
+import { buildCurrentUserDisplay } from "@/lib/auth/display";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,6 +27,8 @@ const quickActions = [
 ];
 
 export default async function DashboardPage() {
+  const profile = await getCurrentAuthorizedUser();
+  const currentUser = buildCurrentUserDisplay(profile);
   const community = await getCommunityMetrics();
   const { metrics } = community;
   const dashboardDate = formatCentralDashboardDate();
@@ -51,7 +55,7 @@ export default async function DashboardPage() {
           {dashboardDate}
         </p>
         <h1 className="font-serif text-[2.6rem] font-light leading-tight text-navy">
-          {greeting}, Elizabeth.
+          {greeting}, {currentUser.shortName}.
         </h1>
         <p className="mt-2 font-sans text-sm text-body">
           {community.communityName} - {metrics.activeProspects} active prospects,{" "}

@@ -1,11 +1,13 @@
 import { Search, Bell, LogOut } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
+import type { CurrentUserDisplay } from "@/lib/auth/display";
 
 interface TopNavProps {
   title?: string;
+  currentUser: CurrentUserDisplay;
 }
 
-export function TopNav({ title = "Dashboard" }: TopNavProps) {
+export function TopNav({ title = "Dashboard", currentUser }: TopNavProps) {
   return (
     <header className="sticky top-0 z-20 flex h-[65px] items-center gap-6 border-b border-ivory-border bg-white px-8">
       {/* Page title */}
@@ -43,9 +45,11 @@ export function TopNav({ title = "Dashboard" }: TopNavProps) {
         {/* User chip */}
         <button type="button" className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-ivory">
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-navy/8 font-sans text-[11px] font-medium text-navy">
-            EB
+            {currentUser.initials}
           </div>
-          <span className="font-sans text-sm font-medium text-navy">Elizabeth</span>
+          <span className="font-sans text-sm font-medium text-navy">
+            {currentUser.shortName}
+          </span>
         </button>
 
         <form action={logoutAction}>
