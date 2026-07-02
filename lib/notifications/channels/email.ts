@@ -6,9 +6,17 @@ export function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+const BLOCKED_NOTIFICATION_RECIPIENTS = new Set([
+  ["itsupport", "servecaregiving.com"].join("@"),
+]);
+
 export function parseRecipients(envVar: string | undefined): string[] {
   if (!envVar) return [];
-  return envVar.split(",").map((e) => e.trim()).filter(Boolean);
+  return envVar
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean)
+    .filter((email) => !BLOCKED_NOTIFICATION_RECIPIENTS.has(email.toLowerCase()));
 }
 
 export interface EmailPayload {
