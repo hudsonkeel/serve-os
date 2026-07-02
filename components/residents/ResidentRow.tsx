@@ -1,35 +1,27 @@
 import Link from "next/link";
 import { CommunityResidentRecord } from "@/lib/data/communityMetrics";
-import { StatusBadge } from "@/components/prospects/StatusBadge";
 
-const SUPPORT_SHORT: Record<string, string> = {
-  home_care: "Home Care",
-  concierge: "Concierge Support",
-  geriatric: "Geriatric Care Mgmt",
-  not_sure: "Care type TBD",
-};
-
-const TIMING_SHORT: Record<string, string> = {
-  immediately: "Immediate need",
-  coming_weeks: "In coming weeks",
-  future: "Planning ahead",
-  not_sure: "Timing TBD",
-};
-
-const NEXT_ACTION: Record<string, string> = {
-  new: "Review inquiry",
-  reviewing: "Log contact attempt",
-  contacted: "Schedule assessment",
-  assessment_scheduled: "Complete assessment",
-  converted: "Manage care plan",
-  closed: "No action needed",
-};
-
-function shortDate(iso: string) {
+function shortDate(iso: string | null) {
+  if (!iso) return "-";
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
+}
+
+function titleCase(value: string | null) {
+  if (!value) return "-";
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function formatPhone(phone: string | null) {
+  const digits = phone?.replace(/\D/g, "") ?? "";
+  if (digits.length !== 10) return phone;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
 interface ResidentRowProps {
@@ -37,46 +29,47 @@ interface ResidentRowProps {
 }
 
 export function ResidentRow({ record }: ResidentRowProps) {
-  const { prospect } = record;
+  const resident = record.resident;
   const contactName =
     record.familyContact === "No contact on file" ? null : record.familyContact;
-  const community =
-    (prospect.raw_submission as Record<string, string> | null)?.community ?? null;
-
-  const isForSomeoneElse =
-    prospect.resident_relationship &&
-    prospect.resident_relationship !== "myself";
-
-  const supportLine = [
-    record.supportType ? SUPPORT_SHORT[record.supportType] : null,
-    record.startTiming ? TIMING_SHORT[record.startTiming] : null,
+  const location = [
+    record.unitNumber ? `Unit ${record.unitNumber}` : null,
+    record.building,
   ]
     .filter(Boolean)
     .join(" | ");
-
-  const nextAction = NEXT_ACTION[prospect.status];
 
   return (
     <div className="flex items-start gap-6 px-6 py-5 transition-colors hover:bg-ivory">
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex flex-wrap items-center gap-2">
-          <StatusBadge status={prospect.status} />
-          {community && (
-            <span className="font-sans text-[11px] capitalize text-muted">
-              {community.replace(/_/g, " ")}
+          <span className="rounded-full bg-gold-subtle px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wide text-gold-dark">
+            {record.serveRelationshipLabel}
+          </span>
+          {resident.status && (
+            <span className="rounded-full bg-ivory-warm px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Resident {titleCase(resident.status)}
             </span>
+          )}
+          {record.needsReview && (
+            <span className="rounded-full bg-ivory-warm px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Review
+            </span>
+          )}
+          {location && (
+            <span className="font-sans text-[11px] text-muted">{location}</span>
           )}
         </div>
         <p className="font-sans text-base font-semibold text-navy">
           {record.residentName}
         </p>
-        {isForSomeoneElse && (
-          <p className="mt-0.5 font-sans text-xs capitalize text-muted">
-            Inquiring on behalf of {prospect.resident_relationship?.replace(/_/g, " ")}
+        <p className="mt-0.5 font-sans text-xs capitalize text-muted">
+          {record.serveRelationshipLabel} | {titleCase(record.residentType)}
+        </p>
+        {record.needsReview && (
+          <p className="mt-1 font-sans text-xs text-muted">
+            Needs review: {titleCase(record.needsReview)}
           </p>
-        )}
-        {supportLine && (
-          <p className="mt-1 font-sans text-xs text-muted">{supportLine}</p>
         )}
       </div>
 
@@ -88,7 +81,9 @@ export function ResidentRow({ record }: ResidentRowProps) {
             </p>
             <p className="mt-1 font-sans text-sm text-body">{contactName}</p>
             {record.phone && (
-              <p className="font-sans text-xs text-muted">{record.phone}</p>
+              <p className="font-sans text-xs text-muted">
+                {formatPhone(record.phone)}
+              </p>
             )}
             {!record.phone && record.email && (
               <p className="truncate font-sans text-xs text-muted">{record.email}</p>
@@ -97,25 +92,14 @@ export function ResidentRow({ record }: ResidentRowProps) {
         ) : (
           <p className="font-sans text-xs text-muted">No contact on file</p>
         )}
-        {record.referralSource && (
-          <p className="mt-2 font-sans text-[11px] text-muted">
-            via{" "}
-            {record.referralSource
-              .split("_")
-              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-              .join(" ")}
-          </p>
-        )}
       </div>
 
       <div className="w-44 shrink-0 text-right">
         <p className="mb-2 font-sans text-[11px] text-muted">
-          {shortDate(record.createdAt)}
+          Updated {shortDate(record.updatedAt ?? record.createdAt)}
         </p>
-        {nextAction && nextAction !== "No action needed" && (
-          <p className="mb-3 font-sans text-xs text-muted">
-            Next: {nextAction}
-          </p>
+        {record.needsReview && (
+          <p className="mb-3 font-sans text-xs text-muted">Next: Review import</p>
         )}
         <Link
           href={`/residents/${record.id}`}

@@ -22,9 +22,9 @@ export default async function ResidentsPage() {
         </span>
       </div>
 
-      {community.error && (
+      {community.residentsError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
-          Failed to load live residents. Showing demo records only.
+          Failed to load live residents.
         </div>
       )}
 

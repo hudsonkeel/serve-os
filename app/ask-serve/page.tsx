@@ -8,7 +8,7 @@ const suggestedPrompts = [
   "Which residents may need transportation assistance?",
   "Who has not interacted with Serve recently?",
   "Which active prospects are ready for an assessment?",
-  "Summarize the Serve relationship for Margaret Chen.",
+  "Summarize the Serve relationship for a resident.",
   "Which residents have family members asking for follow-up?",
 ];
 

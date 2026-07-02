@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Briefcase,
   LayoutDashboard,
   Users,
   UserPlus,
@@ -17,6 +18,7 @@ import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
 
 const primaryNav = [
+  { icon: Briefcase,       label: "Workspace",              href: "/workspace" },
   { icon: LayoutDashboard, label: "Dashboard",              href: "/" },
   { icon: Users,           label: "Residents",             href: "/residents" },
   { icon: UserPlus,        label: "Recruiting",            href: "/recruiting" },

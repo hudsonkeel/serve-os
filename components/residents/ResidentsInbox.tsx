@@ -1,44 +1,48 @@
 "use client";
 
 import { useState } from "react";
-import { ProspectStatus } from "@/lib/supabase/types";
 import {
   CommunityResidentRecord,
   ResidentTabValue,
 } from "@/lib/data/communityMetrics";
 import { ResidentRow } from "./ResidentRow";
 
-const PROSPECT_STATUSES: ProspectStatus[] = ["new", "reviewing", "contacted", "assessment_scheduled"];
-
 const TABS: { value: ResidentTabValue; label: string }[] = [
   { value: "all",             label: "All Residents" },
-  { value: "wellness_watch",  label: "Wellness Watch" },
-  { value: "prospects",       label: "Prospects" },
+  { value: "serve_prospects", label: "Serve Prospects" },
   { value: "active_clients",  label: "Active Clients" },
+  { value: "hold",            label: "On Hold" },
   { value: "former_clients",  label: "Former Clients" },
+  { value: "wellness_watch",  label: "Wellness Watch" },
 ];
 
 function filterByTab(
   records: CommunityResidentRecord[],
   tab: ResidentTabValue
 ): CommunityResidentRecord[] {
-  const demoRecords = records.filter((record) => record.source === "Demo Data");
-
   switch (tab) {
-    case "wellness_watch":
-      return demoRecords.filter(
-        (record) => record.prospect.start_timing === "immediately"
-      );
-    case "prospects":
-      return records.filter((record) =>
-        (PROSPECT_STATUSES as string[]).includes(record.prospect.status)
+    case "serve_prospects":
+      return records.filter(
+        (record) => record.serveRelationshipStatus === "prospect"
       );
     case "active_clients":
-      return demoRecords.filter((record) => record.prospect.status === "converted");
+      return records.filter(
+        (record) => record.serveRelationshipStatus === "active_client"
+      );
+    case "hold":
+      return records.filter(
+        (record) => record.serveRelationshipStatus === "hold"
+      );
     case "former_clients":
-      return demoRecords.filter((record) => record.prospect.status === "closed");
+      return records.filter(
+        (record) => record.serveRelationshipStatus === "former_client"
+      );
+    case "wellness_watch":
+      return records.filter(
+        (record) => record.serveRelationshipStatus === "wellness_watch"
+      );
     default:
-      return demoRecords;
+      return records;
   }
 }
 
@@ -96,7 +100,7 @@ export function ResidentsInbox({ records, tabCounts }: ResidentsInboxProps) {
             <p className="font-sans text-sm text-muted">No residents in this view.</p>
             {activeTab === "wellness_watch" && (
               <p className="mt-1 font-sans text-xs text-muted">
-                Residents with immediate care needs appear here.
+                Residents flagged for wellness watch appear here.
               </p>
             )}
           </div>

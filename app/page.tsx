@@ -1,13 +1,8 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
 import { DashboardCard } from "@/components/DashboardCard";
-import { ScheduleCard } from "@/components/ScheduleCard";
 import { QuickActionCard } from "@/components/QuickActionCard";
 import { Users, HeartPulse, Calendar, ClipboardList } from "lucide-react";
-import {
-  DEMO_SCHEDULE,
-  DEMO_STARTING_THIS_WEEK,
-} from "@/lib/demo/communityData";
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import {
   formatCentralDashboardDate,
@@ -44,7 +39,7 @@ export default async function DashboardPage() {
   const operationsStats = [
     { label: "Pending Assessments",        value: String(metrics.pendingAssessments),        description: "Awaiting scheduling or completion" },
     { label: "Families Awaiting Proposal", value: String(metrics.familiesAwaitingProposal),  description: "Ready to move forward" },
-    { label: "Birthdays This Week",        value: String(metrics.birthdaysThisWeek),         description: "Send a card or reach out" },
+    { label: "Birthdays This Week",        value: String(metrics.birthdaysThisWeek),         description: "Resident birthdays connected later" },
     { label: "Wellness Checks Due",        value: String(metrics.wellnessChecksDue),         description: "Overdue or due today" },
   ];
 
@@ -86,10 +81,11 @@ export default async function DashboardPage() {
               View all
             </a>
           </div>
-          <div className="space-y-3">
-            {DEMO_SCHEDULE.map((item) => (
-              <ScheduleCard key={`${item.client}-${item.time}`} {...item} />
-            ))}
+          <div className="rounded-xl border border-ivory-border bg-white px-6 py-10 text-center shadow-card">
+            <p className="font-serif text-xl text-muted">No schedule connected yet</p>
+            <p className="mt-2 font-sans text-sm text-muted">
+              Live visits and caregiver assignments will appear here once scheduling is connected.
+            </p>
           </div>
         </div>
 
@@ -98,27 +94,8 @@ export default async function DashboardPage() {
             <h2 className="mb-4 font-serif text-2xl font-light text-navy">
               Starting This Week
             </h2>
-            <div className="rounded-xl bg-white p-5 shadow-card">
-              {DEMO_STARTING_THIS_WEEK.map((client, i) => (
-                <div
-                  key={client.name}
-                  className={`flex items-center gap-3 py-3 ${
-                    i < DEMO_STARTING_THIS_WEEK.length - 1 ? "border-b border-ivory-warm" : ""
-                  }`}
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gold/10 font-sans text-[11px] font-medium text-gold">
-                    {client.initials}
-                  </div>
-                  <div>
-                    <p className="font-sans text-sm font-medium text-navy">
-                      {client.name}
-                    </p>
-                    <p className="font-sans text-[11px] text-muted">
-                      Starting {client.start}
-                    </p>
-                  </div>
-                </div>
-              ))}
+            <div className="rounded-xl bg-white p-5 text-center shadow-card">
+              <p className="font-sans text-sm text-muted">No client starts connected yet.</p>
               <div className="pt-3">
                 <Link href="/residents" className="font-sans text-xs text-gold transition-colors hover:text-gold-dark">
                   View all residents

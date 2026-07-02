@@ -1,42 +1,13 @@
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { PageContainer } from "@/components/PageContainer";
 import { ProspectInbox } from "@/components/prospects/ProspectInbox";
-import { Prospect } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const AMANDA_KEEL_PROSPECT_ID = "4603f025-9aa9-47f9-b5f9-802fa9033042";
-
-function prospectName(prospect: Prospect) {
-  return (
-    [
-      prospect.care_recipient_first_name ?? prospect.resident_first_name,
-      prospect.care_recipient_last_name ?? prospect.resident_last_name,
-    ]
-      .filter(Boolean)
-      .join(" ") || "Unknown Prospect"
-  );
-}
-
-function prospectDebugSummary(prospects: Prospect[]) {
-  return prospects.slice(0, 10).map((prospect) => ({
-    id: prospect.id,
-    name: prospectName(prospect),
-  }));
-}
-
 export default async function ProspectsPage() {
   const community = await getCommunityMetrics();
   const prospects = community.prospects;
-
-  console.log("[prospects:before-ProspectInbox]", {
-    count: prospects.length,
-    first10: prospectDebugSummary(prospects),
-    amandaPresent: prospects.some(
-      (prospect) => prospect.id === AMANDA_KEEL_PROSPECT_ID
-    ),
-  });
 
   return (
     <PageContainer title="Prospects">
@@ -52,13 +23,13 @@ export default async function ProspectsPage() {
         </span>
       </div>
 
-      {community.error && (
+      {community.prospectsError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-sans text-sm text-red-700">
-          Failed to load live prospects. Showing demo records only.
+          Failed to load live prospects.
         </div>
       )}
 
-      {!community.error && prospects.length === 0 && (
+      {!community.prospectsError && prospects.length === 0 && (
         <div className="rounded-xl border border-ivory-border bg-white px-8 py-16 text-center shadow-card">
           <p className="font-serif text-xl text-muted">No prospects yet</p>
           <p className="mt-2 font-sans text-sm text-muted">
