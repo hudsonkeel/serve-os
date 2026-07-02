@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
           {
             key: "Content-Security-Policy",
             // Allow embedding only from the Serve public website and Netlify preview deployments.
-            // 'self' covers os-servercaregiving.netlify.app itself.
+            // 'self' covers os-servecaregiving.netlify.app itself.
             value:
               "frame-ancestors 'self' https://servecaregiving.com https://www.servecaregiving.com https://*.netlify.app",
           },
