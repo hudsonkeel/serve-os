@@ -13,6 +13,7 @@ import {
   MessageSquare,
   ClipboardList,
   Settings,
+  Inbox,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
@@ -21,6 +22,7 @@ const primaryNav = [
   { icon: Briefcase,       label: "Workspace",              href: "/workspace" },
   { icon: LayoutDashboard, label: "Dashboard",              href: "/" },
   { icon: Users,           label: "Residents",             href: "/residents" },
+  { icon: Inbox,           label: "Website Inquiries",      href: "/prospects" },
   { icon: UserPlus,        label: "Recruiting",            href: "/recruiting" },
   { icon: BarChart2,       label: "Community Intelligence", href: "/community-intelligence" },
   { icon: Sparkles,        label: "Ask Serve",             href: "/ask-serve" },

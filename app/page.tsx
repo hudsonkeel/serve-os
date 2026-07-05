@@ -32,7 +32,7 @@ export default async function DashboardPage() {
   const communityStats = [
     { label: "Residents",        value: String(metrics.totalResidents),   description: community.communityName,        accent: true },
     { label: "Serve Clients",    value: String(metrics.serveClients),     description: "Active Serve relationships" },
-    { label: "Active Prospects", value: String(metrics.activeProspects),  description: "In intake or follow-up" },
+    { label: "Serve Prospects",  value: String(metrics.activeProspects),  description: "Residents in prospect stage" },
     { label: "Needs Follow-up",  value: String(metrics.requiresFollowUp), description: "Family outreach overdue" },
   ];
 

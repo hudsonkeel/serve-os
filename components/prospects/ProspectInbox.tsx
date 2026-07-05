@@ -8,7 +8,7 @@ import { StatusFilter, FilterValue } from "./StatusFilter";
 
 const HEADERS = [
   "Flags",
-  "Prospect",
+  "Inquiry",
   "Contact",
   "Support",
   "Timing",
