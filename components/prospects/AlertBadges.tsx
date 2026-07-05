@@ -7,7 +7,11 @@ interface AlertBadgesProps {
 export function AlertBadges({ prospect }: AlertBadgesProps) {
   const isHighPriority = prospect.start_timing === "immediately";
   const isMissingContact = !prospect.contact_phone && !prospect.contact_email;
-  const isWebsiteInquiry = prospect.source === "website_intake";
+  // "website_intake" is the legacy source value; "homepage_conversation" is the
+  // redesigned homepage intake. Both are website-originated inquiries.
+  const isWebsiteInquiry =
+    prospect.source === "website_intake" ||
+    prospect.source === "homepage_conversation";
 
   if (!isHighPriority && !isMissingContact && !isWebsiteInquiry) return null;
 
