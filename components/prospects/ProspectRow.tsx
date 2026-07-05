@@ -85,7 +85,7 @@ export function ProspectRow({
         )}
         {isWebsite && (
           <span
-            title="New Website Inquiry"
+            title="New Care Inquiry"
             className="inline-block h-2 w-2 rounded-full bg-blue-400"
           />
         )}

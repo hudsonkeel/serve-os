@@ -29,7 +29,7 @@ export function AlertBadges({ prospect }: AlertBadgesProps) {
       )}
       {isWebsiteInquiry && (
         <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 font-sans text-[11px] font-medium text-blue-700">
-          New Website Inquiry
+          New Care Inquiry
         </span>
       )}
     </div>

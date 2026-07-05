@@ -10,12 +10,12 @@ export default async function ProspectsPage() {
   const prospects = community.prospects;
 
   return (
-    <PageContainer title="Website Inquiries">
+    <PageContainer title="Care Inquiries">
       <div className="mb-6 flex items-baseline justify-between">
         <div>
-          <h1 className="font-serif text-3xl font-light text-navy">Website Inquiries</h1>
+          <h1 className="font-serif text-3xl font-light text-navy">Care Inquiries</h1>
           <p className="mt-1 font-sans text-sm text-muted">
-            Website inquiries and new care requests
+            New care requests and inquiries entering the Serve pipeline
           </p>
         </div>
         <span className="font-sans text-sm text-muted">
@@ -31,7 +31,7 @@ export default async function ProspectsPage() {
 
       {!community.prospectsError && prospects.length === 0 && (
         <div className="rounded-xl border border-ivory-border bg-white px-8 py-16 text-center shadow-card">
-          <p className="font-serif text-xl text-muted">No website inquiries yet</p>
+          <p className="font-serif text-xl text-muted">No care inquiries yet.</p>
           <p className="mt-2 font-sans text-sm text-muted">
             Submissions from the intake form will appear here.
           </p>
