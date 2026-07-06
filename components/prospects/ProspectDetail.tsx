@@ -36,6 +36,20 @@ function formatReferral(value: string | null) {
     .join(" ");
 }
 
+// Professional Referral's organization fields have no dedicated columns yet —
+// they're read back out of raw_submission until a migration adds them.
+function rawString(raw: Record<string, unknown> | null, key: string): string | null {
+  const value = raw?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function formatOrgType(raw: Record<string, unknown> | null) {
+  const orgType = rawString(raw, "orgType");
+  if (!orgType) return null;
+  const other = rawString(raw, "orgTypeOther");
+  return orgType === "Other" && other ? `Other: ${other}` : orgType;
+}
+
 function Field({
   label,
   value,
@@ -79,6 +93,10 @@ export function ProspectDetail({ prospect }: ProspectDetailProps) {
       .filter(Boolean)
       .join(" ") || "—";
 
+  const isProfessionalReferral = prospect.inquiry_type === "professional_referral";
+  const orgName = rawString(prospect.raw_submission, "orgName");
+  const orgTypeDisplay = formatOrgType(prospect.raw_submission);
+
   return (
     <div className="border-t border-ivory-border bg-ivory px-8 py-6">
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -108,7 +126,7 @@ export function ProspectDetail({ prospect }: ProspectDetailProps) {
               label="Support Type"
               value={
                 prospect.support_type
-                  ? (SUPPORT_LABELS[prospect.support_type] ??
+                  ? (SUPPORT_LABELS[prospect.support_type.toLowerCase()] ??
                     prospect.support_type)
                   : "—"
               }
@@ -117,7 +135,7 @@ export function ProspectDetail({ prospect }: ProspectDetailProps) {
               label="Start Timing"
               value={
                 prospect.start_timing
-                  ? (TIMING_LABELS[prospect.start_timing] ??
+                  ? (TIMING_LABELS[prospect.start_timing.toLowerCase()] ??
                     prospect.start_timing)
                   : "—"
               }
@@ -128,6 +146,20 @@ export function ProspectDetail({ prospect }: ProspectDetailProps) {
             />
             <Field label="ZIP Code" value={prospect.zip_code ?? "—"} />
           </div>
+
+          {isProfessionalReferral && (orgName || orgTypeDisplay) && (
+            <div>
+              <p className="mb-2 font-sans text-[10px] font-semibold uppercase tracking-widest text-muted">
+                Organization
+              </p>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+                {orgName && <Field label="Organization Name" value={orgName} />}
+                {orgTypeDisplay && (
+                  <Field label="Organization Type" value={orgTypeDisplay} />
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: contact + status + meta */}

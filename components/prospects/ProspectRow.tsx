@@ -42,9 +42,10 @@ export function ProspectRow({
   isExpanded,
   onToggle,
 }: ProspectRowProps) {
-  const isHighPriority = prospect.start_timing === "immediately";
+  const isHighPriority = (prospect.start_timing ?? "").toLowerCase() === "immediately";
   const isMissingContact = !prospect.contact_phone && !prospect.contact_email;
-  const isWebsite = prospect.source === "website_intake";
+  const isWebsite =
+    prospect.source === "website_intake" || prospect.source === "homepage_conversation";
 
   const prospectName =
     [
@@ -114,14 +115,14 @@ export function ProspectRow({
       {/* Support type */}
       <p className="truncate font-sans text-xs text-body">
         {prospect.support_type
-          ? (SUPPORT_SHORT[prospect.support_type] ?? prospect.support_type)
+          ? (SUPPORT_SHORT[prospect.support_type.toLowerCase()] ?? prospect.support_type)
           : "—"}
       </p>
 
       {/* Start timing */}
       <p className="truncate font-sans text-xs text-body">
         {prospect.start_timing
-          ? (TIMING_SHORT[prospect.start_timing] ?? prospect.start_timing)
+          ? (TIMING_SHORT[prospect.start_timing.toLowerCase()] ?? prospect.start_timing)
           : "—"}
       </p>
 
