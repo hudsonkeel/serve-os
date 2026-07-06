@@ -893,3 +893,81 @@ Instead they ask:
 
 "What work do I need to complete today?"
 
+## Current Build Philosophy
+
+The website should remain intentionally simple.
+
+Public website responsibilities:
+
+- Marketing
+- Trust
+- Lead capture
+
+Serve OS responsibilities:
+
+- Intelligence
+- Operational workflow
+- CRM integration
+- AI extraction
+- Notifications
+
+Current architecture intentionally separates these concerns.
+
+Future integrations should enhance the website without coupling marketing pages to internal operational systems.
+
+Multiple public forms are acceptable when they improve user experience.
+
+Backend systems should consolidate these into one canonical intake record.
+
+Architectural clarification
+
+Serve distinguishes between two fundamentally different business concepts:
+
+Care Inquiry
+
+An inbound request for care regardless of acquisition channel.
+
+Serve Prospect
+
+A resident within a community who has not yet become an active Serve client.
+
+These concepts are intentionally separate.
+
+Future qualification workflow:
+
+Care Inquiry
+↓
+
+Qualification
+
+↓
+
+Community Care
+or
+
+Traditional Home Care
+
+↓
+
+Serve Client
+
+## Current Product Direction
+
+The homepage is no longer viewed solely as a marketing experience.
+
+It is now considered the beginning of the Serve operational platform.
+
+The website initiates the relationship.
+
+Supabase becomes the canonical Care Inquiry datastore.
+
+Serve OS operationalizes the relationship.
+
+Future work centers on a unified Care Inquiry architecture spanning:
+
+- Family Care Inquiry
+- Professional Referral
+- Community Partners
+- Future marketing channels
+- AI Assessment Engine
+

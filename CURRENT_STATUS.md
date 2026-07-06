@@ -159,3 +159,87 @@ Employees can:
 - Sign in
 - Reset forgotten passwords
 - Recover accounts without administrator assistance
+
+## 2026-07-03 Status
+
+### Production
+
+✅ Public website deployed successfully.
+
+Production branch:
+fix/static-site-cleanup
+
+### Website Forms
+
+Verified working:
+
+- Managing Director Application
+- Caregiver Application
+- Professional Referral
+- Family Consultation
+- Partner Referral
+
+Testing confirmed:
+
+- Native Netlify POST working
+- Submission accepted page functioning
+- Netlify detecting submissions correctly
+
+Observation:
+
+Many development/test submissions were automatically classified as spam by Netlify/Akismet due to repeated testing with placeholder data.
+
+No production code issue identified.
+
+### SERVE-WEBSITE Repository
+
+Added:
+
+- .gitignore
+- .env.example
+
+Protected:
+
+- .env.local from accidental commits
+
+Partner Referral HTML corrected and standardized.
+
+## Current Status
+
+Public website conversational intake is feature complete.
+
+Verified:
+
+✅ UX
+✅ Netlify Forms
+✅ Deploy Preview
+✅ Supabase writes
+✅ Resend notifications
+✅ Operational terminology
+
+Next milestone:
+
+Connect Care Inquiries into Serve OS operational workflows and visualization.
+
+Production deployment pending leadership review.
+
+Employee Login Audit - 07-05-2026
+Employee Login audit completed. Determined old portal implementation mixed navigation and embedded OS workflows. Future Login implementation will be integrated into the conversational website experience instead of restoring legacy navigation.
+
+## Current Development Status (2026-07-05)
+
+Completed
+
+- Version A conversational homepage is feature complete.
+- Version B progressive homepage prototype is functional.
+- Professional Referral conversational workflow implemented.
+- Professional Referral data classification implemented.
+- Serve OS admin recognition updated.
+- Dual Netlify Preview branches prepared for stakeholder evaluation.
+
+Current focus
+
+- Care Inquiry canonical data model.
+- Professional Referral schema review.
+- Serve OS visual design system adoption.
+

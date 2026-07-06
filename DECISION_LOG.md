@@ -83,3 +83,37 @@ Serve OS owns workflow.
 
 External systems will be gradually replaced.
 
+## 2026-07-04
+
+Decision
+
+Maintain dual data paths during transition.
+
+Website submissions continue to write to:
+
+- Netlify Forms
+- Supabase
+
+Rationale
+
+Leadership continuity.
+
+Netlify Forms remains the operational safety net while Serve OS becomes the long-term operational platform.
+
+Future consideration:
+
+Once Serve OS is fully adopted, evaluate retiring Netlify Forms as the primary operational record.
+
+## 2026-07-05
+
+Decision:
+Maintain two homepage UX approaches during evaluation.
+
+Conversation First (Version A) and Progressive Homepage Intake (Version B) will remain independent branches until stakeholder review determines long-term direction.
+
+Decision:
+Professional Referral is a distinct Care Inquiry workflow rather than another family relationship option.
+
+Decision:
+Serve OS visual refresh will adopt the homepage hero design language rather than the cream marketing pages.
+

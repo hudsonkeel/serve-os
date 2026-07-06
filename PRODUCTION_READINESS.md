@@ -271,7 +271,7 @@ Workspace
 
 Employee Portal
 
-✓ Ready
+✓ Ready - But not connected to live website
 
 Notifications
 
@@ -289,3 +289,44 @@ Remaining before wider rollout
 - Assessment improvements
 - Additional operational testing with Elizabeth
 
+## Production Readiness
+
+Status: READY
+
+Completed
+
+✅ Public website production deployment
+
+✅ Native Netlify Forms operational
+
+✅ Form detection validated
+
+✅ Repository cleanup
+
+Outstanding
+
+□ Supabase production intake pipeline
+
+□ Resend notification routing
+
+□ Canonical intake database
+
+□ Unified referral backend
+
+Production Readiness
+
+Completed
+
+✅ Conversational homepage
+✅ Deploy Preview verification
+✅ Netlify Forms
+✅ Cache-control validation
+✅ Supabase pipeline
+✅ Resend notifications
+✅ Authentication restored
+
+Pending
+
+- Leadership review
+- Production deployment
+- Serve OS Care Inquiry operational integration
