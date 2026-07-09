@@ -117,3 +117,40 @@ Professional Referral is a distinct Care Inquiry workflow rather than another fa
 Decision:
 Serve OS visual refresh will adopt the homepage hero design language rather than the cream marketing pages.
 
+## 2026-07-06
+
+### Decision
+Serve OS will orchestrate work rather than replace existing operational systems.
+
+### Reason
+Employees should focus on resident care instead of deciding which software they need to open.
+
+### Result
+Serve OS becomes the employee's operational home screen, providing resident context, operational memory, workflow prioritization, and launching external systems when execution is required.
+
+---
+
+### Decision
+Workflow improvements take priority over additional AI features.
+
+### Reason
+Employee adoption depends more on reducing friction than increasing intelligence.
+
+### Result
+Development order becomes:
+
+Daily Operations Workspace
+→ Resident 360
+→ Relationship Timeline
+→ Operational Intelligence
+
+## 2026-07-08
+
+### Decision
+Serve OS will not become an HRIS, ATS, payroll system, scheduling system, phone system, or documentation platform. Those functions remain owned by Apploi, Viventium, AxisCare, Dialpad, SAS (planned), and Cinch CCM. Serve OS owns: governance, organizational knowledge, operational intelligence, audit readiness, cross-system visibility, decision support, and AI.
+
+### Reason
+Every future governance module's software layer should be evaluated against one question: what organizational knowledge, operational standards, audit evidence, or cross-system intelligence should Serve own independently of any vendor? Where a vendor already performs a function well, Serve OS should integrate with it rather than recreate it.
+
+### Result
+This refines the 2026-07-01 "external systems will be gradually replaced" decision and the 2026-07-06 "orchestrate rather than replace" decision into a concrete, testable boundary. Recorded in full as [`docs/architecture/serve-os-scope-philosophy.md`](docs/architecture/serve-os-scope-philosophy.md). Applied retroactively to the Future Serve OS Module Inventory in [`docs/architecture/serve-governance-crosswalk.md`](docs/architecture/serve-governance-crosswalk.md) §3 — Personnel Manager, Training Manager, Competency Manager, and Document Manager reframed from owned systems to vendor-integration surfaces (compliance-status views and an audit-evidence index, not duplicate record stores); Background Eligibility Engine, Client Record Manager, Incident Manager, Emergency Manager, Audit Manager, and Policy Manager confirmed already correctly scoped as Serve-owned.

@@ -1,0 +1,107 @@
+# Serve Workforce Governance Framework
+# Module 1: Background Eligibility — Offense Taxonomy
+#
+# Version: 0.1 (Draft)
+# Status: Draft — Pending Legal & Executive Review
+# Last Updated: 2026-07-08
+#
+# This file is the machine-readable source of truth for the offense taxonomy
+# described in 06-offense-taxonomy.md. The two must be kept in lockstep; if
+# they diverge, this file governs for any future software implementation.
+#
+# REQUIRES LEGAL REVIEW: the categories, offenses, and classification mapping
+# below reflect the organization's original policy draft and have NOT been
+# validated against applicable law. Nothing in this file is legal advice or a
+# legal conclusion, and this file must not be treated as adopted policy until
+# module status changes from Draft.
+#
+# `offenses` lists are REPRESENTATIVE, not exhaustive. See
+# 06-offense-taxonomy.md §7 for how unlisted offenses are handled.
+
+version: "0.1"
+status: draft
+
+categories:
+  - id: violence
+    label: Violence
+    classification: automatic_disqualification
+    risk_domains: [violence_physical_safety]
+    offenses:
+      - Murder
+      - Manslaughter
+      - Kidnapping
+      - Aggravated Assault
+      - Robbery
+      - Aggravated Robbery
+
+  - id: sexual_misconduct
+    label: Sexual Misconduct
+    classification: automatic_disqualification
+    risk_domains: [sexual_misconduct_abuse]
+    offenses:
+      - Sexual Assault
+      - Child Sexual Abuse
+      - Sex Offender Registration
+
+  - id: crimes_against_vulnerable_persons
+    label: Crimes Against Vulnerable Persons
+    classification: automatic_disqualification
+    risk_domains: [abuse_neglect_exploitation_vulnerable_persons]
+    offenses:
+      - Elder Abuse
+      - Child Abuse
+      - Exploitation
+      - Neglect
+
+  - id: healthcare_trust
+    label: Healthcare / Trust
+    classification: automatic_disqualification
+    risk_domains: [healthcare_fraud_regulatory_integrity, financial_property_trust]
+    offenses:
+      - Healthcare Fraud
+      - Theft from Client
+      - Financial Exploitation
+      - Identity Theft Involving Care
+
+  - id: executive_review_required
+    label: Executive Review Required
+    classification: presumptive_disqualification
+    risk_domains: [financial_property_trust, dishonesty_integrity, substance_related_risk, public_safety_driving_risk]
+    offenses:
+      - Felony Theft
+      - Burglary
+      - Forgery
+      - Embezzlement
+      - Drug Distribution
+      - Repeated Domestic Violence
+      - Felony DWI
+
+  - id: reviewable_offenses
+    label: Reviewable Offenses
+    classification: reviewable
+    risk_domains: [substance_related_risk, financial_property_trust, public_safety_driving_risk]
+    review_factors:
+      - Nature and severity of the offense
+      - Time elapsed since offense or conviction
+      - Evidence of rehabilitation
+      - Employment history since the offense
+      - Relevance of the offense to the role
+      - Isolated incident vs. pattern of repeat behavior
+    offenses:
+      - Simple Possession
+      - Single Misdemeanor DWI
+      - Minor Theft / Shoplifting
+      - Disorderly Conduct
+      - Trespassing
+      - Criminal Mischief
+      - Non-Violent Resisting Arrest
+
+  - id: eligible_offenses
+    label: Eligible Offenses
+    classification: eligible
+    risk_domains: []
+    offenses:
+      - Traffic Citations
+      - Parking Violations
+      - Expired Registration
+      - Isolated Municipal Violations

@@ -1,0 +1,71 @@
+# Serve Workforce Governance Framework
+# Module 1: Background Eligibility — Role Exposure Factors
+#
+# Version: 0.1 (Draft)
+# Status: Draft — Pending Legal & Executive Review
+# Last Updated: 2026-07-08
+#
+# This file is the machine-readable source of truth for the role exposure
+# model described in 04-role-exposure-model.md.
+#
+# IMPORTANT: these factors describe a ROLE, not an applicant, and are not
+# consumed by the Background Eligibility classification engine itself (see
+# 01-background-eligibility-ontology.md §3.7 — role eligibility is not
+# background classification). They are reserved for a future role-eligibility
+# capability that combines a role's exposure profile with an applicant's
+# Background Eligibility Classification.
+#
+# No weighting, scoring, or role-to-classification threshold mapping is
+# defined in this version. That is intentionally deferred — see
+# 08-future-software-specification.md.
+
+version: "0.1"
+status: draft
+
+exposure_factors:
+  - id: direct_client_contact
+    label: Direct Client Contact
+    description: >
+      The role involves direct, in-person interaction with clients as a
+      routine part of its duties.
+
+  - id: home_apartment_access
+    label: Home / Apartment Access
+    description: >
+      The role requires entry into a client's private residence, independent
+      of whether a caregiving task is being performed at the time.
+
+  - id: transportation_duties
+    label: Transportation Duties
+    description: >
+      The role involves transporting a client, or driving on the
+      organization's behalf, as part of its duties.
+    related_risk_domain: public_safety_driving_risk
+
+  - id: medication_access
+    label: Medication Access
+    description: >
+      The role involves handling, administering, or having access to a
+      client's medications.
+
+  - id: financial_property_access
+    label: Financial / Property Access
+    description: >
+      The role involves access to a client's financial instruments,
+      valuables, identifying information, or other property.
+
+  - id: unsupervised_access
+    label: Unsupervised Access
+    description: >
+      The role routinely operates without a coworker, supervisor, or other
+      Serve Caregiving representative present.
+
+  - id: overnight_extended_duration_contact
+    label: Overnight / Extended Duration Contact
+    description: >
+      The role involves overnight shifts or extended-duration contact with a
+      client.
+
+# Reserved for future definition — see 08-future-software-specification.md.
+role_to_exposure_mapping: []
+scoring_model: null

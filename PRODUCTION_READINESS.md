@@ -330,3 +330,44 @@ Pending
 - Leadership review
 - Production deployment
 - Serve OS Care Inquiry operational integration
+
+## Homepage Readiness
+
+Version A
+
+- Feature complete
+- Awaiting stakeholder review
+
+Version B
+
+- Functional prototype
+- Awaiting stakeholder review
+
+Professional Referral
+
+Operational workflow connected through homepage intake and Serve OS administrative recognition.
+
+Remaining work
+
+- Canonical Care Inquiry schema
+- Final Supabase review
+- Final notification review
+- Production merge decision
+
+## 2026-07-06
+
+### Operational Readiness Focus
+
+The pilot emphasis has shifted from infrastructure validation toward employee workflow validation.
+
+Current success metric:
+
+"Can Elizabeth complete today's work more easily than yesterday?"
+
+Upcoming production milestones:
+
+- Daily Operations Workspace
+- Resident 360
+- Resident Relationship Timeline
+- Unified employee work queue
+- Context-driven operational navigation

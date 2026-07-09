@@ -1,0 +1,114 @@
+# Serve Workforce Governance Framework
+# Module 1: Background Eligibility — Classification Rules
+#
+# Version: 0.1 (Draft)
+# Status: Draft — Pending Legal & Executive Review
+# Last Updated: 2026-07-08
+#
+# This file is the machine-readable source of truth for the deterministic
+# evaluation sequence described in 05-review-workflow.md. It is the intended
+# implementation contract for the future Background Eligibility Engine
+# described in 08-future-software-specification.md.
+#
+# Ontology rules (see 01-background-eligibility-ontology.md §3) that this
+# file's structure exists to guarantee:
+#   - Every completed investigation receives exactly one classification.
+#   - Classifications are mutually exclusive (guaranteed by evaluation_order:
+#     evaluation stops at the first matching step).
+#   - Classifications are collectively exhaustive (guaranteed by
+#     fallback_classification).
+#   - Classifications are deterministic and explainable (guaranteed by
+#     recording matched_criterion on every result).
+
+version: "0.1"
+status: draft
+
+classifications:
+  - id: eligible
+    label: Eligible
+    discretion: none_required
+    description: >
+      No findings raise a reasonable concern for client safety, organizational
+      trust, or any defined risk domain.
+
+  - id: reviewable
+    label: Reviewable
+    discretion: individualized_review_required
+    description: >
+      Findings do not meet Automatic or Presumptive Disqualification criteria
+      but require individualized review before a final classification.
+    review_procedure: individualized_review
+
+  - id: presumptive_disqualification
+    label: Presumptive Disqualification
+    discretion: executive_override_only
+    description: >
+      Findings presumptively disqualify the applicant, subject to executive
+      review before the presumption is finalized.
+    review_procedure: executive_review
+
+  - id: automatic_disqualification
+    label: Automatic Disqualification
+    discretion: none_available
+    description: >
+      Findings categorically disqualify the applicant. No discretionary
+      review or override is available under this framework.
+    review_procedure: null
+
+# Fixed evaluation order. Evaluation stops at the first step producing a
+# match. This ordering is what guarantees mutual exclusivity.
+evaluation_order:
+  - step: 1
+    action: normalize_findings
+    description: >
+      Extract and normalize each discrete offense from the background
+      investigation report against offense-taxonomy.yml categories.
+
+  - step: 2
+    action: match
+    against_category_classification: automatic_disqualification
+    on_match:
+      result: automatic_disqualification
+      terminal: true
+      review_procedure: null
+
+  - step: 3
+    action: match
+    against_category_classification: presumptive_disqualification
+    on_match:
+      result: presumptive_disqualification
+      terminal: true
+      review_procedure: executive_review
+
+  - step: 4
+    action: match
+    against_category_classification: reviewable
+    on_match:
+      result: reviewable
+      terminal: true
+      review_procedure: individualized_review
+
+  - step: 5
+    action: fallback
+    on_no_match: true
+    result: eligible
+    terminal: true
+    review_procedure: null
+
+# If Step 1 (normalization) cannot confidently map a reported offense to a
+# taxonomy category, this is the required behavior — never a silent default.
+on_normalization_failure:
+  action: escalate_for_human_review
+  fallback_result: null   # explicitly no default classification is assigned
+
+# Every classification result, regardless of which step produced it, must
+# record the following for explainability and audit (see
+# 01-background-eligibility-ontology.md §3.5 and 08-future-software-specification.md §5).
+result_record_requirements:
+  - matched_offense
+  - matched_criterion
+  - classification
+  - reviewer_or_system
+  - timestamp
+
+fallback_classification: eligible

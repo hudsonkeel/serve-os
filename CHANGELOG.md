@@ -70,3 +70,11 @@ Major Milestone
 - Professional Referral admin rendering.
 - Homepage CTA progressive reveal behavior (Version B).
 
+## 2026-07-06
+
+### Product Planning
+
+- Defined the next major development milestone as the Daily Operations Workspace.
+- Planned the evolution of Resident Detail into a comprehensive Resident 360 experience.
+- Prioritized workflow optimization ahead of additional AI functionality.
+- Refined the long-term product roadmap around employee usability and operational simplicity.
