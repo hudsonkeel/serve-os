@@ -1,3 +1,5 @@
+begin;
+
 -- Resident Wellness Follow-Ups: the "what should happen next" layer of the
 -- Resident Wellness subsystem. A follow-up is a separate, trackable
 -- operational object — never free text embedded permanently inside a
@@ -262,3 +264,5 @@ revoke execute on function create_resident_wellness_note_with_follow_ups(
 grant execute on function create_resident_wellness_note_with_follow_ups(
   uuid, timestamptz, text, text, text, text, boolean, date, text, text, text, text, text[], jsonb
 ) to service_role;
+
+commit;
