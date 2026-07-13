@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CommunityResidentRecord } from "@/lib/data/communityMetrics";
+import { Badge } from "@/components/ui/Badge";
 
 function shortDate(iso: string | null) {
   if (!iso) return "-";
@@ -40,74 +41,88 @@ export function ResidentRow({ record }: ResidentRowProps) {
     .join(" | ");
 
   return (
-    <div className="flex items-start gap-6 px-6 py-5 transition-colors hover:bg-ivory">
+    <Link
+      href={`/residents/${record.id}`}
+      aria-label={`Open resident record for ${record.residentDisplayName}`}
+      onKeyDown={(e) => {
+        if (e.key === " ") {
+          e.preventDefault();
+          e.currentTarget.click();
+        }
+      }}
+      className="flex cursor-pointer items-start gap-6 px-6 py-6 transition-colors hover:bg-ivory focus:outline-none focus-visible:bg-ivory focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold/40"
+    >
       <div className="min-w-0 flex-1">
-        <div className="mb-1.5 flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-gold-subtle px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wide text-gold-dark">
-            {record.serveRelationshipLabel}
-          </span>
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <Badge tone="gold">{record.serveRelationshipLabel}</Badge>
           {resident.status && (
-            <span className="rounded-full bg-ivory-warm px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Resident {titleCase(resident.status)}
-            </span>
+            <Badge>Resident {titleCase(resident.status)}</Badge>
           )}
-          {record.needsReview && (
-            <span className="rounded-full bg-ivory-warm px-2 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Review
-            </span>
-          )}
+          {record.needsReview && <Badge tone="warning">Review</Badge>}
           {location && (
-            <span className="font-sans text-[11px] text-muted">{location}</span>
+            <span className="font-sans text-sm text-muted">{location}</span>
           )}
         </div>
-        <p className="font-sans text-base font-semibold text-navy">
-          {record.residentName}
+        <p className="font-sans text-card-title font-semibold text-body">
+          {record.residentDisplayName}
         </p>
-        <p className="mt-0.5 font-sans text-xs capitalize text-muted">
+        <p className="mt-0.5 font-sans text-sm capitalize text-muted">
           {record.serveRelationshipLabel} | {titleCase(record.residentType)}
         </p>
         {record.needsReview && (
-          <p className="mt-1 font-sans text-xs text-muted">
+          <p className="mt-1 font-sans text-sm text-muted">
             Needs review: {titleCase(record.needsReview)}
           </p>
+        )}
+        {record.wellnessWatch && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Badge tone={record.wellnessWatch.hasOverdue ? "danger" : "warning"}>
+              {record.wellnessWatch.hasOverdue ? "Wellness Watch — Overdue" : "Wellness Watch"}
+            </Badge>
+            <span className="font-sans text-sm leading-relaxed text-muted">
+              {record.wellnessWatch.openCount === 1
+                ? "1 open follow-up"
+                : `${record.wellnessWatch.openCount} open follow-ups`}
+              {record.wellnessWatch.nearestDueAt &&
+                ` · Due ${shortDate(record.wellnessWatch.nearestDueAt)}`}
+              {" · "}
+              {titleCase(record.wellnessWatch.highestPriority)} priority
+              {record.lastWellnessObservedAt &&
+                ` · Last observed ${shortDate(record.lastWellnessObservedAt)}`}
+            </span>
+          </div>
         )}
       </div>
 
       <div className="w-48 shrink-0">
         {contactName ? (
           <>
-            <p className="font-sans text-[10px] font-semibold uppercase tracking-widest text-muted">
+            <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">
               Family Contact
             </p>
-            <p className="mt-1 font-sans text-sm text-body">{contactName}</p>
+            <p className="mt-1 font-sans text-base text-body">{contactName}</p>
             {record.phone && (
-              <p className="font-sans text-xs text-muted">
+              <p className="font-sans text-sm text-muted">
                 {formatPhone(record.phone)}
               </p>
             )}
             {!record.phone && record.email && (
-              <p className="truncate font-sans text-xs text-muted">{record.email}</p>
+              <p className="truncate font-sans text-sm text-muted">{record.email}</p>
             )}
           </>
         ) : (
-          <p className="font-sans text-xs text-muted">No contact on file</p>
+          <p className="font-sans text-sm text-muted">No contact on file</p>
         )}
       </div>
 
-      <div className="w-44 shrink-0 text-right">
-        <p className="mb-2 font-sans text-[11px] text-muted">
+      <div className="w-44 shrink-0 space-y-1 text-right">
+        <p className="font-sans text-sm text-muted">
           Updated {shortDate(record.updatedAt ?? record.createdAt)}
         </p>
         {record.needsReview && (
-          <p className="mb-3 font-sans text-xs text-muted">Next: Review import</p>
+          <p className="font-sans text-sm text-muted">Next: Review import</p>
         )}
-        <Link
-          href={`/residents/${record.id}`}
-          className="inline-flex items-center rounded-md border border-ivory-border px-3 py-1.5 font-sans text-xs text-body transition-colors hover:border-navy/20 hover:bg-navy hover:text-white"
-        >
-          View Record
-        </Link>
       </div>
-    </div>
+    </Link>
   );
 }

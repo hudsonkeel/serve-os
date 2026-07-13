@@ -2,6 +2,17 @@ import { connection } from "next/server";
 import { COMMUNITY } from "@/lib/demo/communityData";
 import { createServerClient } from "@/lib/supabase/server";
 import {
+  getPreferredNamesByResident,
+  getRelationshipProfile,
+} from "@/lib/data/connections";
+import {
+  getWellnessFollowUpDashboardCounts,
+  getWellnessWatchSummaryByResident,
+  WellnessFollowUpDashboardCounts,
+  WellnessWatchSummary,
+} from "@/lib/data/wellnessFollowUps";
+import { getLastObservedAtByResident } from "@/lib/data/wellnessNotes";
+import {
   Prospect,
   Resident,
   ResidentContactImport,
@@ -30,7 +41,11 @@ export interface CommunityMetricCounts {
   activeProspects: number;
   serveClients: number;
   onHold: number;
-  wellnessChecksDue: number;
+  // Deterministically derived from active (open/in_progress)
+  // resident_wellness_follow_ups rows — see getWellnessFollowUpDashboardCounts().
+  // Mutually exclusive buckets: a follow-up counts in exactly one of the two.
+  wellnessFollowUpsDueOrOverdue: number;
+  wellnessFollowUpsDueThisWeek: number;
   requiresFollowUp: number;
   pendingAssessments: number;
   familiesAwaitingProposal: number;
@@ -42,6 +57,12 @@ export interface CommunityResidentRecord {
   id: string;
   resident: Resident;
   residentName: string;
+  // Staff-captured "goes by" nickname from resident_relationship_profiles —
+  // distinct from resident.preferred_name, which is imported/canonical.
+  preferredNickname: string | null;
+  // residentName with the nickname inserted (e.g. Michele "Mick" Helsley),
+  // or residentName unchanged when there is no nickname.
+  residentDisplayName: string;
   familyContact: string;
   phone: string | null;
   email: string | null;
@@ -66,6 +87,14 @@ export interface CommunityResidentRecord {
   serveRelationshipStatus: ServeRelationshipStatus;
   serveRelationshipLabel: ServeRelationshipLabel;
   source: "Supabase Resident";
+  // Derived, not persisted — present only when the resident has at least one
+  // open/in_progress resident_wellness_follow_ups row. Orthogonal to
+  // serveRelationshipStatus: an active client or prospect can also be on
+  // Wellness Watch. Only populated in the directory list path
+  // (getCommunityMetrics); left null on the single-resident detail path
+  // since that page already fetches full wellness data directly.
+  wellnessWatch: WellnessWatchSummary | null;
+  lastWellnessObservedAt: string | null;
 }
 
 export interface CommunityMetricsData {
@@ -103,6 +132,22 @@ function residentName(resident: Resident) {
     trimmed(resident.full_name) ||
     "Unknown Resident"
   );
+}
+
+function formatNameWithNickname(
+  resident: Resident,
+  canonicalName: string,
+  preferredNickname: string | null
+): string {
+  if (!preferredNickname) return canonicalName;
+
+  const first = trimmed(resident.first_name);
+  const last = trimmed(resident.last_name);
+  if (first && last) {
+    return `${first} "${preferredNickname}" ${last}`;
+  }
+
+  return `${canonicalName} "${preferredNickname}"`;
 }
 
 export function serveRelationshipStatus(
@@ -432,7 +477,10 @@ export function mapResidentToRecord(
   resident: Resident,
   relationshipImports: ResidentRelationshipImport[] = [],
   contactImports: ResidentContactImport[] = [],
-  importReviewNotes: string[] = []
+  importReviewNotes: string[] = [],
+  preferredNickname: string | null = null,
+  wellnessWatch: WellnessWatchSummary | null = null,
+  lastWellnessObservedAt: string | null = null
 ): CommunityResidentRecord {
   const importedContacts = sortNewestFirst(contactImports);
   const importedRelationships = sortNewestFirst(relationshipImports);
@@ -467,6 +515,12 @@ export function mapResidentToRecord(
     id: resident.id,
     resident,
     residentName: canonicalName,
+    preferredNickname,
+    residentDisplayName: formatNameWithNickname(
+      resident,
+      canonicalName,
+      preferredNickname
+    ),
     familyContact:
       resident.family_contact_name || importedContactName || "No contact on file",
     phone:
@@ -500,12 +554,15 @@ export function mapResidentToRecord(
     serveRelationshipStatus: status,
     serveRelationshipLabel: serveRelationshipLabel(status),
     source: "Supabase Resident",
+    wellnessWatch,
+    lastWellnessObservedAt,
   };
 }
 
 function buildMetrics(
   records: CommunityResidentRecord[],
-  prospects: Prospect[]
+  prospects: Prospect[],
+  wellnessDashboardCounts: WellnessFollowUpDashboardCounts
 ): CommunityMetricCounts {
   return {
     totalResidents: records.length,
@@ -517,9 +574,8 @@ function buildMetrics(
     ).length,
     onHold: records.filter((record) => record.serveRelationshipStatus === "hold")
       .length,
-    wellnessChecksDue: records.filter(
-      (record) => record.serveRelationshipStatus === "wellness_watch"
-    ).length,
+    wellnessFollowUpsDueOrOverdue: wellnessDashboardCounts.dueOrOverdue,
+    wellnessFollowUpsDueThisWeek: wellnessDashboardCounts.dueThisWeek,
     requiresFollowUp: prospects.filter((prospect) =>
       ["new", "reviewing"].includes(prospect.status)
     ).length,
@@ -537,8 +593,7 @@ function buildMetrics(
 }
 
 function buildResidentTabCounts(
-  records: CommunityResidentRecord[],
-  metrics: CommunityMetricCounts
+  records: CommunityResidentRecord[]
 ): Record<ResidentTabValue, number> {
   return {
     all: records.length,
@@ -553,9 +608,11 @@ function buildResidentTabCounts(
     former_clients: records.filter(
       (record) => record.serveRelationshipStatus === "former_client"
     ).length,
-    wellness_watch: records.filter(
-      (record) => record.serveRelationshipStatus === "wellness_watch"
-    ).length,
+    // Deterministic: at least one open/in_progress resident_wellness_follow_ups
+    // row (see getWellnessWatchSummaryByResident()). Not the legacy imported
+    // serve_relationship_status = 'wellness_watch' value.
+    wellness_watch: records.filter((record) => record.wellnessWatch !== null)
+      .length,
   };
 }
 
@@ -658,10 +715,18 @@ export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
     { prospects, error: prospectsError },
     relationshipImports,
     contactImports,
+    preferredNamesByResident,
+    wellnessWatchByResident,
+    lastObservedAtByResident,
+    wellnessDashboardCounts,
   ] = await Promise.all([
     fetchSupabaseProspects(),
     fetchRelationshipImports(),
     fetchContactImports(),
+    getPreferredNamesByResident(),
+    getWellnessWatchSummaryByResident(),
+    getLastObservedAtByResident(),
+    getWellnessFollowUpDashboardCounts(),
   ]);
   const relationshipImportMatches = mapImportsToResidents(
     residents,
@@ -686,15 +751,18 @@ export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
       [
         ...(relationshipImportMatches.reviewNotesByResidentId[resident.id] ?? []),
         ...(contactImportMatches.reviewNotesByResidentId[resident.id] ?? []),
-      ]
+      ],
+      preferredNamesByResident.get(resident.id) ?? null,
+      wellnessWatchByResident.get(resident.id) ?? null,
+      lastObservedAtByResident.get(resident.id) ?? null
     )
   );
-  const metrics = buildMetrics(residentRecords, prospects);
+  const metrics = buildMetrics(residentRecords, prospects, wellnessDashboardCounts);
 
   return {
     communityName: residents[0]?.community_name || COMMUNITY.name,
     metrics,
-    residentTabCounts: buildResidentTabCounts(residentRecords, metrics),
+    residentTabCounts: buildResidentTabCounts(residentRecords),
     prospects,
     residentRecords,
     error: residentsError || prospectsError,
@@ -711,6 +779,7 @@ export async function getCommunityResidentById(id: string) {
     { data, error },
     relationshipImports,
     contactImports,
+    profile,
   ] = await Promise.all([
     supabase
       .from("residents")
@@ -719,6 +788,7 @@ export async function getCommunityResidentById(id: string) {
       .maybeSingle<Resident>(),
     fetchRelationshipImports(),
     fetchContactImports(),
+    getRelationshipProfile(id),
   ]);
 
   if (error) {
@@ -756,6 +826,7 @@ export async function getCommunityResidentById(id: string) {
     [
       ...(relationshipImportMatches.reviewNotesByResidentId[id] ?? []),
       ...(contactImportMatches.reviewNotesByResidentId[id] ?? []),
-    ]
+    ],
+    profile?.preferred_name ?? null
   );
 }
