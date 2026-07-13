@@ -1,8 +1,16 @@
 import { PageContainer } from "@/components/PageContainer";
+import { Badge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
 
-const insights = [
+// Community Intelligence is proactive, system-initiated pattern-surfacing —
+// distinct from Ask Serve's user-initiated, on-demand reasoning. See
+// docs/architecture/SERVE_OS_OPERATING_MODEL.md. Metrics below are
+// illustrative until each intelligence engine is connected to real data; no
+// insight here is manufactured from data Serve OS doesn't actually have.
+const insightCategories = [
   {
-    category: "Vulnerability",
+    category: "Resident Wellness",
+    status: "illustrative" as const,
     metrics: [
       { label: "Residents Living Alone",          value: "34", description: "No regular family visitor logged" },
       { label: "Residents Without Local Family",   value: "12", description: "Family contact outside DFW" },
@@ -10,7 +18,8 @@ const insights = [
     ],
   },
   {
-    category: "Outreach Opportunities",
+    category: "Relationship Intelligence",
+    status: "illustrative" as const,
     metrics: [
       { label: "Birthdays This Month",             value: "7",  description: "Opportunity to connect and celebrate" },
       { label: "Potential Wellness Outreach",      value: "14", description: "No contact in 30+ days" },
@@ -19,60 +28,85 @@ const insights = [
     ],
   },
   {
-    category: "Pipeline",
+    category: "Scheduling Intelligence",
+    status: "not_connected" as const,
+    description:
+      "Recurring lateness, visit-duration variance, coverage stability, routing efficiency, and unused capacity will appear here once scheduling data is connected.",
+  },
+  {
+    category: "Operational Best Practices",
+    status: "illustrative" as const,
     metrics: [
       { label: "Pending Assessments",              value: "3",  description: "Scheduled or overdue" },
       { label: "Families Awaiting Proposal",       value: "2",  description: "Assessment complete, proposal pending" },
       { label: "Active Prospect Conversations",    value: "8",  description: "In the intake pipeline" },
     ],
   },
+  {
+    category: "Quality / Compliance",
+    status: "not_connected" as const,
+    description:
+      "Upcoming reassessment deadlines, care-plan review risk, recurring missed tasks, and audit-readiness concerns will appear here once compliance tracking is connected.",
+  },
 ];
 
 export default function CommunityIntelligencePage() {
   return (
     <PageContainer title="Community Intelligence">
-      <div className="mb-8">
-        <h1 className="font-serif text-3xl font-light text-navy">Community Intelligence</h1>
-        <p className="mt-1 font-sans text-sm text-muted">
-          Operational insights across your community — powered by relationship data
+      <div className="mb-6">
+        <h1 className="font-serif text-page-title font-light text-body">Community Intelligence</h1>
+        <p className="mt-1 font-sans text-base text-muted">
+          Proactive patterns, risks, opportunities, and operational insights across the
+          community.
         </p>
       </div>
 
-      {/* Coming soon banner */}
       <div className="mb-8 rounded-xl border border-gold/30 bg-gold/5 px-6 py-4">
         <p className="font-sans text-sm font-medium text-gold-dark">
-          AI-powered insights coming soon
+          Community Intelligence surfaces patterns automatically — Ask Serve answers
+          questions on demand
         </p>
-        <p className="mt-1 font-sans text-xs text-muted">
-          These metrics are currently illustrative. When Ask Serve AI is active, this page will
-          surface real-time insights derived from resident records, interaction history, and
-          community data.
+        <p className="mt-1 font-sans text-sm text-muted">
+          The metrics below are currently illustrative. As each intelligence engine connects
+          to live data, this page will surface real patterns across resident wellness,
+          relationships, scheduling, operations, and compliance without anyone first asking.
         </p>
       </div>
 
-      {/* Insight categories */}
       <div className="space-y-8">
-        {insights.map((group) => (
+        {insightCategories.map((group) => (
           <div key={group.category}>
-            <h2 className="mb-4 font-sans text-[10px] font-semibold uppercase tracking-widest text-muted">
-              {group.category}
-            </h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {group.metrics.map((metric) => (
-                <div
-                  key={metric.label}
-                  className="rounded-xl border border-ivory-border bg-white p-6 shadow-card"
-                >
-                  <p className="font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-gold">
-                    {metric.label}
-                  </p>
-                  <p className="mt-3 font-serif text-[2.75rem] font-light leading-none text-navy">
-                    {metric.value}
-                  </p>
-                  <p className="mt-2 font-sans text-xs text-muted">{metric.description}</p>
-                </div>
-              ))}
+            <div className="mb-4 flex items-center gap-2">
+              <h2 className="font-sans text-label font-semibold uppercase tracking-widest text-muted">
+                {group.category}
+              </h2>
+              {group.status === "illustrative" ? (
+                <Badge tone="neutral">Illustrative</Badge>
+              ) : (
+                <Badge tone="neutral">Not Yet Connected</Badge>
+              )}
             </div>
+
+            {group.status === "illustrative" ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {group.metrics.map((metric) => (
+                  <div
+                    key={metric.label}
+                    className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card"
+                  >
+                    <p className="font-sans text-label font-semibold uppercase tracking-[0.14em] text-gold-dark">
+                      {metric.label}
+                    </p>
+                    <p className="mt-3 font-serif text-metric font-semibold leading-none tracking-tight text-body">
+                      {metric.value}
+                    </p>
+                    <p className="mt-2 font-sans text-sm text-muted">{metric.description}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState description={group.description} />
+            )}
           </div>
         ))}
       </div>

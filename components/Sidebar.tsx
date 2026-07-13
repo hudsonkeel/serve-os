@@ -6,30 +6,31 @@ import {
   Briefcase,
   LayoutDashboard,
   Users,
-  UserPlus,
   BarChart2,
   Sparkles,
-  Calendar,
   MessageSquare,
-  ClipboardList,
   Settings,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
 
+// Core operating areas — Dashboard = Know, Workspace = Do, Residents =
+// Manage, Community Intelligence = Think proactively, Ask Serve = Think on
+// demand. See docs/architecture/SERVE_OS_NAVIGATION_MODEL.md.
 const primaryNav = [
   { icon: Briefcase,       label: "Workspace",              href: "/workspace" },
   { icon: LayoutDashboard, label: "Dashboard",              href: "/" },
   { icon: Users,           label: "Residents",             href: "/residents" },
-  { icon: UserPlus,        label: "Recruiting",            href: "/recruiting" },
   { icon: BarChart2,       label: "Community Intelligence", href: "/community-intelligence" },
   { icon: Sparkles,        label: "Ask Serve",             href: "/ask-serve" },
 ];
 
-const futureNav = [
-  { icon: Calendar,        label: "Scheduling" },
+// Communications is the only "Coming Soon" item — Recruiting, Scheduling,
+// and Care Plans were removed from the sidebar (not deleted) per the
+// navigation model. Recruiting is reachable from Workspace; Scheduling and
+// Care Plans have no dedicated route yet.
+const comingSoonNav = [
   { icon: MessageSquare,   label: "Communications" },
-  { icon: ClipboardList,   label: "Care Plans" },
 ];
 
 export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
@@ -49,20 +50,21 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
       <nav className="flex-1 overflow-y-auto px-4 py-6">
 
         {/* Primary nav */}
-        <ul className="space-y-0.5">
+        <ul className="space-y-1">
           {primaryNav.map((item) => {
             const active = isActive(item.href);
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-lg border-l-2 px-4 py-2.5 font-sans text-sm tracking-wide transition-all duration-150 ${
+                  aria-current={active ? "page" : undefined}
+                  className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
                     active
-                      ? "border-l-gold bg-gold/10 text-gold"
-                      : "border-l-transparent text-white/45 hover:bg-white/5 hover:text-white/75"
+                      ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
+                      : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
                   }`}
                 >
-                  <item.icon size={15} strokeWidth={1.5} className="shrink-0" />
+                  <item.icon size={17} strokeWidth={active ? 2 : 1.5} className="shrink-0" />
                   <span>{item.label}</span>
                 </Link>
               </li>
@@ -70,16 +72,19 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
           })}
         </ul>
 
-        {/* Future nav — dimmed, non-interactive */}
-        <div className="mt-6 border-t border-white/6 pt-6">
-          <p className="mb-2 px-4 font-sans text-[9px] font-medium uppercase tracking-[0.2em] text-white/20">
+        {/* Coming Soon — dimmed, non-interactive */}
+        <div className="mt-6 border-t border-white/10 pt-6">
+          <p className="mb-2 px-4 font-sans text-label font-semibold uppercase tracking-[0.18em] text-white/35">
             Coming Soon
           </p>
-          <ul className="space-y-0.5">
-            {futureNav.map((item) => (
+          <ul className="space-y-1">
+            {comingSoonNav.map((item) => (
               <li key={item.label}>
-                <span className="flex cursor-default items-center gap-3 rounded-lg border-l-2 border-l-transparent px-4 py-2.5 font-sans text-sm tracking-wide text-white/20">
-                  <item.icon size={15} strokeWidth={1.5} className="shrink-0" />
+                <span
+                  aria-disabled="true"
+                  className="flex min-h-[44px] cursor-default items-center gap-3 rounded-lg border-l-[3px] border-l-transparent px-4 py-3 font-sans text-button tracking-wide text-white/35"
+                >
+                  <item.icon size={17} strokeWidth={1.5} className="shrink-0" />
                   <span>{item.label}</span>
                 </span>
               </li>
@@ -87,30 +92,34 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
           </ul>
         </div>
 
-        {/* Settings */}
-        <div className="mt-6 border-t border-white/6 pt-6">
-          <span
-            aria-disabled="true"
-            title="Settings coming soon"
-            className="flex cursor-default items-center gap-3 rounded-lg border-l-2 border-l-transparent px-4 py-2.5 font-sans text-sm tracking-wide text-white/20"
+        {/* System */}
+        <div className="mt-6 border-t border-white/10 pt-6">
+          <Link
+            href="/settings"
+            aria-current={isActive("/settings") ? "page" : undefined}
+            className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
+              isActive("/settings")
+                ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
+                : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
+            }`}
           >
-            <Settings size={15} strokeWidth={1.5} className="shrink-0" />
+            <Settings size={17} strokeWidth={isActive("/settings") ? 2 : 1.5} className="shrink-0" />
             <span>Settings</span>
-          </span>
+          </Link>
         </div>
       </nav>
 
       {/* ─── User ─── */}
-      <div className="border-t border-white/8 px-4 py-5">
+      <div className="border-t border-white/10 px-4 py-5">
         <div className="flex items-center gap-3 rounded-lg px-3 py-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ivory font-sans text-sm font-medium text-navy">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold-subtle font-sans text-sm font-semibold text-gold-dark">
             {currentUser.initials}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate font-sans text-xs font-medium text-white/80">
+            <p className="truncate font-sans text-sm font-medium text-white/95">
               {currentUser.fullName}
             </p>
-            <p className="truncate font-sans text-[11px] text-white/32">
+            <p className="truncate font-sans text-label text-white/55">
               {currentUser.roleLabel}
             </p>
           </div>

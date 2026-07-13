@@ -23,15 +23,19 @@ export default function AskServePage() {
               <Sparkles size={24} strokeWidth={1.5} className="text-gold" />
             </div>
           </div>
-          <h1 className="font-serif text-4xl font-light text-navy">Ask Serve</h1>
+          <h1 className="font-serif text-4xl font-light text-body">Ask Serve</h1>
           <p className="mt-3 font-sans text-sm text-body">
-            Your intelligent partner for community relationship management.
-            Ask about residents, prospects, or upcoming priorities.
+            Ask questions across Serve OS data to investigate changes, understand
+            priorities, and review supporting evidence.
+          </p>
+          <p className="mt-2 font-sans text-sm text-subtle">
+            Community Intelligence surfaces important patterns proactively. Ask Serve
+            helps you investigate and reason on demand.
           </p>
         </div>
 
         {/* Input area (placeholder) */}
-        <div className="mb-8 rounded-xl border border-ivory-border bg-white p-1.5 shadow-card">
+        <div className="mb-8 rounded-xl border border-ivory-border bg-surface p-1.5 shadow-card">
           <div className="flex items-center gap-3 px-4 py-3">
             <Sparkles size={16} strokeWidth={1.5} className="shrink-0 text-gold/60" />
             <p className="flex-1 font-sans text-sm text-muted">
@@ -63,7 +67,7 @@ export default function AskServePage() {
                 key={prompt}
                 type="button"
                 disabled
-                className="cursor-default rounded-lg border border-ivory-border bg-white px-4 py-3 text-left font-sans text-sm text-body shadow-sm"
+                className="cursor-default rounded-lg border border-ivory-border bg-surface px-4 py-3 text-left font-sans text-sm text-body shadow-sm"
               >
                 <span className="mr-2 text-gold">→</span>
                 {prompt}
