@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "axiscare:discover": "node --env-file-if-exists=.env.local --experimental-strip-types --conditions=react-server scripts/axiscare-discovery.ts",
-    "test:axiscare": "node --experimental-strip-types --conditions=react-server lib/integrations/axiscare/__tests__/sanitization.test.ts"
+    "test:axiscare": "node --experimental-strip-types --conditions=react-server lib/integrations/axiscare/__tests__/sanitization.test.ts",
+    "test:scheduling": "node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/dateTime.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/status.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/normalize.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/todaysSchedule.test.ts",
+    "schedule:preview": "node --env-file-if-exists=.env.local --experimental-strip-types --conditions=react-server scripts/serve-schedule-preview.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
