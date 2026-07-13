@@ -15,11 +15,11 @@ export default function ResetPasswordPage() {
           <Logo variant="transparent" width={132} />
         </div>
 
-        <section className="rounded-xl border border-ivory-border bg-white p-7 shadow-card">
+        <section className="rounded-xl border border-ivory-border bg-surface p-7 shadow-card">
           <p className="font-sans text-[10px] font-medium uppercase tracking-[0.2em] text-gold-dark">
             Serve OS
           </p>
-          <h1 className="mt-2 font-serif text-3xl font-light leading-tight text-navy">
+          <h1 className="mt-2 font-serif text-3xl font-light leading-tight text-body">
             Choose a new password.
           </h1>
           <p className="mt-2 font-sans text-sm leading-relaxed text-body">

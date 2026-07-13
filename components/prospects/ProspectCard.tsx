@@ -55,7 +55,7 @@ export function ProspectCard({ prospect }: ProspectCardProps) {
     .join(" ") || "—";
 
   return (
-    <div className="rounded-xl border border-ivory-border bg-white shadow-card">
+    <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 border-b border-ivory-border px-5 py-4">
         <div className="flex flex-col gap-1.5">

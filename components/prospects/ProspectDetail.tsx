@@ -109,7 +109,7 @@ export function ProspectDetail({ prospect }: ProspectDetailProps) {
               <p className="mb-2 font-sans text-[10px] font-semibold uppercase tracking-widest text-muted">
                 Care Needs
               </p>
-              <p className="rounded-lg border border-ivory-border bg-white px-4 py-3 font-sans text-sm leading-relaxed text-body">
+              <p className="rounded-lg border border-ivory-border bg-surface px-4 py-3 font-sans text-sm leading-relaxed text-body">
                 {prospect.care_needs}
               </p>
             </div>
@@ -174,7 +174,7 @@ export function ProspectDetail({ prospect }: ProspectDetailProps) {
             {prospect.contact_phone && (
               <a
                 href={`tel:${prospect.contact_phone}`}
-                className="mt-1 block font-sans text-sm text-navy underline-offset-2 hover:underline"
+                className="mt-1 block font-sans text-sm text-body underline-offset-2 hover:underline"
               >
                 {prospect.contact_phone}
               </a>
@@ -182,7 +182,7 @@ export function ProspectDetail({ prospect }: ProspectDetailProps) {
             {prospect.contact_email && (
               <a
                 href={`mailto:${prospect.contact_email}`}
-                className="block break-all font-sans text-sm text-navy underline-offset-2 hover:underline"
+                className="block break-all font-sans text-sm text-body underline-offset-2 hover:underline"
               >
                 {prospect.contact_email}
               </a>

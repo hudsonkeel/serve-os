@@ -31,7 +31,7 @@ export function UserAvatar({ firstName, lastName, profilePhoto, size = 40 }: Use
       style={{ width: size, height: size }}
     >
       <span
-        className="font-sans font-medium text-navy"
+        className="font-sans font-medium text-body"
         style={{ fontSize, lineHeight: 1 }}
       >
         {initials}

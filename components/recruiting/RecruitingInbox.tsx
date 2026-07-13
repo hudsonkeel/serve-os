@@ -119,7 +119,7 @@ export function RecruitingInbox({ leads }: { leads: RecruitingLead[] }) {
               className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-sans text-xs font-medium transition-colors ${
                 isActive
                   ? "bg-navy text-white"
-                  : "border border-ivory-border bg-white text-muted hover:border-navy/20 hover:text-body"
+                  : "border border-ivory-border bg-surface text-muted hover:border-navy/20 hover:text-body"
               }`}
             >
               {FILTER_LABELS[value]}
@@ -136,7 +136,7 @@ export function RecruitingInbox({ leads }: { leads: RecruitingLead[] }) {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-ivory-border bg-white shadow-card">
+      <div className="overflow-x-auto rounded-xl border border-ivory-border bg-surface shadow-card">
         {/* Column headers */}
         <div className="recruiting-inbox-grid grid min-w-max items-center gap-x-4 rounded-t-xl border-b border-ivory-border bg-ivory-warm px-5 py-2.5">
           {HEADERS.map((h, i) => (

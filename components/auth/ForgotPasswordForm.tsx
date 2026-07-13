@@ -74,7 +74,7 @@ export function ForgotPasswordForm() {
           required
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          className="h-11 w-full rounded-lg border border-ivory-border bg-white px-4 font-sans text-sm text-navy outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
+          className="h-11 w-full rounded-lg border border-ivory-border bg-surface px-4 font-sans text-sm text-body outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
           placeholder="name@servecaregiving.com"
         />
       </div>
@@ -102,7 +102,7 @@ export function ForgotPasswordForm() {
 
       <Link
         href="/login"
-        className="block text-center font-sans text-xs text-muted underline-offset-4 transition-colors hover:text-navy hover:underline"
+        className="block text-center font-sans text-xs text-muted underline-offset-4 transition-colors hover:text-body hover:underline"
       >
         Back to sign in
       </Link>

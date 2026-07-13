@@ -36,7 +36,7 @@ export function StatusDropdown({ id, status }: StatusDropdownProps) {
       value={status}
       onChange={handleChange}
       disabled={isPending}
-      className="rounded-md border border-ivory-border bg-white px-3 py-1.5 font-sans text-xs text-body shadow-sm transition-opacity disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-gold/40"
+      className="rounded-md border border-ivory-border bg-surface px-3 py-1.5 font-sans text-xs text-body shadow-sm transition-opacity disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-gold/40"
     >
       {STATUS_OPTIONS.map((opt) => (
         <option key={opt.value} value={opt.value}>

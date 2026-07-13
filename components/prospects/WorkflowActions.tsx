@@ -77,7 +77,7 @@ export function WorkflowActions({
               className={`rounded-md px-3 py-2 text-left font-sans text-sm transition-colors ${
                 disabled
                   ? "cursor-not-allowed text-subtle"
-                  : "text-body hover:bg-ivory-warm hover:text-navy"
+                  : "text-body hover:bg-ivory-warm hover:text-body"
               } ${action.nextStatus === currentStatus ? "font-medium text-muted" : ""}`}
             >
               {actionLabel(action)}
@@ -101,7 +101,7 @@ export function WorkflowActions({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-ivory-border bg-white shadow-card-hover">
+        <div className="absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-lg border border-ivory-border bg-surface shadow-card-hover">
           {ACTIONS.map((action) => {
             const disabled = isDisabled(action);
             return (
@@ -115,7 +115,7 @@ export function WorkflowActions({
                 className={`w-full px-4 py-2.5 text-left font-sans text-sm transition-colors ${
                   disabled
                     ? "cursor-not-allowed text-subtle"
-                    : "text-body hover:bg-ivory hover:text-navy"
+                    : "text-body hover:bg-ivory hover:text-body"
                 } ${action.nextStatus === currentStatus ? "font-medium text-muted" : ""}`}
               >
                 {actionLabel(action)}

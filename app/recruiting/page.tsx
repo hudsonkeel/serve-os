@@ -12,7 +12,7 @@ export default async function RecruitingPage() {
     <PageContainer title="Recruiting">
       <div className="mb-6 flex items-baseline justify-between">
         <div>
-          <h1 className="font-serif text-3xl font-light text-navy">Recruiting Leads</h1>
+          <h1 className="font-serif text-3xl font-light text-body">Recruiting Leads</h1>
           <p className="mt-1 font-sans text-sm text-muted">
             Caregiver and managing director inquiries
           </p>
@@ -29,7 +29,7 @@ export default async function RecruitingPage() {
       )}
 
       {!error && leads.length === 0 && (
-        <div className="rounded-xl border border-ivory-border bg-white px-8 py-16 text-center shadow-card">
+        <div className="rounded-xl border border-ivory-border bg-surface px-8 py-16 text-center shadow-card">
           <p className="font-serif text-xl text-muted">No recruiting leads yet</p>
           <p className="mt-2 font-sans text-sm text-muted">
             Submissions from /get-started will appear here.

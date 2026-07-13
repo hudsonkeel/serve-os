@@ -9,10 +9,10 @@ interface TopNavProps {
 
 export function TopNav({ title = "Dashboard", currentUser }: TopNavProps) {
   return (
-    <header className="sticky top-0 z-20 flex h-[65px] items-center gap-6 border-b border-ivory-border bg-white px-8">
+    <header className="sticky top-0 z-20 flex h-[72px] items-center gap-6 border-b border-white/10 bg-navy px-8">
       {/* Page title */}
       <div className="flex-1">
-        <p className="font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-subtle">
+        <p className="font-sans text-label font-semibold uppercase tracking-[0.16em] text-white/55">
           {title}
         </p>
       </div>
@@ -20,34 +20,38 @@ export function TopNav({ title = "Dashboard", currentUser }: TopNavProps) {
       {/* Search */}
       <div className="relative">
         <Search
-          size={14}
+          size={16}
           strokeWidth={1.5}
-          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-subtle"
+          className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-white/45"
         />
         <input
           type="text"
           placeholder="Search anything…"
-          className="h-9 w-72 rounded-lg border border-ivory-border bg-ivory pl-9 pr-4 font-sans text-sm text-navy outline-none transition-all placeholder:text-subtle focus:border-gold/50 focus:bg-white"
+          className="h-11 w-72 rounded-lg border border-white/16 bg-white/6 pl-10 pr-4 font-sans text-sm text-white/95 outline-none transition-all placeholder:text-white/45 focus:border-gold/60 focus:bg-white/12"
         />
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         {/* Notification bell */}
-        <button type="button" aria-label="Notifications" className="relative flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-ivory">
-          <Bell size={17} strokeWidth={1.5} />
-          <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-gold" />
+        <button
+          type="button"
+          aria-label="Notifications"
+          className="relative flex h-11 w-11 items-center justify-center rounded-lg text-white/65 transition-colors hover:bg-white/10 hover:text-white/95"
+        >
+          <Bell size={18} strokeWidth={1.5} />
+          <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full bg-gold" />
         </button>
 
         {/* Divider */}
-        <div className="h-5 w-px bg-ivory-border" />
+        <div className="h-6 w-px bg-white/14" />
 
         {/* User chip */}
-        <button type="button" className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-ivory">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-navy/8 font-sans text-[11px] font-medium text-navy">
+        <button type="button" className="flex h-11 items-center gap-2.5 rounded-lg px-2.5 transition-colors hover:bg-white/10">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gold/20 font-sans text-[12px] font-semibold text-gold-light">
             {currentUser.initials}
           </div>
-          <span className="font-sans text-sm font-medium text-navy">
+          <span className="font-sans text-sm font-medium text-white/95">
             {currentUser.shortName}
           </span>
         </button>
@@ -56,9 +60,9 @@ export function TopNav({ title = "Dashboard", currentUser }: TopNavProps) {
           <button
             type="submit"
             aria-label="Log out"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted transition-colors hover:bg-ivory hover:text-navy"
+            className="flex h-11 w-11 items-center justify-center rounded-lg text-white/65 transition-colors hover:bg-white/10 hover:text-white/95"
           >
-            <LogOut size={16} strokeWidth={1.5} />
+            <LogOut size={18} strokeWidth={1.5} />
           </button>
         </form>
       </div>

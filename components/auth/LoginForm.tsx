@@ -34,7 +34,7 @@ export function LoginForm() {
           type="email"
           autoComplete="email"
           required
-          className="h-11 w-full rounded-lg border border-ivory-border bg-white px-4 font-sans text-sm text-navy outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
+          className="h-11 w-full rounded-lg border border-ivory-border bg-surface px-4 font-sans text-sm text-body outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
           placeholder="name@servecaregiving.com"
         />
       </div>
@@ -49,7 +49,7 @@ export function LoginForm() {
           </label>
           <Link
             href="/forgot-password"
-            className="font-sans text-xs text-muted underline-offset-4 transition-colors hover:text-navy hover:underline"
+            className="font-sans text-xs text-muted underline-offset-4 transition-colors hover:text-body hover:underline"
           >
             Forgot password?
           </Link>
@@ -60,7 +60,7 @@ export function LoginForm() {
           type="password"
           autoComplete="current-password"
           required
-          className="h-11 w-full rounded-lg border border-ivory-border bg-white px-4 font-sans text-sm text-navy outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
+          className="h-11 w-full rounded-lg border border-ivory-border bg-surface px-4 font-sans text-sm text-body outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
           placeholder="Enter your password"
         />
       </div>

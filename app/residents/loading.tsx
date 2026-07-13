@@ -17,7 +17,7 @@ export default function ResidentsLoading() {
         ))}
       </div>
 
-      <div className="rounded-xl border border-ivory-border bg-white shadow-card">
+      <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}

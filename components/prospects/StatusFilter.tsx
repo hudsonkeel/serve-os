@@ -43,7 +43,7 @@ export function StatusFilter({ active, counts, onSelect }: StatusFilterProps) {
             className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-sans text-xs font-medium transition-colors ${
               isActive
                 ? "bg-navy text-white"
-                : "border border-ivory-border bg-white text-muted hover:border-navy/20 hover:text-body"
+                : "border border-ivory-border bg-surface text-muted hover:border-navy/20 hover:text-body"
             }`}
           >
             {FILTER_LABELS[value]}

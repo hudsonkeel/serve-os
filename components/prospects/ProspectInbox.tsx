@@ -60,7 +60,7 @@ export function ProspectInbox({ prospects }: ProspectInboxProps) {
         onSelect={handleFilterChange}
       />
 
-      <div className="rounded-xl border border-ivory-border bg-white shadow-card">
+      <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
         <div className="prospect-inbox-grid rounded-t-xl grid items-center gap-x-4 border-b border-ivory-border bg-ivory-warm px-5 py-2.5">
           {HEADERS.map((h, i) => (
             <span

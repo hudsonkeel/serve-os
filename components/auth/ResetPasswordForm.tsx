@@ -262,7 +262,7 @@ export function ResetPasswordForm() {
               minLength={8}
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
-              className="h-11 w-full rounded-lg border border-ivory-border bg-white px-4 font-sans text-sm text-navy outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
+              className="h-11 w-full rounded-lg border border-ivory-border bg-surface px-4 font-sans text-sm text-body outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
               placeholder="At least 8 characters"
               disabled={disabled}
             />
@@ -284,7 +284,7 @@ export function ResetPasswordForm() {
               minLength={8}
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
-              className="h-11 w-full rounded-lg border border-ivory-border bg-white px-4 font-sans text-sm text-navy outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
+              className="h-11 w-full rounded-lg border border-ivory-border bg-surface px-4 font-sans text-sm text-body outline-none transition-colors placeholder:text-subtle focus:border-gold/60"
               placeholder="Re-enter your new password"
               disabled={disabled}
             />
@@ -303,7 +303,7 @@ export function ResetPasswordForm() {
 
       <Link
         href="/login"
-        className="block text-center font-sans text-xs text-muted underline-offset-4 transition-colors hover:text-navy hover:underline"
+        className="block text-center font-sans text-xs text-muted underline-offset-4 transition-colors hover:text-body hover:underline"
       >
         Back to sign in
       </Link>

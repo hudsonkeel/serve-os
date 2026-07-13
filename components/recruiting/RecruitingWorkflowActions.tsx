@@ -56,7 +56,7 @@ export function RecruitingWorkflowActions({ id, currentStatus }: Props) {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-lg border border-ivory-border bg-white shadow-card-hover">
+        <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-lg border border-ivory-border bg-surface shadow-card-hover">
           {ACTIONS.map((action) => {
             const isCurrent = action.nextStatus === currentStatus;
             return (
@@ -68,7 +68,7 @@ export function RecruitingWorkflowActions({ id, currentStatus }: Props) {
                 className={`w-full px-4 py-2.5 text-left font-sans text-sm transition-colors ${
                   isCurrent
                     ? "cursor-default font-medium text-muted"
-                    : "text-body hover:bg-ivory hover:text-navy"
+                    : "text-body hover:bg-ivory hover:text-body"
                 }`}
               >
                 {action.label}

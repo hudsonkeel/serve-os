@@ -13,7 +13,7 @@ export async function PageContainer({ children, title }: PageContainerProps) {
   const currentUser = buildCurrentUserDisplay(profile);
 
   return (
-    <div className="flex min-h-screen bg-ivory">
+    <div className="flex min-h-screen bg-canvas">
       <Sidebar currentUser={currentUser} />
       <div className="ml-64 flex flex-1 flex-col">
         <TopNav title={title} currentUser={currentUser} />

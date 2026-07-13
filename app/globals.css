@@ -1,32 +1,110 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════════════
+   Serve Design System 2.0 — token definitions.
+   See docs/design/SERVE_DESIGN_SYSTEM_2.md for full rationale and usage.
+
+   Selected direction: Blue & White (Clean & Clinical), with the top header
+   using the same deep Serve navy as the sidebar rather than a brighter
+   royal blue — sidebar and header read as one continuous frame. Canvas is
+   pure/near-white cool gray (no cream, no warm ivory), cards are white with
+   a subtle cool-blue-tinted hairline border, gold is reserved strictly for
+   selection/premium emphasis. Every class already in use across the app
+   (bg-ivory, bg-surface, text-body, text-muted, text-subtle,
+   border-ivory-border, bg-gold-subtle, bg-navy...) keeps its name — only
+   the underlying values change — so this recolors the whole app from one
+   place without hunting down hardcoded hex or moving components.
+   ═══════════════════════════════════════════════════════════════════════ */
 @theme {
-  /* ─── Serve Caregiving Brand Colors ─── */
+  /* ─── Brand ─── */
   --color-navy:          #2F3F57;
   --color-navy-deep:     #142030;
   --color-navy-light:    #253648;
+
+  /* Serve blue — reserved for informational highlights (e.g. the Filter
+     Banner) that deliberately want a colored panel, not a general-purpose
+     second interactive color. Ordinary links/actions use navy — see
+     "Primary actions: Serve navy" in the selected direction. Kept
+     cool-toned so it still reads as part of the Blue & White family
+     without risking the brighter "royal blue" explicitly ruled out for
+     the header. */
+  --color-blue:          #3D6690;
+  --color-blue-light:    #6D93B8;
+  --color-blue-pale:     #EAF1FA;
+  --color-blue-border:   #CBDCED;
 
   --color-gold:          #C9A96E;
   --color-gold-light:    #D6BA85;
   --color-gold-dark:     #A88240;
   --color-gold-subtle:   #F7F1E8;
 
-  --color-ivory:         #F5F2EE;
-  --color-ivory-warm:    #EDE9E2;
-  --color-ivory-border:  #E4DED5;
+  /* ─── Surfaces ───
+     surface = elevated card (white). ivory = subtle cool-gray inset
+     section (name kept for compatibility; no longer a warm/cream tone).
+     ivory-warm = a touch deeper, for chips/badges sitting inside an inset
+     section. ivory-border = the standard hairline border everywhere —
+     the same subtle cool-blue tint requested for card borders. */
+  --color-canvas:        #FAFBFC;
+  --color-surface:       #FFFFFF;
+  --color-ivory:         #F3F6F9;
+  --color-ivory-warm:    #E9EEF4;
+  --color-ivory-border:  #DCE6F2;
 
-  /* ─── Text Scale ─── */
-  --color-body:          #4A5A6A;
-  --color-muted:         #7B8D9E;
-  --color-subtle:        #A9B3BC;
+  --color-hover-surface:    #EEF2F6;
+  --color-disabled-surface: #F0F2F4;
+  --color-warning-surface:  #FDF3E7;
+  --color-overdue-surface:  #FBECEA;
+  --color-success-surface:  #EAF6EF;
 
-  /* ─── Typography ─── */
+  /* ─── Text ───
+     Dark charcoal primary / medium gray secondary / light gray tertiary —
+     neutral rather than warm, per the selected direction. Never use the
+     "subtle" tier for anything that must read as important; it's for
+     labels, not body content. */
+  --color-body:          #1E2328;
+  --color-muted:         #545F6B;
+  --color-subtle:        #7C8794;
+
+  --color-warning-text:  #92400E;
+  --color-danger-text:   #B42318;
+  --color-success-text:  #0F7A47;
+
+  /* ─── Typography ───
+     Named font-size tokens become real `text-*` utilities in Tailwind v4
+     (e.g. `text-metric`, `text-page-title`) — a first-class semantic scale
+     instead of scattered arbitrary values. Tailwind's own `text-sm`/
+     `text-base` remain the "secondary"/"body" sizes; these fill the gaps
+     the default scale doesn't name.
+     Reference (Phase 4 targets):
+       body 16px · secondary 14px · label 13px · button 15px ·
+       card title 18px · section title 24px · page title 36px ·
+       metric 44px */
   --font-serif: var(--font-cormorant), 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
   --font-sans:  var(--font-dm-sans), 'DM Sans', system-ui, -apple-system, sans-serif;
 
-  /* ─── Shadows ─── */
-  --shadow-card:       0 1px 3px 0 rgb(28 43 58 / 0.04), 0 4px 14px 0 rgb(28 43 58 / 0.06);
-  --shadow-card-hover: 0 2px 6px 0 rgb(28 43 58 / 0.07), 0 10px 24px 0 rgb(28 43 58 / 0.09);
+  --text-label:        0.8125rem;
+  --text-label--line-height: 1.2rem;
+  --text-button:       0.9375rem;
+  --text-button--line-height: 1.25rem;
+  --text-badge:        0.8125rem;
+  --text-badge--line-height: 1.1rem;
+  --text-card-title:   1.125rem;
+  --text-card-title--line-height: 1.5rem;
+  --text-section-title: 1.5rem;
+  --text-section-title--line-height: 1.9rem;
+  --text-page-title:   2.25rem;
+  --text-page-title--line-height: 2.6rem;
+  --text-metric:       2.75rem;
+  --text-metric--line-height: 1;
+
+  /* ─── Shadows ───
+     Restrained elevation, navy-tinted rather than neutral gray so cards
+     feel like part of the Serve system rather than a generic UI kit. The
+     canvas/card contrast is now very subtle by design (#FAFBFC vs #FFFFFF),
+     so the border + this soft shadow — not a background-color jump — are
+     what make a card "clearly stand off the background". */
+  --shadow-card:       0 1px 2px 0 rgb(20 32 48 / 0.05), 0 2px 6px 0 rgb(20 32 48 / 0.06);
+  --shadow-card-hover: 0 4px 10px -2px rgb(20 32 48 / 0.08), 0 8px 20px -4px rgb(20 32 48 / 0.08);
   --shadow-sidebar:    4px 0 24px 0 rgb(0 0 0 / 0.12);
 }
 
@@ -42,8 +120,8 @@ html {
 }
 
 body {
-  background-color: #F5F2EE;
-  color: #1C2B3A;
+  background-color: var(--color-canvas);
+  color: var(--color-body);
   font-family: var(--font-sans);
 }
 

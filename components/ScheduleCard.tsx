@@ -34,10 +34,10 @@ export function ScheduleCard({
   const st = statusClasses[status];
 
   return (
-    <div className="flex items-center gap-5 rounded-xl bg-white px-6 py-4 shadow-card transition-all duration-150 hover:-translate-y-px">
+    <div className="flex items-center gap-5 rounded-xl bg-surface px-6 py-4 shadow-card transition-all duration-150 hover:-translate-y-px">
       {/* Time */}
       <div className="w-14 shrink-0 text-right">
-        <p className="font-sans text-sm font-medium text-navy">{hour}</p>
+        <p className="font-sans text-sm font-medium text-body">{hour}</p>
         <p className="font-sans text-[10px] uppercase tracking-wider text-muted">{period}</p>
       </div>
 
@@ -51,7 +51,7 @@ export function ScheduleCard({
 
       {/* Client info */}
       <div className="min-w-0 flex-1">
-        <p className="font-serif text-base font-medium leading-tight text-navy">{client}</p>
+        <p className="font-serif text-base font-medium leading-tight text-body">{client}</p>
         <p className="mt-0.5 font-sans text-xs text-muted">
           {service} &middot; {location}
         </p>
