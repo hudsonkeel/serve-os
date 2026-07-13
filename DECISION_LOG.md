@@ -254,3 +254,14 @@ Phase 1 (authentication, navigation, Design System 2.0, resident/wellness/recrui
 
 ### Result
 Five initial intelligence domains are identified for design (not implementation): Relationship Intelligence, Proposal Intelligence, Scheduling Intelligence, Community Intelligence, Operational Intelligence. Recorded architectural principles: deterministic before AI; normalized domain models; explainable recommendations; evidence and provenance; human judgment remains authoritative; LLMs assist reasoning and communication rather than originate operational classifications; vendor systems remain systems of record; Serve OS does not silently mutate vendor data. Every future intelligence surface should be able to answer "what should Serve know, what should Serve do, and why" with a traceable answer, not a black-box output. No intelligence kernel or individual engine exists in the repository yet — this decision governs how they get built, not a claim that they exist. Full framing in `ARCHITECTURE.md`'s Phase 2 section.
+
+---
+
+### Decision
+`docs/intelligence/SERVE_INTELLIGENCE_ENGINEERING_STANDARDS.md` is the canonical engineering implementation standard for all Serve Intelligence Platform work, sitting directly beneath `docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md` (why) and `ARCHITECTURE.md` (what). It governs how every future Rule, Fact, Signal, Recommendation, Action, Outcome, and AI touchpoint is engineered, named, tested, and reviewed before merge.
+
+### Reason
+The Constitution and `ARCHITECTURE.md` establish philosophy and structure, but neither specifies the concrete, repeatable engineering process a future session — human or AI — needs to implement a new intelligence domain correctly without re-deriving decisions already made. Without a canonical "how," each new domain would risk inventing its own conventions, naming, and AI boundaries, exactly the kind of domain-specific drift the Constitution's Article X ("simplicity and shared architecture") warns against.
+
+### Result
+Any future intelligence-domain implementation (Scheduling Intelligence V1 or later) must follow the Engineering Standards' Rule template, naming conventions, Fact/Signal/Recommendation/Action/Outcome standards, AI boundary, implementation checklist, and Definition of Done before merge. Where the Engineering Standards ever conflict with the Constitution, the Constitution governs and the Engineering Standards must be corrected — not the reverse. Committed as `8e46bfe` (`docs: establish intelligence engineering standards`).

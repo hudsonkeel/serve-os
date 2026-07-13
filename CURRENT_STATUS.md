@@ -540,3 +540,25 @@ updates to `ARCHITECTURE.md`, `CHANGELOG.md`, `DECISION_LOG.md`,
 ### Phase 2 — Operational Intelligence
 
 Serve OS has completed its primary operational platform foundation (Phase 1: authentication, navigation, Design System 2.0, resident/wellness/recruiting/prospect management, read-only AxisCare scheduling visibility). Serve OS is now entering **Phase 2 — Operational Intelligence**, whose objective is deterministic intelligence engines — not new pages — that explain, prioritize, recommend, monitor, remind, identify risk, preserve relationships, and reduce administrative burden. Full architectural framing recorded in `ARCHITECTURE.md` and `DECISION_LOG.md`'s 2026-07-13 entries. **No intelligence kernel or individual intelligence engine exists in the repository yet** — Phase 2 is architecture-and-design stage only.
+
+## 2026-07-13 — Intelligence Foundation Complete: Constitution, Phase A Primitives, and Engineering Standards
+
+Today's work completed the full governing/architectural foundation the Serve Intelligence Platform needed before any domain (Scheduling, Relationship, Proposal, Community, Operational) can be implemented:
+
+- **`docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md`** — the canonical, permanent philosophical and architectural governing document. Establishes the platform's purpose, human-authority principle, deterministic-before-AI discipline, the Knowledge/Reasoning/Recommendation three-layer model, the AI assist-vs-forbidden boundary, vendor neutrality, and the organizational-learning loop.
+- **`lib/intelligence/core/`** — the Phase A shared TypeScript primitive types (Subject, Historical Fact, Signal, Evidence, Recommendation, Action, Outcome, Rule, Rule Version, Rule Run, Explanation — 11 of the 13 approved primitives; Reference Knowledge and Context Note remain intentionally deferred to Phase E). Types only — no persistence, no UI, no application behavior changed. Includes a runtime test suite and compile-time `@ts-expect-error` boundary proofs verifying Context-shaped data can never satisfy deterministic Rule input.
+- **Scheduling Intelligence V1 requirements finalization** — an evidence-based audit of the actual AxisCare/scheduling data Serve OS has today, resolving which of 8 candidate rules are genuinely supportable now. Result: `visit_started_late`, `visit_not_started`, and `visit_duration_variance` are the recommended V1 rule set; `caregiver_reassigned` is Blocked (no stable recurring-slot identity exists in the live data path); four historical-pattern rules are deferred to V1.1 pending multi-day persistence this repository has never had. Design-only — no rules implemented.
+- **`docs/intelligence/SERVE_INTELLIGENCE_ENGINEERING_STANDARDS.md`** (commit `8e46bfe`) — the canonical implementation handbook: a Rule Engineering template, Fact/Signal/Recommendation/Action/Outcome engineering standards, a precise AI engineering boundary, naming conventions, an implementation checklist, a Definition of Done, and an Engineering Oath. This is now **the canonical engineering standard for all future Serve Intelligence implementation work**, sitting beneath the Constitution (why) and `ARCHITECTURE.md` (what) — see `DECISION_LOG.md`'s corresponding entry.
+
+### Current Intelligence Platform status
+
+- **Governance:** complete. Constitution ratified; Engineering Standards ratified and committed.
+- **Structure:** Phase A primitive types implemented and committed (`lib/intelligence/core/`, commit `c5fec9b`).
+- **Persistence (Phase B):** not started. Requires Hud approval of the Scheduling Intelligence V1 requirements' open decisions (thresholds, evaluation cadence, Fact-persistence approval itself) before schema design begins.
+- **Reasoning engine (Phase C):** not started.
+- **Domain implementation (Phase D — Scheduling Intelligence V1):** not started. Requirements are finalized and awaiting approval; no rule code, no migrations, no UI exist yet.
+- **No intelligence domain is live in any form.** Nothing described above changes application behavior today.
+
+### Next Recommended Work
+
+The platform's governance, architecture, and shared type structure are now complete — **Serve OS is ready to begin Intelligence Domain implementation**, starting with Phase B (persistence design, scoped narrowly to Scheduling Intelligence V1's two required Fact types) once Hud has approved the specific open decisions listed in the Scheduling Intelligence V1 requirements (lateness/grace-period/duration-variance thresholds, evaluation cadence, and the root Fact-persistence approval itself). Phase B should not be scoped speculatively broad — build only what Scheduling Intelligence V1 needs, per the Engineering Standards' "favor small, trustworthy vertical slices" principle.

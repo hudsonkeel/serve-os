@@ -198,3 +198,42 @@ at the time.
   Serve Intelligence Platform session in this period (audit → primitive
   design → layered reconciliation → this constitutional document) —
   implementation has not begun.
+
+## 2026-07-13 — Intelligence Foundation: Phase A Primitives and Engineering Standards
+
+### Added
+
+- **`lib/intelligence/core/`** (commit `c5fec9b`) — Phase A shared
+  TypeScript primitive types for the Serve Intelligence Platform:
+  `Subject`, `HistoricalFact`, `Signal`, `Evidence`, `Recommendation`,
+  `Action`, `Outcome`, `Rule`, `RuleVersion`, `RuleRun`, `Explanation` (11
+  of the 13 approved primitives — `ReferenceKnowledge` and `ContextNote`
+  intentionally deferred to Phase E). Types only; no persistence, no UI,
+  no application behavior changed. Includes a `node:assert` runtime test
+  suite and `@ts-expect-error` compile-time boundary proofs confirming
+  Context-shaped data can never satisfy deterministic Rule input.
+- Scheduling Intelligence V1 requirements finalization (design/audit
+  session, no commit — documentation-only proposal) — an evidence-based
+  review of the actual AxisCare/scheduling data available today,
+  resolving the exact V1 rule set: `visit_started_late`,
+  `visit_not_started`, and `visit_duration_variance` recommended;
+  `caregiver_reassigned` Blocked (no stable recurring-slot identity in
+  the live data path); four historical-pattern rules deferred to V1.1
+  pending persistence this repository has never had.
+- **`docs/intelligence/SERVE_INTELLIGENCE_ENGINEERING_STANDARDS.md`**
+  (commit `8e46bfe`) — the canonical implementation handbook for every
+  future Serve Intelligence domain: a Rule Engineering template,
+  Fact/Signal/Recommendation/Action/Outcome engineering standards, a
+  precise AI engineering boundary, naming conventions, an implementation
+  checklist, a Definition of Done, and an Engineering Oath. Now the
+  canonical engineering standard beneath the Constitution and
+  `ARCHITECTURE.md` — see `DECISION_LOG.md`'s corresponding 2026-07-13
+  entry.
+
+### Status
+
+- Intelligence Platform governance and shared type structure are
+  complete. Persistence (Phase B), the reasoning engine (Phase C), and
+  every domain (Phase D onward, including Scheduling Intelligence V1)
+  remain unimplemented. No intelligence domain is live in any form; no
+  application behavior changed by any of today's work.
