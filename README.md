@@ -1,36 +1,115 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Serve OS
 
-## Getting Started
+Serve OS is the internal operating system for Serve Caregiving — the
+operational intelligence and coordination layer above the external
+systems that actually execute work (AxisCare, CINCH CCM, Apploi,
+Viventium, Google Workspace, Dialpad, and SAS). Serve OS does not intend
+to replace these systems; it gives staff one place to understand today's
+work, manage residents, and launch the right external system when
+execution needs to happen there.
 
-First, run the development server:
+Core product model:
+
+- **Dashboard = Know** — what is happening
+- **Workspace = Do** — what should I do next
+- **Residents = Manage** — deep, per-resident operational record
+- **Ask Serve = Think** — reason across Serve OS data on demand
+
+Full architecture: [`ARCHITECTURE.md`](./ARCHITECTURE.md). Current
+platform status: [`CURRENT_STATUS.md`](./CURRENT_STATUS.md). Product
+philosophy: [`VISION.md`](./VISION.md).
+
+## Technology stack
+
+- [Next.js 16](https://nextjs.org) (App Router, Turbopack), React 19, TypeScript
+- Tailwind CSS v4 (`@theme`-based design tokens — see
+  [`docs/design/SERVE_DESIGN_SYSTEM_2.md`](./docs/design/SERVE_DESIGN_SYSTEM_2.md))
+- [Supabase](https://supabase.com) — database, authentication, storage
+- This Next.js version has meaningful breaking changes from prior
+  training data — see [`AGENTS.md`](./AGENTS.md) before making changes.
+
+## Development setup
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Copy `.env.example` to `.env.local` and fill in real values — `.env.local`
+is gitignored and must never be committed. Never write a real credential
+into any tracked file, including documentation.
 
-## Learn More
+Full variable-by-variable reference (purpose, exposure, required/optional,
+failure behavior): [`ENVIRONMENT.md`](./ENVIRONMENT.md).
 
-To learn more about Next.js, take a look at the following resources:
+## Key modules
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Module | Route | Mode |
+|---|---|---|
+| Dashboard | `/` | Know |
+| Workspace | `/workspace` | Do |
+| Residents | `/residents` | Manage |
+| Prospects | `/prospects` | — |
+| Recruiting | `/recruiting` | — |
+| Community Intelligence | `/community-intelligence` | Think proactively |
+| Ask Serve | `/ask-serve` | Think on demand |
+| Settings | `/settings` | Configure/govern/secure/connect |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Workspace's **Today's Schedule** shows live, read-only AxisCare visit
+data, gated behind a server-only feature flag
+(`AXISCARE_SCHEDULE_ENABLED`) that defaults to disabled — see
+[`docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md`](./docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md).
 
-## Deploy on Vercel
+## Read-only integration philosophy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Every external vendor integration in this repository starts read-only,
+and stays read-only until a specific, repeated operational need proves
+that read-plus-deep-link resolution back into the vendor's own UI is
+insufficient. AxisCare is the first example: `lib/integrations/axiscare/`
+is GET-only by construction (`axisCareGet()` hardcodes the HTTP method,
+no override exists), server-only, and normalizes into a vendor-neutral
+domain (`lib/scheduling/`) before anything else in the app touches it.
+Vendor systems remain systems of record; Serve OS does not silently
+mutate vendor data. Full policy:
+[`docs/integrations/AXISCARE_READ_ONLY_INTEGRATION.md`](./docs/integrations/AXISCARE_READ_ONLY_INTEGRATION.md).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Testing
+
+No jest/vitest/mocha in this repository. `lib/integrations/axiscare/`
+and `lib/scheduling/` use small, dependency-free `node:assert`-based test
+scripts, runnable directly via Node's native TypeScript support:
+
+```bash
+npm run test:axiscare
+npm run test:scheduling
+```
+
+## Deployment
+
+A deploy pipeline auto-builds on push to GitHub. **The exact platform is
+currently unreconciled** — `netlify.toml` documents Netlify, but recent
+live evidence shows Vercel is what actually deploys this repository. See
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) for the open discrepancy. Do not
+assume either platform's dashboard is authoritative until this is
+resolved.
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Technical architecture, module boundaries, data flow |
+| [`CURRENT_STATUS.md`](./CURRENT_STATUS.md) | What's live, flagged, foundation-only, planned, or blocked |
+| [`CHANGELOG.md`](./CHANGELOG.md) | Dated record of changes |
+| [`DECISION_LOG.md`](./DECISION_LOG.md) | Append-only architectural/product decisions with rationale |
+| [`ENVIRONMENT.md`](./ENVIRONMENT.md) | Every environment variable, what it does, and failure behavior |
+| [`MILESTONES.md`](./MILESTONES.md) | Phase 1 / Phase 2 milestone tracking |
+| [`PRODUCTION_READINESS.md`](./PRODUCTION_READINESS.md) | Honest per-dimension readiness assessment |
+| [`SERVE_BUILD_CONTEXT.md`](./SERVE_BUILD_CONTEXT.md) | Full context for restarting a development session |
+| [`VISION.md`](./VISION.md) | Long-term product vision |
+| [`docs/architecture/`](./docs/architecture/) | Operating model, navigation model, Settings architecture, scheduling intelligence |
+| [`docs/integrations/`](./docs/integrations/) | Per-vendor integration policy |
+| [`docs/design/`](./docs/design/) | Design System 2.0 |

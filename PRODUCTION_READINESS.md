@@ -371,3 +371,54 @@ Upcoming production milestones:
 - Resident Relationship Timeline
 - Unified employee work queue
 - Context-driven operational navigation
+
+## 2026-07-13 — AxisCare Read-Only Integration Readiness Assessment
+
+This section deliberately does **not** mark the AxisCare integration
+"production ready" merely because it is read-only. Read-only removes one
+class of risk (accidental data corruption in the vendor system) but does
+not by itself establish reliability, supportability, or safe degraded
+behavior. Each dimension below is assessed on its own merits.
+
+| Dimension | Status | Notes |
+|---|---|---|
+| Reliability | 🟡 Partially assessed | Live-verified against real AxisCare data once (manual comparison against AxisCare Real Time View). No sustained uptime/reliability track record yet — this is day-one verification, not production experience. |
+| Stale-data behavior | 🟡 Acceptable for current scope, not hardened | No caching layer; every Workspace page load fetches live (`dynamic = "force-dynamic"`, `revalidate = 0`). This means no explicit "data is N minutes old" staleness ever occurs, but also means Workspace load time is fully coupled to AxisCare's live response time — no timeout-driven fallback has been exercised against a real slow endpoint, only fictional fixtures. |
+| Error transparency | ✅ Solid | Every failure mode (not configured, authentication, authorization, timeout, upstream unavailable, invalid response, unknown, feature-disabled) maps to one fixed, sanitized, non-leaking message. Verified by test, not just code inspection. |
+| Credential handling | ✅ Solid | Token is read from `process.env` in exactly one module and never logged, returned, or serialized — verified by dedicated tests asserting a fictional token value never appears in any output, including error messages and configuration-state objects. |
+| Rate limits | ⬜ Unknown | AxisCare's rate-limit behavior and headers have not been characterized. The integration has a `rate_limit` error category, but its real-world trigger conditions are unverified. |
+| Logging | 🟡 Partial | Discovery/test output is deliberately sanitized (never logs field values, never logs the token). No structured production logging/observability exists for the live schedule path itself (no request-count, latency, or error-rate metrics are emitted anywhere). |
+| Supportability | 🟡 Documented, not yet operationally exercised | `docs/integrations/AXISCARE_READ_ONLY_INTEGRATION.md` and `docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md` are thorough, but no one besides this development session has operated the integration under real conditions yet. |
+| Monitoring | ⬜ None | No alerting exists for sustained AxisCare failures, elevated error rates, or the feature silently sitting disabled longer than intended. |
+| Auditability | 🟡 Partial | Removed-visit and status-normalization decisions are deterministic and documented, but no persistent audit trail of what Workspace displayed at a given time exists (nothing is written to Supabase — by design, per the read-only/no-persistence policy — which is also why there is no historical record to audit later). |
+| Privacy | ✅ Solid | Structurally enforced, not just conventional — `ServeScheduleVisit`'s type shape excludes phone/address/DOB/email/notes/diagnoses/billing entirely; a dedicated test asserts a fictional sensitive-field-laden fixture never survives normalization. |
+| Feature flag safety | ✅ Solid | `AXISCARE_SCHEDULE_ENABLED` is checked before any credential lookup; a disabled feature makes zero requests and reveals nothing about credential state; a repo-wide test confirms no client-side code path can read the flag. |
+| Rollback / disablement | ✅ Solid | Three-tier emergency plan documented in `docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md`'s "Release Control": (1) set the flag false and redeploy — normal path; (2) revoke the AxisCare token — emergency, affects every consumer of that token; (3) roll back the deploy entirely. |
+| User-visible error handling | ✅ Solid | Every unavailable state renders a calm, non-technical fallback panel with a working AxisCare deep link — never a stack trace, never raw vendor text. |
+
+### Overall assessment
+
+**Not yet a blanket "production ready."** The integration is
+well-engineered for correctness, privacy, and safe failure — but
+reliability under sustained real-world load, rate-limit behavior, and
+operational monitoring are genuinely unverified, not just unmentioned.
+**Recommended before enabling in production:** confirm AxisCare rate
+limits, add basic request/error observability, and run the feature in a
+Preview/branch-deploy environment for a meaningful period before
+flipping `AXISCARE_SCHEDULE_ENABLED=true` in production.
+
+### External vendor dependency risk
+
+Serve OS's Workspace schedule feature is now dependent on AxisCare's
+uptime and response time for its own page load performance (mitigated by
+the feature flag — this dependency can be switched off instantly without
+a code deploy, only an environment-variable change and redeploy).
+
+### Deploy platform readiness — unresolved
+
+Cannot be assessed accurately until the Vercel/Netlify discrepancy
+(`ARCHITECTURE.md`, 2026-07-13 entry) is reconciled. `netlify.toml`
+exists and specifies Node 22, but live evidence shows Vercel is the
+platform actually auto-deploying this repository on push. Any
+environment-variable configuration performed on the "wrong" platform
+would have no effect on the live deployment.

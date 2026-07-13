@@ -1,12 +1,153 @@
 # SERVE_BUILD_CONTEXT.md
 
 # Serve Caregiving Build Context
-_Last Updated: June 2026 (session 2026-06-29)_
-_Current Revision: v.0.3_
+_Last Updated: 2026-07-13 (documentation checkpoint)_
+_Current Revision: v.0.4_
 
 ---
 
-# Current Session Context
+# READ THIS FIRST — 2026-07-13 Correction
+
+Everything under "Current Session Context" immediately below (Active
+Focus, Current Goal, Do Not Do Today) is **historical** — it describes
+the state as of 2026-06-29 and is now stale on its central claims.
+Preserved for history, not deleted; **do not treat it as current**. In
+particular: "Deploying Serve OS to production" and "Authentication not
+yet implemented" (further down, under Current Constraints) are both
+**false as of this update**. Use this section and the sections below it
+instead.
+
+## What Serve Caregiving is
+
+Serve Caregiving provides senior care in two models: **Traditional Home
+Care** (visit-based, scheduled via AxisCare) and **Community Care**
+(delivered within a residential community, via CINCH CCM). **Watermere**
+is the residential community whose residents are Serve OS's first live
+resident dataset (307 active residents imported).
+
+## What Serve OS is, and what it intentionally does not replace
+
+Serve OS is the operational intelligence and coordination layer above:
+AxisCare (Traditional Home Care scheduling/execution), CINCH CCM
+(Community Care execution), Apploi (recruiting), Viventium (HR/payroll),
+Google Workspace (email/documents), Dialpad (phone), and SAS Specialty
+Answering Service (planned). It does **not** intend to replace any of
+these as a system of record or execution. It provides context,
+prioritization, operational memory, and (in Phase 2) intelligence, and
+launches the right external system when execution work must happen
+there.
+
+## Current architecture (accurate as of 2026-07-13)
+
+- Next.js 16 (App Router, Turbopack) / React 19 / TypeScript / Tailwind
+  v4 / Supabase.
+- Design System 2.0 (Blue & White) applied to the core operational
+  surfaces — see `docs/design/SERVE_DESIGN_SYSTEM_2.md`.
+- Operating model: Dashboard = Know, Workspace = Do, Residents = Manage,
+  Community Intelligence = Think proactively, Ask Serve = Think on
+  demand, Communications = Coming Soon, Settings = configure/govern.
+- Full detail in `ARCHITECTURE.md`'s 2026-07-13 checkpoint entry.
+
+## Completed modules (Phase 1 — see `MILESTONES.md` for full detail)
+
+Authentication (Supabase Auth — login, forgot-password, reset-password,
+fully self-service, **now live**, not a future item), Workspace,
+Dashboard, Residents (directory, search, profiles, Connections, Wellness
+Manager/Observations/Follow-Ups/Watch), Prospects, Recruiting, Ask Serve
+(placeholder), Community Intelligence (framework), Settings, navigation
+architecture, Design System 2.0, **read-only AxisCare scheduling
+integration** (see next section).
+
+## AxisCare scheduling state (the newest major work)
+
+- `lib/integrations/axiscare/` — server-only, GET-only vendor adapter.
+  Live-verified. No write capability exists — `axisCareGet()` hardcodes
+  `method: "GET"`.
+- `lib/scheduling/` — vendor-neutral normalization
+  (`ServeScheduleVisit`, `ServeTodaysScheduleResult`), deterministic
+  status rules, timezone-safe parsing, bounded pagination.
+- `components/scheduling/TodaysSchedulePanel.tsx` — live in Workspace,
+  manually validated against AxisCare Real Time View.
+- Gated behind `AXISCARE_SCHEDULE_ENABLED` (server-only, off by default).
+  **Production must stay disabled until Hud explicitly approves.**
+- Currently on branch `feature/axiscare-read-only-schedule`, pushed to
+  `origin`, **not yet merged to `main`**.
+- Full detail: `docs/integrations/AXISCARE_READ_ONLY_INTEGRATION.md`,
+  `docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md`.
+
+## Current branch and deployment conventions
+
+- Feature work happens on `feature/*` branches off `main`; `main` is the
+  production-review branch (confirmed via `git remote show origin`).
+- Node-native TypeScript execution (`node --experimental-strip-types
+  --conditions=react-server`) is used for standalone scripts/tests under
+  `lib/integrations/axiscare/` and `lib/scheduling/` only — everywhere
+  else in the app uses normal Next.js bundling. See `package.json`
+  scripts (`test:axiscare`, `test:scheduling`, `axiscare:discover`,
+  `schedule:preview`).
+- **Deploy platform is unresolved.** `netlify.toml` exists and documents
+  Netlify as the target, but live evidence (a GitHub check-run query on
+  a recent push) shows Vercel is what actually auto-deploys this
+  repository. Do not assume either platform's environment-variable
+  configuration is the one that matters until this is reconciled with
+  Hud. See `ARCHITECTURE.md`'s 2026-07-13 entry.
+
+## Phase 2 objective
+
+Serve OS has completed its Phase 1 operational platform foundation and
+is entering **Phase 2 — Operational Intelligence**: deterministic
+intelligence engines (not new pages) that explain, prioritize,
+recommend, monitor, remind, identify risk, preserve relationships, and
+reduce administrative burden. Five domains identified for design:
+Relationship Intelligence, Proposal Intelligence, Scheduling
+Intelligence, Community Intelligence, Operational Intelligence. **None
+implemented yet — design/architecture stage only.** Principles:
+deterministic before AI, normalized domain models, explainable
+recommendations, evidence/provenance, human judgment remains
+authoritative, vendor systems remain systems of record. Full detail:
+`ARCHITECTURE.md`, `DECISION_LOG.md` (2026-07-13 entries).
+
+## Current known investigations (open, not resolved)
+
+- **Recruiting test-data cleanup** — website test inquiries remain in
+  recruiting-related data. Source table(s) not yet confirmed. One
+  intentional standardized test record may be meant to remain. No
+  deletion has occurred.
+- **Workspace Follow-Ups metric** — the displayed count may be
+  incorrect. Query lineage, source table, filters, row-vs-resident-count
+  semantics, and completed/cancelled inclusion all need confirmation. No
+  logic correction has occurred.
+- **Deploy platform discrepancy** — see above.
+
+## Immediate next engineering priorities
+
+1. Reconcile the Vercel/Netlify deploy-platform discrepancy with Hud.
+2. Trace and confirm (or fix) the Workspace Follow-Ups metric.
+3. Confirm and safely clean up recruiting test data (not yet done).
+4. Get explicit approval before enabling `AXISCARE_SCHEDULE_ENABLED` in
+   production, and before merging `feature/axiscare-read-only-schedule`.
+5. Begin Phase 2 architecture design (intelligence kernel: shared
+   rule/signal/recommendation/evidence/outcome model) — design first,
+   not broad feature construction.
+
+## Documentation discipline expectations
+
+- This file, `CURRENT_STATUS.md`, `ARCHITECTURE.md`, `CHANGELOG.md`,
+  `DECISION_LOG.md`, `ENVIRONMENT.md`, `MILESTONES.md`, and
+  `PRODUCTION_READINESS.md` are the canonical governance/status
+  documents. Update them when they drift from the repository, not just
+  when a feature ships — this checkpoint exists because a prior
+  documentation update did not complete.
+- Never document a feature as complete/live because a route or component
+  exists — verify it's actually wired to real data and reachable.
+- Preserve historical sections; mark superseded claims explicitly rather
+  than deleting them (as done above).
+- Never write a real credential, token, or secret value into any
+  documentation file.
+
+---
+
+# Current Session Context *(historical — 2026-06-29, superseded above)*
 
 ## Active Focus
 - Deploying Serve OS to production so staff can begin using recruiting and prospect workflows.
@@ -641,16 +782,16 @@ Every screen should answer
 
 ---
 
-# Current Constraints
+# Current Constraints *(historical section — see "READ THIS FIRST" at the top for corrections)*
 
 ## Technical
 
-- Serve OS not yet deployed — all workflows are dev-only.
-- Email notifications inactive until `RESEND_API_KEY`, `SERVE_APP_URL`, and `SERVE_NOTIFY_*` env vars are set in production.
-- `NEXT_PUBLIC_APPLOI_CAREGIVER_URL` not yet set — Apploi redirect button will not appear in production until this is configured.
-- Prospect notification rules (`prospect.created`, `prospect.completed`) are typed but commented out — wire after deployment.
+- ~~Serve OS not yet deployed — all workflows are dev-only.~~ **Superseded 2026-07-13: Serve OS is deployed and operational (pilot status); see "READ THIS FIRST" above.** Deploy platform itself (Vercel vs. Netlify) is unreconciled.
+- Email notifications inactive until `RESEND_API_KEY`, `SERVE_APP_URL`, and `SERVE_NOTIFY_*` env vars are set in production. *(Status of these specific env vars in the actual production/deploy environment not re-verified as part of this documentation checkpoint.)*
+- `NEXT_PUBLIC_APPLOI_CAREGIVER_URL` not yet set — Apploi redirect button will not appear in production until this is configured. *(Not re-verified this checkpoint.)*
+- Prospect notification rules (`prospect.created`, `prospect.completed`) are typed but commented out — wire after deployment. *(Not re-verified this checkpoint.)*
 - Cinch API availability still unknown.
-- Authentication not yet implemented.
+- ~~Authentication not yet implemented.~~ **Superseded 2026-07-13: Supabase Auth is live — login, forgot-password, reset-password, route protection via `proxy.ts`.**
 - Large prompts occasionally increase processing time.
 
 ---

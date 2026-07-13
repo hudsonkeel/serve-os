@@ -487,3 +487,56 @@ environment-variable names/deploy contexts — explicitly stopping short of
 any merge or production deploy. See the branch's commit history and the
 session record for exact status; production `AXISCARE_SCHEDULE_ENABLED`
 must remain `false`/absent until Hud explicitly approves otherwise.
+
+**Correction, same day:** the branch was pushed and a live GitHub
+check-run/commit-status query (public repo, no credentials needed) showed
+the automatic preview build for this push was produced by **Vercel**, not
+Netlify — no Netlify GitHub-integration activity was found on the commit
+at all, despite `netlify.toml` and several historical references in this
+document to Netlify as the deploy target. This is an unresolved
+discrepancy, not yet reconciled — see "Open Items" in the 2026-07-13
+documentation checkpoint entry below. No environment variables were set on
+either platform by this session; the auto-built preview almost certainly
+has `AXISCARE_SCHEDULE_ENABLED` unset (disabled) since nothing configured
+it there.
+
+## 2026-07-13 — Documentation Checkpoint (Phase 1 → Phase 2 Reconciliation)
+
+Yesterday's documentation update did not complete, so this checkpoint
+reconciles every governance/architecture/status doc against the actual
+repository rather than assuming prior docs were current. Full detail,
+corrections, and file-by-file changes are recorded in this same commit's
+updates to `ARCHITECTURE.md`, `CHANGELOG.md`, `DECISION_LOG.md`,
+`ENVIRONMENT.md`, `MILESTONES.md`, `PRODUCTION_READINESS.md`,
+`SERVE_BUILD_CONTEXT.md`, `VISION.md`, and `README.md`. Summary:
+
+### Current state, categorized honestly
+
+**Live (in production or ready to be, pending explicit enablement):**
+- Supabase authentication — login, forgot-password, reset-password, protected app shell (`proxy.ts`).
+- Role-aware access foundation — `AUTH_ROLES = ["admin","manager","executive","operations"]`, enforced today only on `/settings` content gating; every other authenticated route is visible to any authenticated role.
+- Dashboard, Workspace, Residents (directory, search, profiles, Connections, Wellness Manager/Observations/Follow-Ups/Watch), Prospects, Recruiting, Ask Serve (placeholder), Community Intelligence (framework + illustrative/honest-empty-state metrics), Settings.
+- Design System 2.0 (Blue & White) — applied to Global Shell, Workspace, Dashboard, Resident Directory, Resident Detail, Resident Wellness. **Not yet applied** to Prospects, Recruiting, Community Intelligence, Ask Serve, or the public website.
+- Read-only AxisCare integration (`lib/integrations/axiscare/`) and vendor-neutral scheduling model (`lib/scheduling/`) — both live-verified.
+- Workspace's live AxisCare Today's Schedule UI (`components/scheduling/`) — code-complete, tested, manually validated against AxisCare Real Time View on `feature/axiscare-read-only-schedule` (not yet merged to `main`).
+
+**Implemented but feature-flagged (off by default):**
+- `AXISCARE_SCHEDULE_ENABLED` gates the entire Workspace schedule feature independently of AxisCare credentials. Default: disabled. Must stay disabled in production until Hud explicitly approves enabling it.
+
+**Foundation only (structure exists, not yet real/live data):**
+- Community Intelligence's Relationship Intelligence, Operational Best Practices metrics — labeled "Illustrative," not backed by live pattern detection.
+- Settings' Users & Roles, Workflow Configuration, Governance & Audit sections — honest future-state descriptions, no admin backend.
+- `lib/scheduling/`'s `ServeRecurringSchedule` model — normalized but not consumed by any UI yet.
+
+**In design (Phase 2 — see below):** Relationship Intelligence, Proposal Intelligence, Scheduling Intelligence (the deterministic exception layer — late/no-clock-in, missed-visit inference, variance), Community Intelligence expansion, Operational Intelligence. None implemented.
+
+**Planned, not started:** Communications (sidebar "Coming Soon," no route). CINCH-provenance verification for `careModel` (`CARE_MODEL_BY_SERVICE_CODE` mapping table is empty by design).
+
+**Blocked / requires validation:**
+- **Deploy target discrepancy** — see the correction above this entry. Requires Hud to confirm whether Vercel or Netlify is the actual intended production host for `serve-os`, and reconcile `netlify.toml`/`SERVE_APP_URL`/`PRODUCTION_READINESS.md` accordingly.
+- **Recruiting test-data cleanup** — website test inquiries remain in recruiting-related data (`recruiting_leads` and/or related staging tables — exact source table(s) not yet confirmed). Historical test clutter needs review; one intentional standardized test record may be meant to remain. **No deletion performed** — this is a documentation checkpoint only.
+- **Workspace Follow-Ups metric investigation** — the "Follow-ups" count shown in Workspace's Today's Work tile may be incorrect. Query lineage (which function, which table, which filters), row-count-vs-resident-count semantics, and completed/cancelled inclusion all need confirmation before the number can be trusted. **No logic correction performed** — this is a documentation checkpoint only.
+
+### Phase 2 — Operational Intelligence
+
+Serve OS has completed its primary operational platform foundation (Phase 1: authentication, navigation, Design System 2.0, resident/wellness/recruiting/prospect management, read-only AxisCare scheduling visibility). Serve OS is now entering **Phase 2 — Operational Intelligence**, whose objective is deterministic intelligence engines — not new pages — that explain, prioritize, recommend, monitor, remind, identify risk, preserve relationships, and reduce administrative burden. Full architectural framing recorded in `ARCHITECTURE.md` and `DECISION_LOG.md`'s 2026-07-13 entries. **No intelligence kernel or individual intelligence engine exists in the repository yet** — Phase 2 is architecture-and-design stage only.

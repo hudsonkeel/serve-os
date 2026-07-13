@@ -104,3 +104,50 @@ Next Milestone
 
 Governance Module Implementation
 
+## 2026-07-13 — Phase 1 Complete, Phase 2 Begins
+
+### PHASE 1 — OPERATIONAL PLATFORM FOUNDATION
+
+Completed or substantially completed:
+
+- ✅ Authentication (Supabase Auth, login/forgot-password/reset-password, `proxy.ts` route protection)
+- ✅ Workspace
+- ✅ Dashboard
+- ✅ Residents (directory, search, profiles)
+- ✅ Connections
+- ✅ Resident Profiles
+- ✅ Wellness Manager (Wellness Observations, Wellness Follow-Ups, Wellness Watch)
+- ✅ Ask Serve — placeholder/"Coming soon" experience only; no reasoning behavior implemented
+- ✅ Community Intelligence framework — categories and honest empty/illustrative states; no live pattern detection
+- ✅ Navigation architecture (`docs/architecture/SERVE_OS_NAVIGATION_MODEL.md`)
+- ✅ Settings architecture (`docs/architecture/SERVE_OS_SETTINGS_ARCHITECTURE.md`) — My Account and Integrations show live data; Users & Roles, Workflow Configuration, Governance & Audit are honest future-state descriptions
+- ✅ Design System 2.0 — applied to Global Shell, Workspace, Dashboard, Resident Directory, Resident Detail, Resident Wellness; **not yet applied** to Prospects, Recruiting, Community Intelligence, Ask Serve, or the public website
+- 🟡 Deployment workflow — a deploy pipeline exists and auto-builds on push, but the actual platform (Vercel vs. the documented Netlify target) is an open, unreconciled discrepancy — see `ARCHITECTURE.md`
+- ✅ Read-only AxisCare integration (`lib/integrations/axiscare/`) — live-verified
+- ✅ Vendor-neutral scheduling model (`lib/scheduling/`)
+- ✅ Workspace schedule visibility (`components/scheduling/`) — code-complete and manually validated on `feature/axiscare-read-only-schedule`, not yet merged to `main`
+- ✅ Server-side feature flag architecture (`AXISCARE_SCHEDULE_ENABLED`) — off by default, intended as the reusable pattern for future integrations
+
+Not part of Phase 1 (carried forward as open items, not silently resolved):
+
+- Recruiting test-data cleanup (website test inquiries remain in recruiting-related data)
+- Workspace Follow-Ups metric accuracy investigation
+
+### PHASE 2 — OPERATIONAL INTELLIGENCE
+
+Current state:
+
+- 🟡 Architecture definition beginning (`ARCHITECTURE.md`, `DECISION_LOG.md` 2026-07-13 entries)
+- 🟡 Intelligence domains identified: Relationship Intelligence, Proposal Intelligence, Scheduling Intelligence, Community Intelligence, Operational Intelligence
+- 🟡 Deterministic-intelligence principles established (deterministic before AI, explainable recommendations, evidence/provenance, human judgment authoritative, vendor systems remain systems of record)
+- ⬜ No broad intelligence-engine implementation yet
+
+Upcoming:
+
+- ⬜ Intelligence kernel design (shared rule/signal/recommendation/evidence/outcome model — not yet designed)
+- ⬜ Scheduling Intelligence V1 design (the deterministic exception layer deferred from the AxisCare schedule work: late/no-clock-in rules, missed-visit inference, duration variance, recurring-reassignment detection)
+- ⬜ Proposal Intelligence design
+- ⬜ Relationship Intelligence design
+- ⬜ Community Intelligence expansion (turning "Illustrative" categories into live pattern detection)
+- ⬜ Operational and compliance intelligence
+

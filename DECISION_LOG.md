@@ -210,3 +210,47 @@ Recorded in full as [`docs/architecture/SERVE_OS_NAVIGATION_MODEL.md`](docs/arch
 
 ### Result
 Near-term development stays focused on workflow clarity, live data usefulness, resident-centered operations, and employee usability.
+
+## 2026-07-13
+
+### Decision
+AxisCare remains the scheduling and visit-execution system of record. Serve OS's AxisCare integration is read-only, and Serve OS must not create, edit, cancel, assign, or otherwise mutate an AxisCare schedule or visit without a separately approved future decision.
+
+### Reason
+This is a scheduling-specific instance of the 2026-07-08 vendor-independence boundary ("Serve OS will not become... a scheduling system... those functions remain owned by... AxisCare") and the 2026-06-28 "human review is mandatory before any push to operational systems" decision, made concrete for the first vendor integration actually built. Write access carries real operational risk (a wrong write directly disrupts a caregiver visit) that read access does not.
+
+### Result
+`lib/integrations/axiscare/client.ts`'s `axisCareGet()` hardcodes `method: "GET"` with no override parameter — write access is not reachable through this integration without a deliberate code change, not merely a policy convention. Recorded in full in `docs/integrations/AXISCARE_READ_ONLY_INTEGRATION.md` and `docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md`'s "Permanent Rule." Any future write capability requires its own explicit decision entry here, not an incremental extension of this one.
+
+---
+
+### Decision
+External vendor records (starting with AxisCare) are normalized into Serve-owned, vendor-neutral domain models before anything else in Serve OS consumes them. Vendor-specific field shapes and types stay isolated inside a dedicated adapter layer.
+
+### Reason
+Coupling the rest of the application directly to a vendor's field names and response shapes would mean every future vendor swap or API change ripples through UI and business logic. It would also make it easy to accidentally leak vendor-specific sensitive fields (e.g. AxisCare's Clients endpoint) into a UI that only needs display identity.
+
+### Result
+`lib/integrations/axiscare/` owns AxisCare-specific paths, headers, envelope shapes, and raw field types. `lib/scheduling/` owns vendor-neutral types (`ServeScheduleVisit`, `ServeTodaysScheduleResult`) and the normalization logic that produces them. Nothing outside `lib/integrations/axiscare/` may import an `AxisCareRaw*` type except `lib/scheduling/normalize.ts`, whose entire job is that conversion — enforced by convention today, not yet by a lint rule. Future vendor integrations (a second scheduling system, a second CRM, etc.) should follow the same adapter-then-normalize pattern rather than each UI surface learning a new vendor's shape directly.
+
+---
+
+### Decision
+External integrations that are functionally complete may still ship disabled by default, gated behind a server-only feature flag that is independent of the integration's own credentials.
+
+### Reason
+Credential presence and feature enablement are different concerns. Removing a token is a blunt, all-or-nothing emergency measure that also breaks anything else depending on that credential. A dedicated flag lets an environment (most importantly production) stay off by deliberate choice even when everything required to turn it on is already configured and tested — which is exactly the state Workspace's AxisCare schedule feature is in as of this decision.
+
+### Result
+`AXISCARE_SCHEDULE_ENABLED` (server-only, no `NEXT_PUBLIC_` prefix, exact case-sensitive `"true"` match) gates `getAxisCareTodaysSchedule()` before any credential lookup — a disabled feature makes zero AxisCare requests and never reveals whether credentials are configured. This is intended as the reusable pattern for future external-integration rollouts, not a one-off: ship the integration, keep it off by a dedicated flag, enable per-environment deliberately. Preview/branch-deploy contexts may run with the flag enabled for verification; production stays disabled until explicitly approved.
+
+---
+
+### Decision
+Serve OS enters Phase 2 — Operational Intelligence. This phase begins with architecture and intelligence-design work, not broad feature construction. Deterministic reasoning is required before any AI-generated recommendation; human judgment remains authoritative over final operational decisions.
+
+### Reason
+Phase 1 (authentication, navigation, Design System 2.0, resident/wellness/recruiting/prospect management, and now read-only AxisCare scheduling visibility) established the operational platform foundation these decisions assumed as a prerequisite (2026-06-28 "workflow-first development," 2026-07-06 "workflow improvements take priority over additional AI features"). Building exception detection, recommendations, or risk-scoring directly into UI features without a shared reasoning architecture would repeat the same "wrong classification with no visible reasoning" risk this program has avoided elsewhere (see the 2026-06-28 deterministic-pricing decision and `lib/scheduling/status.ts`'s refusal to guess "missed" from wall-clock time alone).
+
+### Result
+Five initial intelligence domains are identified for design (not implementation): Relationship Intelligence, Proposal Intelligence, Scheduling Intelligence, Community Intelligence, Operational Intelligence. Recorded architectural principles: deterministic before AI; normalized domain models; explainable recommendations; evidence and provenance; human judgment remains authoritative; LLMs assist reasoning and communication rather than originate operational classifications; vendor systems remain systems of record; Serve OS does not silently mutate vendor data. Every future intelligence surface should be able to answer "what should Serve know, what should Serve do, and why" with a traceable answer, not a black-box output. No intelligence kernel or individual engine exists in the repository yet — this decision governs how they get built, not a claim that they exist. Full framing in `ARCHITECTURE.md`'s Phase 2 section.

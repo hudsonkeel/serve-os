@@ -121,3 +121,58 @@ Operational Intelligence
 Care Delivery
 
 Technology should continue disappearing behind the experience while maintaining a single operational data model.
+
+## Vision Update — 2026-07-13
+
+Serve OS is intended to become the operational intelligence layer that
+helps the organization know:
+
+- what is happening
+- what matters
+- what is at risk
+- what should happen next
+- why it should happen
+
+This vision is deliberately narrower than "software that runs the
+business." Operational intelligence is distinct from — and does not
+mean — replacing:
+
+- scheduling software (AxisCare remains the scheduling system of record;
+  Serve OS's role is read-only visibility and, in the future,
+  deterministic exception detection, never scheduling execution)
+- payroll (Viventium)
+- recruiting systems (Apploi)
+- HRIS (Viventium)
+- clinical records (owned by the relevant care-delivery system, not
+  Serve OS)
+- human judgment (AI assists reasoning and communication; humans decide
+  and act — this has been true since the earliest decisions in this
+  project and remains true entering Phase 2 — Operational Intelligence)
+
+### The core product model
+
+Dashboard = Know
+
+Workspace = Do
+
+Residents = Manage
+
+Ask Serve = Think
+
+This model governs where every new surface belongs. A feature that
+doesn't obviously fit one of these four is a sign to reconsider the
+feature's placement, not to force it in — see
+`docs/architecture/SERVE_OS_OPERATING_MODEL.md` for the full page-by-page
+reference, including Community Intelligence (Think proactively) and
+Communications (ensure nothing important is missed), which extend this
+core model without replacing it.
+
+### Phase 2 framing
+
+Having completed the operational platform foundation (Phase 1), Serve
+OS's next chapter is not primarily about adding more pages — it is about
+building the deterministic reasoning underneath the pages that already
+exist, so that what Serve OS shows and suggests is always explainable,
+evidence-backed, and traceable to a specific rule or field — never a
+black-box guess. See `ARCHITECTURE.md` and `DECISION_LOG.md`'s
+2026-07-13 entries.

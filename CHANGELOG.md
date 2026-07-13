@@ -85,3 +85,87 @@ Major Milestone
 
 - Refined the Serve OS continuation prompt used to start future development chats — reduced to three sections (where we are, what we are building next, how to think) rather than a full archive.
 - Reaffirmed operational pilot status and re-centered product philosophy around reducing clicks, cognitive load, and confusion for Serve staff. No code changes.
+
+## 2026-07-11 to 2026-07-13
+
+Retrospective entry covering the period since the last changelog update —
+recorded now as part of a documentation checkpoint, not logged day-by-day
+at the time.
+
+### Added
+
+- **Design System 2.0** (Blue & White / Clean & Clinical) — new color
+  tokens in `app/globals.css` (`navy`, `blue`, `gold`, `canvas`, `surface`,
+  `ivory*`, semantic state colors), applied to Global Shell, Workspace,
+  Dashboard, Resident Directory, Resident Detail, and Resident Wellness.
+  See `docs/design/SERVE_DESIGN_SYSTEM_2.md`.
+- **Serve OS Operating Model** — Dashboard = Know, Workspace = Do,
+  Residents = Manage, Community Intelligence = Think proactively, Ask
+  Serve = Think on demand, Communications = ensure nothing is missed,
+  Settings = configure/govern/secure/connect. See
+  `docs/architecture/SERVE_OS_OPERATING_MODEL.md`.
+- **Navigation model** — sidebar reduced to five top-level items plus
+  Communications (Coming Soon) and Settings; Recruiting, Scheduling, and
+  Care Plans removed as top-level items without deleting any route. See
+  `docs/architecture/SERVE_OS_NAVIGATION_MODEL.md`.
+- **Settings architecture** — `/settings` became a real authenticated
+  route with six sections; only My Account and a presence-checked
+  Integrations status list show live data. See
+  `docs/architecture/SERVE_OS_SETTINGS_ARCHITECTURE.md`.
+- **Read-only AxisCare integration** (`lib/integrations/axiscare/`) —
+  server-only, GET-only client for Visits/Schedules/Clients/Caregivers,
+  live-verified against the real API. No write capability exists anywhere
+  in this layer. See `docs/integrations/AXISCARE_READ_ONLY_INTEGRATION.md`.
+- **Vendor-neutral scheduling domain** (`lib/scheduling/`) — normalizes
+  raw AxisCare visits into `ServeScheduleVisit`; deterministic status
+  rules, timezone-safe date handling, bounded pagination, removed-visit
+  policy. See `docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md`.
+- **Workspace live schedule visibility** —
+  `components/scheduling/TodaysSchedulePanel.tsx` replaces the static
+  Today's Schedule placeholder with a server-rendered, read-only view:
+  summary metrics, an "Attention Needed" unassigned-visit section,
+  chronological visit list, and a deep link back to AxisCare Real Time
+  View.
+- **Server-side scheduling feature flag** — `AXISCARE_SCHEDULE_ENABLED`
+  (server-only, no `NEXT_PUBLIC_` prefix, exact `"true"` match) gates the
+  Workspace schedule feature independently of AxisCare credentials.
+  Defaults to disabled; a disabled feature makes zero AxisCare requests
+  and never reveals whether credentials are configured.
+- Community Intelligence framework — five named categories with honest
+  "Illustrative" or "Not Yet Connected" labeling; no fabricated data.
+- Wellness Manager, Wellness Observations, Wellness Follow-Ups, and
+  Wellness Watch across the Residents module (migrations
+  `20260712000000_create_resident_wellness_notes.sql` and
+  `20260712010000_create_resident_wellness_follow_ups.sql`).
+- Resident Connections (`20260711000000_create_resident_connections.sql`).
+- Documentation checkpoint reconciling `CURRENT_STATUS.md`,
+  `ARCHITECTURE.md`, `DECISION_LOG.md`, `ENVIRONMENT.md`,
+  `MILESTONES.md`, `PRODUCTION_READINESS.md`, `SERVE_BUILD_CONTEXT.md`,
+  `VISION.md`, and `README.md` against the actual repository state, and
+  documenting the transition into Phase 2 — Operational Intelligence.
+
+### Changed
+
+- Ask Serve retained as a "Coming soon" placeholder — no new AI reasoning
+  behavior was added in this period; only its positioning within the
+  operating model was clarified (Think on demand, distinct from Community
+  Intelligence's Think proactively).
+- Sidebar's "Recruiting" top-level item removed; `/recruiting` remains
+  fully functional, now reachable from Workspace.
+
+### Fixed
+
+- Removed-visit inflation bug in AxisCare schedule summary counting — a
+  removed visit with no caregiver no longer counts as actionable
+  "unassigned" coverage. See `ServeScheduleSummary` in
+  `lib/scheduling/types.ts`.
+
+### Known issues (carried forward, not fixed in this period)
+
+- Recruiting-related data still contains website test inquiries; source
+  table(s) and safe-to-delete scope not yet confirmed.
+- Workspace's "Follow-ups" metric may be inaccurate; query lineage not yet
+  traced.
+- Deploy-target discrepancy: `netlify.toml`/`SERVE_APP_URL` reference
+  Netlify, but a live GitHub check-run query shows Vercel is what
+  currently auto-deploys this repository on push. Not yet reconciled.
