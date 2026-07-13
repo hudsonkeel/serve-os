@@ -6,14 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "axiscare:discover": "node --env-file-if-exists=.env.local --experimental-strip-types --conditions=react-server scripts/axiscare-discovery.ts",
+    "test:axiscare": "node --experimental-strip-types --conditions=react-server lib/integrations/axiscare/__tests__/sanitization.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
     "lucide-react": "^1.21.0",
     "next": "16.2.9",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
