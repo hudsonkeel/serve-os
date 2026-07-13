@@ -1,6 +1,7 @@
 import "server-only";
 import { getTodaysVisitsBounded } from "../integrations/axiscare/visits.ts";
 import { todaysDateStringCentral } from "../integrations/axiscare/centralDate.ts";
+import { isAxisCareScheduleEnabled } from "../integrations/axiscare/config.ts";
 import { AxisCareError, type AxisCareErrorCategory } from "../integrations/axiscare/errors.ts";
 import type { AxisCareRawVisit } from "../integrations/axiscare/types.ts";
 import { normalizeAxisCareVisit } from "./normalize.ts";
@@ -106,6 +107,22 @@ export function summarizeVisits(visits: ServeScheduleVisit[]): ServeScheduleSumm
 export async function getAxisCareTodaysSchedule(): Promise<ServeTodaysScheduleResult> {
   const fetchedAt = new Date().toISOString();
   const operationalDate = todaysDateStringCentral();
+
+  // Release-control gate — checked before anything else, and before any
+  // AxisCare configuration/credential lookup, so a disabled feature never
+  // makes a request AND never reveals whether credentials exist (a
+  // disabled and a misconfigured environment must be indistinguishable
+  // from this function's caller's perspective beyond the `reason` value).
+  if (!isAxisCareScheduleEnabled()) {
+    return {
+      available: false,
+      sourceSystem: "axiscare",
+      fetchedAt,
+      operationalDate,
+      reason: "disabled",
+      safeMessage: "AxisCare schedule visibility is not enabled in Serve OS.",
+    };
+  }
 
   try {
     const { pages, truncated } = await getTodaysVisitsBounded();

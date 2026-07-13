@@ -14,7 +14,15 @@ production UI or data model is built on top of it.
   requests
 - returns sanitized metadata about the response shape (status codes, key
   names, record counts, pagination fields) — never raw payloads
-- does **not** power any production UI yet
+- **now powers Workspace's live Today's Schedule** via
+  `getAxisCareTodaysSchedule()` → `components/scheduling/TodaysSchedulePanel.tsx`
+  — see
+  [`docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md`](../architecture/SERVE_SCHEDULING_INTELLIGENCE.md)'s
+  "Workspace Today's Schedule (Live)" section for the UI policy
+- **gated behind a server-only release flag**, `AXISCARE_SCHEDULE_ENABLED`
+  — independent of whether AxisCare credentials are configured; see
+  "Release Control" in the architecture doc above for the full policy.
+  Production stays disabled until Hud explicitly approves enabling it.
 - does **not** persist anything to Supabase
 - does **not** write to AxisCare in any way
 
@@ -135,9 +143,20 @@ Server-only, read via `process.env` in exactly one module
 - `AXISCARE_API_VERSION`
 - `AXISCARE_API_BASE_URL`
 
+Plus one release-control flag, also server-only and also read in
+`config.ts` (`isAxisCareScheduleEnabled()`), but semantically distinct
+from the four credentials above — it does not affect authentication and
+is not part of `AxisCareConfig`:
+
+- `AXISCARE_SCHEDULE_ENABLED` — must be exactly `"true"` to enable the
+  Workspace schedule feature; missing/empty/`"false"`/anything else is
+  disabled. See "Release Control" in
+  [`docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md`](../architecture/SERVE_SCHEDULING_INTELLIGENCE.md).
+
 None are prefixed `NEXT_PUBLIC_` — none are reachable from the browser.
 `.env.example` documents these as empty placeholders (no real values); the
-real values live only in the gitignored `.env.local`.
+real values live only in the gitignored `.env.local` (locally) or Netlify
+project environment variables (deployed).
 
 ## Base URL Contract
 
@@ -520,9 +539,13 @@ Resolved via `npm run schedule:preview`'s aggregate-safe output (see
    confirm or correct `lib/scheduling/dateTime.ts`'s two-format assumption
    and `normalize.ts`'s `scheduledStartDate`-preferred-over-`startDate`
    choice.
-4. Build the Workspace Today's Schedule UI on top of
-   `getAxisCareTodaysSchedule()` — explicitly out of scope for this task
-   (Part M), but this is the natural next consumer.
+4. ~~Build the Workspace Today's Schedule UI on top of
+   `getAxisCareTodaysSchedule()`~~ — **done.** Workspace now renders live
+   AxisCare schedule visibility; see
+   [`docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md`](../architecture/SERVE_SCHEDULING_INTELLIGENCE.md)'s
+   "Workspace Today's Schedule (Live)" section. The deterministic exception
+   layer (late/no-clock-in rules, missed-visit inference, historical
+   patterns) remains the next phase, deliberately not built here.
 5. When ready to compare a known CINCH community-care visit across
    systems (see CINCH Provenance above), populate
    `lib/scheduling/normalize.ts`'s `CARE_MODEL_BY_SERVICE_CODE` with the

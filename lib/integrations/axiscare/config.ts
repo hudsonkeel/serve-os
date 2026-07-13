@@ -113,3 +113,18 @@ export function getAxisCareConfig(): AxisCareConfig {
     baseUrl,
   };
 }
+
+// Server-only release control for the Workspace schedule feature —
+// deliberately independent of AxisCare credential configuration above.
+// This is a Serve OS rollout switch, not part of AxisCareConfig: it must
+// be able to keep the feature off in a given environment (e.g.
+// production, until Hud approves) even when credentials are fully
+// configured there, and turning it off must never reveal whether
+// credentials exist — see todaysSchedule.ts, which checks this before
+// touching AxisCare configuration or making any request. Exact,
+// case-sensitive "true" match only; anything else (missing, empty,
+// "false", "TRUE", "1") is disabled. No NEXT_PUBLIC_ prefix — this must
+// never be read by client/browser code.
+export function isAxisCareScheduleEnabled(): boolean {
+  return process.env.AXISCARE_SCHEDULE_ENABLED === "true";
+}

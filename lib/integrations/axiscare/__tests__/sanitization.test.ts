@@ -15,6 +15,8 @@
 // (base URL, headers, envelope shapes) from the supplied AxisCare OpenAPI
 // specification.
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import {
   extractFieldPaths,
   findCinchProvenanceFieldNames,
@@ -27,7 +29,7 @@ import {
   categorizeHttpStatus,
   safeErrorMessage,
 } from "../errors.ts";
-import { getAxisCareConfigurationState } from "../config.ts";
+import { getAxisCareConfigurationState, isAxisCareScheduleEnabled } from "../config.ts";
 import { axisCareGet } from "../client.ts";
 import { getTodaysVisits } from "../visits.ts";
 import { getScheduleSample } from "../schedules.ts";
@@ -637,6 +639,91 @@ test("axisCareGet categorizes a 401 as authentication without leaking body", asy
         }
       );
     }
+  );
+});
+
+// ─── Release-control flag: isAxisCareScheduleEnabled() ──────────────────
+
+function withScheduleFlag<T>(value: string | undefined, fn: () => T): T {
+  const saved = process.env.AXISCARE_SCHEDULE_ENABLED;
+  if (value === undefined) delete process.env.AXISCARE_SCHEDULE_ENABLED;
+  else process.env.AXISCARE_SCHEDULE_ENABLED = value;
+  try {
+    return fn();
+  } finally {
+    if (saved === undefined) delete process.env.AXISCARE_SCHEDULE_ENABLED;
+    else process.env.AXISCARE_SCHEDULE_ENABLED = saved;
+  }
+}
+
+test("isAxisCareScheduleEnabled: missing env var is disabled", () => {
+  withScheduleFlag(undefined, () => {
+    assert.equal(isAxisCareScheduleEnabled(), false);
+  });
+});
+
+test("isAxisCareScheduleEnabled: empty string is disabled", () => {
+  withScheduleFlag("", () => {
+    assert.equal(isAxisCareScheduleEnabled(), false);
+  });
+});
+
+test("isAxisCareScheduleEnabled: 'false' is disabled", () => {
+  withScheduleFlag("false", () => {
+    assert.equal(isAxisCareScheduleEnabled(), false);
+  });
+});
+
+test("isAxisCareScheduleEnabled: 'TRUE'/'True' are disabled — exact case-sensitive match only, no normalization", () => {
+  withScheduleFlag("TRUE", () => {
+    assert.equal(isAxisCareScheduleEnabled(), false);
+  });
+  withScheduleFlag("True", () => {
+    assert.equal(isAxisCareScheduleEnabled(), false);
+  });
+});
+
+test("isAxisCareScheduleEnabled: any other value (e.g. '1', 'yes') is disabled", () => {
+  withScheduleFlag("1", () => {
+    assert.equal(isAxisCareScheduleEnabled(), false);
+  });
+  withScheduleFlag("yes", () => {
+    assert.equal(isAxisCareScheduleEnabled(), false);
+  });
+});
+
+test("isAxisCareScheduleEnabled: exactly 'true' is enabled", () => {
+  withScheduleFlag("true", () => {
+    assert.equal(isAxisCareScheduleEnabled(), true);
+  });
+});
+
+// ─── Release-control flag: no client-side reader exists ─────────────────
+
+function listFilesRecursive(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  return entries.flatMap((entry) => {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) return listFilesRecursive(fullPath);
+    if (/\.(ts|tsx)$/.test(entry.name)) return [fullPath];
+    return [];
+  });
+}
+
+test("AXISCARE_SCHEDULE_ENABLED is never referenced under app/ or components/ (server-only flag, no client reader)", () => {
+  const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+  const candidateFiles = [
+    ...listFilesRecursive(path.join(repoRoot, "app")),
+    ...listFilesRecursive(path.join(repoRoot, "components")),
+  ];
+  const offenders = candidateFiles.filter((file) =>
+    fs.readFileSync(file, "utf8").includes("AXISCARE_SCHEDULE_ENABLED")
+  );
+  assert.deepEqual(
+    offenders,
+    [],
+    `AXISCARE_SCHEDULE_ENABLED must only be read from lib/integrations/axiscare/config.ts, not: ${offenders.join(", ")}`
   );
 });
 

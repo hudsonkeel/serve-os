@@ -57,6 +57,13 @@ const cinchCcmUrl =
 const axisCareUrl =
   process.env.NEXT_PUBLIC_AXISCARE_URL ?? "https://16282.axiscare.com/";
 
+// AxisCare's Real Time View — the live schedule board inside AxisCare
+// itself. Distinct from axisCareUrl above (the platform's bare landing
+// page): this is the specific deep link Today's Schedule links out to so
+// staff can make changes AxisCare remains the system of record for.
+// Derived from the same site origin so the two never drift apart.
+export const axisCareRealTimeViewUrl = `${axisCareUrl.replace(/\/$/, "")}/?realtimeview.php`;
+
 // Single source of truth for every Resident Operations / Care Delivery
 // launch card in Workspace. Label, description, destination, icon, and
 // platform attribution live here exactly once so they cannot drift between

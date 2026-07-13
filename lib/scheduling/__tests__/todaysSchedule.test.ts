@@ -110,6 +110,11 @@ test("13. getAxisCareTodaysSchedule reports not_configured when AxisCare env var
     "AXISCARE_API_BASE_URL",
   ] as const;
   const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  // The release-control flag is checked before configuration — must be
+  // "true" here so this test actually exercises the configuration path
+  // rather than short-circuiting to reason "disabled" first.
+  const savedFlag = process.env.AXISCARE_SCHEDULE_ENABLED;
+  process.env.AXISCARE_SCHEDULE_ENABLED = "true";
   try {
     for (const k of keys) delete process.env[k];
     const result = await getAxisCareTodaysSchedule();
@@ -129,6 +134,8 @@ test("13. getAxisCareTodaysSchedule reports not_configured when AxisCare env var
       if (saved[k] === undefined) delete process.env[k];
       else process.env[k] = saved[k];
     }
+    if (savedFlag === undefined) delete process.env.AXISCARE_SCHEDULE_ENABLED;
+    else process.env.AXISCARE_SCHEDULE_ENABLED = savedFlag;
   }
 });
 
@@ -144,11 +151,16 @@ async function withFakeFetch<T>(
     AXISCARE_SITE_NUMBER: process.env.AXISCARE_SITE_NUMBER,
     AXISCARE_API_VERSION: process.env.AXISCARE_API_VERSION,
     AXISCARE_API_BASE_URL: process.env.AXISCARE_API_BASE_URL,
+    AXISCARE_SCHEDULE_ENABLED: process.env.AXISCARE_SCHEDULE_ENABLED,
   };
   process.env.AXISCARE_API_TOKEN = "axc_fictional_test_token";
   process.env.AXISCARE_SITE_NUMBER = "00000";
   process.env.AXISCARE_API_VERSION = "2023-10-01";
   process.env.AXISCARE_API_BASE_URL = "https://00000.axiscare.com";
+  // This harness exercises the "feature enabled" path by default — the
+  // dedicated Part E flag tests below stub this env var independently and
+  // don't use withFakeFetch.
+  process.env.AXISCARE_SCHEDULE_ENABLED = "true";
 
   // @ts-expect-error — intentionally minimal fetch stub for this test only
   globalThis.fetch = async (input: string | URL) => {
@@ -423,6 +435,75 @@ test("F7. privacy boundaries remain intact on the new summary/activeVisits/timeF
         assert.equal(result.timeFieldAudit.minAbsoluteDifferenceMinutes, 15);
         assert.equal(result.timeFieldAudit.maxAbsoluteDifferenceMinutes, 15);
       }
+    }
+  );
+});
+
+// ─── Release-control flag (AXISCARE_SCHEDULE_ENABLED) ───────────────────
+
+test("disabled (flag unset): getAxisCareTodaysSchedule returns reason 'disabled' and makes zero fetch calls", async () => {
+  let fetchCount = 0;
+  await withFakeFetch(
+    () => {
+      fetchCount += 1;
+      return { ok: true, status: 200, json: async () => ({ results: { visits: [], nextPage: null } }) };
+    },
+    async () => {
+      // Override the harness's default "true" — this test wants the
+      // unset (disabled) case specifically.
+      delete process.env.AXISCARE_SCHEDULE_ENABLED;
+      const result = await getAxisCareTodaysSchedule();
+      assert.equal(result.available, false);
+      if (!result.available) {
+        assert.equal(result.reason, "disabled");
+      }
+      assert.equal(fetchCount, 0, "a disabled feature must never call fetch");
+    }
+  );
+});
+
+test("disabled state does not expose whether AxisCare credentials are configured", async () => {
+  delete process.env.AXISCARE_SCHEDULE_ENABLED;
+  // Credentials fully present — proves the disabled reason is returned
+  // regardless of (and without inspecting/revealing) credential state.
+  const savedEnv = {
+    AXISCARE_API_TOKEN: process.env.AXISCARE_API_TOKEN,
+    AXISCARE_SITE_NUMBER: process.env.AXISCARE_SITE_NUMBER,
+    AXISCARE_API_VERSION: process.env.AXISCARE_API_VERSION,
+    AXISCARE_API_BASE_URL: process.env.AXISCARE_API_BASE_URL,
+  };
+  process.env.AXISCARE_API_TOKEN = "axc_fictional_test_token";
+  process.env.AXISCARE_SITE_NUMBER = "00000";
+  process.env.AXISCARE_API_VERSION = "2023-10-01";
+  process.env.AXISCARE_API_BASE_URL = "https://00000.axiscare.com";
+  try {
+    const result = await getAxisCareTodaysSchedule();
+    assert.equal(result.available, false);
+    const serialized = JSON.stringify(result);
+    assert.ok(!serialized.includes("tokenPresent"));
+    assert.ok(!serialized.includes("configured"));
+    assert.ok(!serialized.includes("missing"));
+    assert.ok(!serialized.toLowerCase().includes("token"));
+  } finally {
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});
+
+test("enabled ('true'): getAxisCareTodaysSchedule preserves the existing live-fetch path", async () => {
+  let fetchCount = 0;
+  await withFakeFetch(
+    () => {
+      fetchCount += 1;
+      return { ok: true, status: 200, json: async () => ({ results: { visits: [], nextPage: null } }) };
+    },
+    async () => {
+      process.env.AXISCARE_SCHEDULE_ENABLED = "true";
+      const result = await getAxisCareTodaysSchedule();
+      assert.equal(result.available, true);
+      assert.ok(fetchCount > 0, "an enabled feature must call fetch");
     }
   );
 });

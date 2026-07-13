@@ -157,6 +157,13 @@ export interface ServeTimeFieldAudit {
 }
 
 export type ServeTodaysScheduleUnavailableReason =
+  // AXISCARE_SCHEDULE_ENABLED is not exactly "true" — a Serve OS release
+  // decision, distinct from every reason below (all of which describe an
+  // AxisCare-side or credential-side problem). No AxisCare request is
+  // made and no credential-presence information is included when this
+  // reason is returned — see lib/integrations/axiscare/config.ts's
+  // isAxisCareScheduleEnabled() and todaysSchedule.ts.
+  | "disabled"
   | "not_configured"
   | "authentication"
   | "authorization"

@@ -24,9 +24,10 @@ not convenience.
   domain (`ServeScheduleVisit`, `ServeRecurringSchedule`,
   `ServeTodaysScheduleResult`) that the rest of Serve OS consumes instead
   of raw AxisCare records. See "Domain Model" below.
-- **Workspace Today's Schedule** — not built in this task (explicitly
-  deferred). `getAxisCareTodaysSchedule()` is ready to be called from a
-  future Workspace page; no UI work has started.
+- **Workspace Today's Schedule — live.** Workspace now renders
+  `components/scheduling/TodaysSchedulePanel.tsx`, a server-rendered,
+  read-only view built directly on `getAxisCareTodaysSchedule()`. See
+  "Workspace Today's Schedule (Live)" below for the UI policy.
 - **Deterministic exceptions** — status normalization
   (`lib/scheduling/status.ts`) surfaces `unassigned`/`unknown` visits from
   explicit field evidence only. No time-based "missed" inference exists
@@ -109,6 +110,103 @@ assigned).
   exactly the kind of unsupported guess this program avoids. A removed
   visit's `status` is `"removed"` — a distinct value, not folded into
   `"missed"` or `"cancelled"`.
+
+## Workspace Today's Schedule (Live)
+
+Workspace ("Do") replaced its static Today's Schedule placeholder with a
+live, read-only view. Data flow and UI policy:
+
+- **Server-only, single fetch per render.** `app/workspace/page.tsx` calls
+  `getAxisCareTodaysSchedule()` once, inside the page's existing
+  `Promise.all(...)`, and passes the resulting `ServeTodaysScheduleResult`
+  down as a prop to `TodaysSchedulePanel`. No component calls AxisCare
+  from the browser, and no component re-fetches — every child
+  (`ScheduleSummaryMetrics`, `ScheduleVisitRow`, `ScheduleUnavailableState`)
+  only ever receives already-normalized Serve types as props. Nothing
+  under `components/` imports an `AxisCareRaw*` type.
+- **Freshness.** Workspace already declares `export const dynamic =
+  "force-dynamic"; export const revalidate = 0;` — every page request
+  re-fetches the live schedule server-side. No client-side polling was
+  added; "refresh" is simply reloading Workspace.
+- **Visits-primary UI policy.** The panel renders `activeVisits` only,
+  split into two sections: "Attention Needed" (active visits with
+  `assigned: false`, sorted by `scheduledStart` ascending) above "Today's
+  Visits" (the remaining active visits, same sort). Removed visits never
+  render in either list — `summary.removedVisitCount` is shown only as a
+  quiet, secondary line, never as urgent work. `sourceRecordCount` is
+  never shown as the headline total.
+- **Summary metrics.** Four primary cards — Active Visits
+  (`summary.activeVisitCount`), Unassigned (`summary.activeUnassignedCount`,
+  visually emphasized when `> 0`), In Progress
+  (`summary.inProgressCount`), Completed (`summary.completedCount`) — plus
+  a quiet secondary line for Scheduled and (when nonzero) removed-visit
+  count. These are explicitly not mutually exclusive categories.
+- **Time formatting.** `lib/scheduling/format.ts` renders
+  `scheduledStart`/`scheduledEnd` in the visit's own `timezone` field
+  (falling back to `America/Chicago`), e.g. "8:00 AM–10:00 AM" — never the
+  rendering browser's local timezone, never raw UTC. A zone note only
+  appears when a visit's timezone genuinely differs from Central (the
+  live-confirmed `"US/Central"` alias is treated as Central, not foreign).
+  "Updated [time]" (header) is likewise always Central-time, from
+  `fetchedAt`.
+- **Fallback states.** Every `available: false` reason maps to one fixed,
+  generic sentence (`UNAVAILABLE_SCHEDULE_COPY` in `format.ts`) — the raw
+  `safeMessage`/vendor error text is never rendered, only used for future
+  server-side logging. The AxisCare deep link remains visible in every
+  fallback state so staff always have a path to the system of record.
+- **AxisCare deep link.** `axisCareRealTimeViewUrl` (derived in
+  `lib/workflows/serveWorkflows.ts` from the same `NEXT_PUBLIC_AXISCARE_URL`
+  origin as the existing Traditional Home Care launch card) opens
+  AxisCare's Real Time View in a new tab (`target="_blank" rel="noopener
+  noreferrer"`). Copy is explicit that Serve OS cannot edit the schedule —
+  AxisCare remains the system of record.
+- **No new persistence, write-back, webhooks, or LLM behavior** were added
+  by this UI. Exception detection (late/no-clock-in rules, missed-visit
+  inference, duration variance, recurring-reassignment detection,
+  historical patterns, recommendations) remains explicitly deferred — see
+  "Future" below.
+
+## Release Control — `AXISCARE_SCHEDULE_ENABLED`
+
+The Workspace schedule feature is controllable independently of AxisCare
+credentials, via a server-only flag: `AXISCARE_SCHEDULE_ENABLED`.
+
+- **Implementation:** `isAxisCareScheduleEnabled()` in
+  `lib/integrations/axiscare/config.ts` — `process.env.AXISCARE_SCHEDULE_ENABLED
+  === "true"`, exact case-sensitive match only. Missing, empty, `"false"`,
+  `"TRUE"`/`"True"`, or any other value is disabled. No `NEXT_PUBLIC_`
+  prefix; never read by client/browser code (enforced by a repo-wide test
+  scan — see `sanitization.test.ts`'s "no client reader" test).
+- **Checked first, before credentials.** `getAxisCareTodaysSchedule()`
+  checks this flag before calling `getAxisCareConfigurationState()`/
+  `getAxisCareConfig()` or making any request. A disabled feature makes
+  **zero** AxisCare requests and never reveals whether credentials are
+  configured — the returned result (`reason: "disabled"`) is
+  indistinguishable, from the caller's perspective, from an environment
+  with no AxisCare credentials at all.
+- **UI treatment is deliberately not an error state.** `reason: "disabled"`
+  renders a calm external-launch panel ("Schedule managed in AxisCare" /
+  "Live schedule visibility is not currently enabled in Serve OS." / Open
+  AxisCare Real Time View) — distinct from `not_configured`,
+  `authentication`, `authorization`, `timeout`, `upstream_unavailable`,
+  and `invalid_response`/`unknown`, all of which keep their existing
+  "something needs attention" framing. See
+  `components/scheduling/ScheduleUnavailableState.tsx`.
+- **Rollout policy:** Deploy Preview / branch-deploy contexts run with
+  `AXISCARE_SCHEDULE_ENABLED=true` so the live feature can be verified
+  pre-merge. **Production remains `false` (or absent) until Hud explicitly
+  approves enabling it** — this is a manual, deliberate step, not an
+  automatic consequence of merging.
+- **Do not rely on removing the token as the routine way to turn this
+  feature off.** The flag is the normal control. Revoking the AxisCare
+  token is an emergency/last-resort measure (immediate credential
+  invalidation), not how this feature is meant to be toggled day to day.
+- **Emergency shutdown options, in order of preference:**
+  1. Set `AXISCARE_SCHEDULE_ENABLED=false` (or remove it) in the relevant
+     Netlify deploy context and redeploy.
+  2. Revoke the AxisCare API token, for immediate credential invalidation
+     (affects every consumer of that token, not just this feature).
+  3. Roll back the Netlify deploy to the last known-good build.
 
 ## Status Normalization
 

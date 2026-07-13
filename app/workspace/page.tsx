@@ -12,8 +12,10 @@ import {
 } from "lucide-react";
 import { PageContainer } from "@/components/PageContainer";
 import { WorkspaceLaunchCard } from "@/components/workspace/WorkspaceLaunchCard";
+import { TodaysSchedulePanel } from "@/components/scheduling/TodaysSchedulePanel";
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { getRecruitingLeads } from "@/lib/data/recruitingLeads";
+import { getAxisCareTodaysSchedule } from "@/lib/scheduling/todaysSchedule";
 import {
   getWorkflowsByCategory,
   isExternalWorkflow,
@@ -161,10 +163,11 @@ const workspaceSections = [
 ];
 
 export default async function WorkspacePage() {
-  const [profile, community, recruiting] = await Promise.all([
+  const [profile, community, recruiting, schedule] = await Promise.all([
     getCurrentAuthorizedUser(),
     getCommunityMetrics(),
     getRecruitingLeads(),
+    getAxisCareTodaysSchedule(),
   ]);
   const currentUser = buildCurrentUserDisplay(profile);
   const greeting = getCentralTimeGreeting();
@@ -258,26 +261,7 @@ export default async function WorkspacePage() {
           </div>
         </section>
 
-        <section className="py-10">
-          <div className="mb-5 flex items-baseline justify-between">
-            <h2 className="font-serif text-section-title font-light text-body">
-              Today&apos;s Schedule
-            </h2>
-            <a
-              href="#"
-              className="inline-flex h-9 items-center font-sans text-sm font-medium text-navy transition-colors hover:text-navy-light"
-            >
-              View all
-            </a>
-          </div>
-          <div className="rounded-xl border border-ivory-border bg-surface px-6 py-10 text-center shadow-card">
-            <p className="font-serif text-xl text-muted">No schedule is connected yet</p>
-            <p className="mt-2 font-sans text-sm text-muted">
-              Live visits and caregiver assignments will appear here when scheduling
-              integration is available.
-            </p>
-          </div>
-        </section>
+        <TodaysSchedulePanel result={schedule} />
 
         <section className="py-10">
           <h2 className="mb-5 font-serif text-section-title font-light text-body">

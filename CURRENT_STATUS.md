@@ -373,3 +373,117 @@ into a structured registry,
   are stated as committed or already working.
 - No backend, schema, env var, or credential-handling change. Presentation
   only.
+
+## 2026-07-12 — AxisCare Read-Only Discovery (Phase 1 Spike)
+
+Branch: `feature/axiscare-read-only-schedule`. Server-only, read-only
+AxisCare integration boundary added at `lib/integrations/axiscare/` —
+config validation, an auth'd GET-only HTTP client, thin wrappers for
+visits/schedules/clients/caregivers, and a sanitized discovery layer. Full
+detail in
+[`docs/integrations/AXISCARE_READ_ONLY_INTEGRATION.md`](docs/integrations/AXISCARE_READ_ONLY_INTEGRATION.md).
+
+- Discovery script (`npm run axiscare:discover`) and a pure-function test
+  suite (`npm run test:axiscare`) both verified working via Node's native
+  TypeScript execution — no new build tooling added, only the small
+  official `server-only` package plus one `tsconfig.json` flag
+  (`allowImportingTsExtensions`) to let the integration's internal relative
+  imports resolve under both Next.js and plain Node.
+- No live AxisCare API call was made in this task (out of scope by
+  instruction) — verified the script's unconfigured/error paths only, plus
+  fictional-fixture tests. Real endpoint paths, headers, and response shape
+  are documented as unverified assumptions pending a real discovery run.
+- No write capability exists anywhere in this integration — `axisCareGet()`
+  hardcodes `GET`, no method parameter exists to override it.
+
+Not yet complete:
+
+- Real discovery run against live AxisCare API (requires Hud to run
+  `npm run axiscare:discover` locally with `.env.local` populated).
+- Vendor-neutral `ServeScheduleVisit` model — explicitly deferred to a
+  follow-up task per this phase's scope.
+- Production Today's Schedule UI — not started, explicitly out of scope
+  for this spike.
+
+## 2026-07-12 — Workspace Today's Schedule Goes Live
+
+Branch: `feature/axiscare-read-only-schedule`. Workspace's static Today's
+Schedule placeholder is replaced with a live, read-only view built on the
+now-tested `getAxisCareTodaysSchedule()` service and the vendor-neutral
+`lib/scheduling/` model. Full policy in
+[`docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md`](docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md)'s
+"Workspace Today's Schedule (Live)" section.
+
+- New `components/scheduling/` components (`TodaysSchedulePanel`,
+  `ScheduleSummaryMetrics`, `ScheduleVisitRow`, `ScheduleUnavailableState`)
+  and a new pure-formatting module, `lib/scheduling/format.ts` (status
+  labels/badge tones, timezone-safe time-range formatting, chronological
+  sort, fallback copy).
+- `app/workspace/page.tsx` now fetches the schedule once, server-side,
+  alongside its existing `Promise.all` data calls — no new client-side
+  fetch, no polling added.
+- Active visits only; removed visits never appear in the list and never
+  inflate the Unassigned count. Unassigned active visits surface in a
+  dedicated "Attention Needed" section above the chronological "Today's
+  Visits" list.
+- A new `axisCareRealTimeViewUrl` export in `lib/workflows/serveWorkflows.ts`
+  (derived from the existing AxisCare origin) gives every schedule state —
+  including every fallback state — a working link back to AxisCare's Real
+  Time View. Serve OS still writes nothing back to AxisCare.
+- `components/ScheduleCard.tsx` (already unused/dead code prior to this
+  task) was left in place, untouched and still unused — retired in effect,
+  not deleted.
+- Test suite grew from 45 to 60 passing scheduling/AxisCare tests
+  (`npm run test:scheduling`, `npm run test:axiscare`); `npm run build`
+  succeeds. `npm run lint` has one pre-existing failure in
+  `components/auth/ResetPasswordForm.tsx`, unrelated to this task.
+
+Not yet complete (explicitly deferred, per this task's own scope):
+
+- Deterministic exception detection (late/no-clock-in rules, missed-visit
+  inference, duration variance, recurring-reassignment detection).
+- Historical/trend intelligence beyond today's snapshot.
+- Any write-back, Supabase persistence of AxisCare data, or webhooks.
+
+## 2026-07-13 — Manually Validated; Release Flag, Preview Prep
+
+Branch: `feature/axiscare-read-only-schedule`. Phase 1 (read-only AxisCare
+schedule visibility in Workspace) has been manually compared against
+AxisCare Real Time View and confirmed accurate — active visits, caregiver
+assignments, times, removed-visit exclusion, and the actionable unassigned
+count all match; the AxisCare deep link works; no write-back exists.
+
+**New: server-only release flag, `AXISCARE_SCHEDULE_ENABLED`.** The
+Workspace schedule feature is now controllable independently of AxisCare
+credentials — see "Release Control" in
+[`docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md`](docs/architecture/SERVE_SCHEDULING_INTELLIGENCE.md).
+
+- Exact `"true"` match only (case-sensitive); missing/empty/`"false"`/any
+  other value is disabled. No `NEXT_PUBLIC_` prefix.
+- Checked before any AxisCare configuration/credential lookup —
+  `reason: "disabled"` makes zero AxisCare requests and never reveals
+  whether credentials are configured.
+- Disabled state renders a calm external-launch panel ("Schedule managed
+  in AxisCare"), not an error state — distinct from every
+  configuration/authentication/timeout fallback.
+- **Preview policy:** Deploy Preview / branch-deploy contexts run with
+  `AXISCARE_SCHEDULE_ENABLED=true`. **Production remains disabled until
+  Hud explicitly approves enabling it.**
+- Emergency shutdown, in order of preference: (1) set the flag `false` and
+  redeploy, (2) revoke the AxisCare token, (3) roll back the Netlify
+  deploy.
+- 7 new tests added (flag-value matrix, disabled-makes-no-fetch,
+  disabled-hides-credential-presence, enabled-preserves-existing-path, and
+  a repo-wide static scan confirming no `app/`/`components/` file ever
+  reads `AXISCARE_SCHEDULE_ENABLED`). Full suite: 68 passing
+  (`npm run test:axiscare` + `npm run test:scheduling`); `npm run build`
+  succeeds; `npm run lint` unchanged from baseline (one pre-existing,
+  unrelated failure in `ResetPasswordForm.tsx`).
+
+This session's remaining scope: commit this work in coherent history, push
+`feature/axiscare-read-only-schedule`, produce and inspect a non-production
+Netlify preview with the flag enabled, and confirm required Netlify
+environment-variable names/deploy contexts — explicitly stopping short of
+any merge or production deploy. See the branch's commit history and the
+session record for exact status; production `AXISCARE_SCHEDULE_ENABLED`
+must remain `false`/absent until Hud explicitly approves otherwise.
