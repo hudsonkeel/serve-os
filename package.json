@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "axiscare:discover": "node --env-file-if-exists=.env.local --experimental-strip-types --conditions=react-server scripts/axiscare-discovery.ts",
     "test:axiscare": "node --experimental-strip-types --conditions=react-server lib/integrations/axiscare/__tests__/sanitization.test.ts",
     "test:scheduling": "node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/dateTime.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/status.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/normalize.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/todaysSchedule.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/format.test.ts",
+    "test:intelligence": "node --experimental-strip-types --conditions=react-server lib/intelligence/core/__tests__/boundaries.test.ts",
     "schedule:preview": "node --env-file-if-exists=.env.local --experimental-strip-types --conditions=react-server scripts/serve-schedule-preview.ts"
   },
   "dependencies": {
