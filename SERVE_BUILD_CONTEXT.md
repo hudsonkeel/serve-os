@@ -94,6 +94,12 @@ integration** (see next section).
 
 ## Phase 2 objective
 
+**Before designing or implementing any Serve Intelligence capability in a
+new session, read
+[`docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md`](docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md)
+first.** It is the governing philosophical and architectural document for
+the whole platform, across every domain — read it before this section.
+
 Serve OS has completed its Phase 1 operational platform foundation and
 is entering **Phase 2 — Operational Intelligence**: deterministic
 intelligence engines (not new pages) that explain, prioritize,

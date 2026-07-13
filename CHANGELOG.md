@@ -169,3 +169,32 @@ at the time.
 - Deploy-target discrepancy: `netlify.toml`/`SERVE_APP_URL` reference
   Netlify, but a live GitHub check-run query shows Vercel is what
   currently auto-deploys this repository on push. Not yet reconciled.
+
+## 2026-07-13 — Serve Intelligence Constitution
+
+### Added
+
+- **`docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md`** — the
+  canonical, permanent governing document for the Serve Intelligence
+  Platform. Establishes the platform's purpose, human-authority
+  principle, deterministic-before-AI discipline, the Knowledge/
+  Reasoning/Recommendation three-layer model, the explicit AI-assist vs.
+  AI-forbidden boundary, vendor neutrality, the organizational-learning
+  loop, and auditability/privacy/stewardship expectations. Design-only —
+  no architecture decision was changed to produce this document; it
+  formalizes decisions already made across the three prior Serve
+  Intelligence Platform design sessions (initial proposal, primitive
+  refinement, layered reconciliation).
+- Brief cross-references added to `README.md` ("Start Here"),
+  `ARCHITECTURE.md` (Phase 2 section), and `SERVE_BUILD_CONTEXT.md`
+  (Phase 2 objective section) pointing future sessions and readers at
+  the Constitution before any intelligence-domain work begins. No
+  content duplicated — each reference links to the canonical file.
+
+### Not yet done
+
+- No Serve Intelligence Platform code, types, or database schema exist
+  yet. This entry is documentation only, consistent with every prior
+  Serve Intelligence Platform session in this period (audit → primitive
+  design → layered reconciliation → this constitutional document) —
+  implementation has not begun.

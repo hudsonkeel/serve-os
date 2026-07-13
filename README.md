@@ -1,5 +1,14 @@
 # Serve OS
 
+## Start Here
+
+Before designing or building any Serve Intelligence capability (Scheduling
+Intelligence, Relationship Intelligence, or any future intelligence
+domain), read
+[`docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md`](./docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md)
+first. It is the governing philosophical and architectural document for
+that platform.
+
 Serve OS is the internal operating system for Serve Caregiving — the
 operational intelligence and coordination layer above the external
 systems that actually execute work (AxisCare, CINCH CCM, Apploi,
@@ -113,3 +122,4 @@ resolved.
 | [`docs/architecture/`](./docs/architecture/) | Operating model, navigation model, Settings architecture, scheduling intelligence |
 | [`docs/integrations/`](./docs/integrations/) | Per-vendor integration policy |
 | [`docs/design/`](./docs/design/) | Design System 2.0 |
+| [`docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md`](./docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md) | Governing document for the Serve Intelligence Platform |

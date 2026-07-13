@@ -324,6 +324,13 @@ description of current behavior.
 
 ### Phase 2 — Operational Intelligence (architecture framing, not implementation)
 
+**Governing document:** all Serve Intelligence Platform architecture —
+current and future, every domain — is governed by
+[`docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md`](docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md).
+Read it before designing or implementing any intelligence capability;
+this section summarizes technical framing only, the Constitution is the
+philosophical and architectural authority.
+
 Serve OS has completed its primary operational platform foundation and
 is entering Phase 2. This phase is primarily about architecture — shared
 reasoning infrastructure — not new pages. Full decision recorded in
