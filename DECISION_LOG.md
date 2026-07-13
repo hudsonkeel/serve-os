@@ -154,3 +154,59 @@ Every future governance module's software layer should be evaluated against one 
 
 ### Result
 This refines the 2026-07-01 "external systems will be gradually replaced" decision and the 2026-07-06 "orchestrate rather than replace" decision into a concrete, testable boundary. Recorded in full as [`docs/architecture/serve-os-scope-philosophy.md`](docs/architecture/serve-os-scope-philosophy.md). Applied retroactively to the Future Serve OS Module Inventory in [`docs/architecture/serve-governance-crosswalk.md`](docs/architecture/serve-governance-crosswalk.md) §3 — Personnel Manager, Training Manager, Competency Manager, and Document Manager reframed from owned systems to vendor-integration surfaces (compliance-status views and an audit-evidence index, not duplicate record stores); Background Eligibility Engine, Client Record Manager, Incident Manager, Emergency Manager, Audit Manager, and Policy Manager confirmed already correctly scoped as Serve-owned.
+
+## 2026-07-09
+
+### Decision
+Future continuation prompts should be short orientation tools, not full archives.
+
+### Reason
+The documentation files already preserve architecture, decisions, status, deployment history, and build context. New chats need enough context to restart well without becoming overloaded.
+
+### Result
+Use three sections for future continuation prompts: (1) where we are, (2) what we are building next, (3) how to think. Long historical detail stays in the documentation files, not in every new chat prompt.
+
+---
+
+### Decision
+Serve OS development should continue prioritizing usability and operational clarity before adding intelligence or automation layers.
+
+### Reason
+The platform only matters if it makes daily work easier for Serve employees.
+
+## 2026-07-12
+
+### Decision
+Formalize the top-level operating model: Dashboard = Know, Workspace = Do, Residents = Manage, Ask Serve = Think. Each page owns exactly one of these modes; a component that doesn't clearly fit one is documented as an open ambiguity rather than placed by guess.
+
+### Reason
+Dashboard and Workspace had converged on the same job — both showed Today's Schedule, Starting This Week, and workflow launch points (Dashboard's Quick Actions duplicated Workspace's launch cards under different labels). This made it unclear which page to open for a given need and created two places where the same launch destination could drift apart.
+
+### Result
+This refines the 2026-07-01 "Workspace becomes the operational home, Dashboard remains executive intelligence" decision and the 2026-07-06 "Serve OS becomes the employee's operational home screen" decision into a concrete, testable page-ownership boundary. Recorded in full as [`docs/architecture/SERVE_OS_OPERATING_MODEL.md`](docs/architecture/SERVE_OS_OPERATING_MODEL.md).
+
+Concretely:
+- Dashboard: removed Quick Actions, Today's Schedule, and Starting This Week; rebalanced into Community Snapshot → Relationship Pipeline → Resident Wellness → Staffing & Recruiting, each metric card an optional investigative link into a filtered Residents/Prospects/Recruiting view (never a creation workflow).
+- Workspace: gained Today's Schedule and Starting This Week (moved from Dashboard, same honest "not yet connected" placeholder copy, reworded per page purpose); Resident Operations and Care Delivery launch cards now render from a new shared registry, `lib/workflows/serveWorkflows.ts`, instead of being defined inline.
+- `/ask-serve-ai` confirmed unreferenced anywhere in the app (Sidebar, Workspace, and every page were searched) — flagged in the architecture doc as a duplicate for a future cleanup pass rather than deleted in this task.
+- No Supabase schema, server action, or business-logic change. No new AI behavior added to Ask Serve.
+
+---
+
+### Decision
+Extend the operating model to the full sidebar: Community Intelligence = Think proactively, Communications = ensure nothing important is missed, Settings = configure/govern/secure/connect. Remove Recruiting, Scheduling, and Care Plans as top-level sidebar items without deleting any route.
+
+### Reason
+Recruiting was a permanent sidebar item despite being operational work, not a fifth awareness/action/management/reasoning domain — it was competing for top-level space with genuinely distinct domains. Scheduling and Care Plans were dimmed placeholders pointing at nothing. Settings was a decorative, non-clickable label with no route at all, despite the platform needing a real (if deliberately scoped) place to see account, organization, integration, and governance context.
+
+### Result
+Recorded in full as [`docs/architecture/SERVE_OS_NAVIGATION_MODEL.md`](docs/architecture/SERVE_OS_NAVIGATION_MODEL.md) and [`docs/architecture/SERVE_OS_SETTINGS_ARCHITECTURE.md`](docs/architecture/SERVE_OS_SETTINGS_ARCHITECTURE.md).
+
+- Sidebar order is now: Workspace, Dashboard, Residents, Community Intelligence, Ask Serve — Coming Soon: Communications — System: Settings.
+- `/recruiting` was not deleted; it remains reachable from Workspace's new "Recruiting & Hiring" section ("Open Recruiting Pipeline") and the existing Today's Work applicant count.
+- Scheduling and Care Plans never had routes, so removing their sidebar placeholders orphans nothing.
+- Community Intelligence's existing illustrative metrics were reorganized under five named categories (Resident Wellness, Relationship Intelligence, Scheduling Intelligence, Operational Best Practices, Quality/Compliance), each honestly labeled "Illustrative" or "Not Yet Connected" — no insight was manufactured from data Serve OS doesn't have.
+- `/settings` is now a real authenticated route with six sections (My Account, Users & Roles, Organization & Communities, Workflow Configuration, Integrations, Governance & Audit); only My Account and a real, presence-only-checked Integrations status list show live data — everything else is an honest future-state description, gated to manager/executive/admin roles using the existing `AUTH_ROLES` model. No new write actions, no new database migrations, no secrets exposed client-side.
+
+### Result
+Near-term development stays focused on workflow clarity, live data usefulness, resident-centered operations, and employee usability.

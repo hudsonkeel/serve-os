@@ -256,3 +256,120 @@ Current development priorities are now:
 5. Introduce operational intelligence only after core workflows are mature.
 
 Development emphasis has shifted from infrastructure construction toward workflow optimization and employee adoption.
+
+## 2026-07-09 Documentation Checkpoint
+
+Reaffirmed current state of Serve OS as an operational pilot with:
+
+- Employee authentication
+- Workspace page
+- Resident directory connected to live Supabase data
+- Resident detail pages
+- Employee Portal connection from the public website
+- Watermere resident data
+- External operational system launch links
+
+Re-centered product philosophy:
+
+- Serve OS is the operational layer, not a replacement for every platform.
+- The system should reduce clicks, cognitive load, and confusion.
+- Features should help Elizabeth / Serve staff complete real work more easily.
+
+Refined the Serve OS continuation prompt used to open future development chats — see [`DECISION_LOG.md`](./DECISION_LOG.md) 2026-07-09 entries.
+
+Current north star: Serve OS should become the primary daily operating workspace for Serve Caregiving while maintaining production stability.
+
+## 2026-07-12 — Operating Model Formalized
+
+Dashboard and Workspace no longer overlap. Each top-level page now owns
+exactly one mode — Dashboard = Know, Workspace = Do, Residents = Manage,
+Ask Serve = Think — recorded in full at
+[`docs/architecture/SERVE_OS_OPERATING_MODEL.md`](docs/architecture/SERVE_OS_OPERATING_MODEL.md).
+
+Completed this pass:
+
+- Removed Dashboard's Quick Actions, Today's Schedule, and Starting This
+  Week (Quick Actions duplicated Workspace launch cards under different
+  labels; the other two are action-oriented and belong in Workspace).
+- Dashboard rebalanced into a four-section story: Community Snapshot,
+  Relationship Pipeline, Resident Wellness, Staffing & Recruiting. Metric
+  cards may now link to a filtered investigative view (never a creation
+  workflow).
+- Workspace gained Today's Schedule and Starting This Week (moved, not
+  duplicated).
+- New shared workflow registry, `lib/workflows/serveWorkflows.ts`, is now
+  the single source of truth for Workspace's Resident Operations and Care
+  Delivery launch cards.
+- `/ask-serve-ai` confirmed unreferenced anywhere in the app — flagged for a
+  future cleanup pass, not deleted in this task.
+
+Not yet complete:
+
+- `/ask-serve-ai` removal/reconciliation.
+- Prospects inbox does not yet support a URL-driven status filter, so
+  Dashboard's Needs Follow-up / Pending Assessments / Families Awaiting
+  Proposal cards link to the unfiltered `/prospects` view rather than a
+  pre-filtered one.
+- Recruiting's "needing attention" filter is duplicated inline (Dashboard,
+  Workspace) rather than centralized — acceptable at its current size, but
+  worth revisiting if more surfaces need it.
+
+## 2026-07-12 — Sidebar and Settings Aligned to the Operating Model
+
+Full navigation now matches the operating model — Workspace, Dashboard,
+Residents, Community Intelligence, Ask Serve; Coming Soon: Communications;
+System: Settings. Recorded in full at
+[`docs/architecture/SERVE_OS_NAVIGATION_MODEL.md`](docs/architecture/SERVE_OS_NAVIGATION_MODEL.md)
+and
+[`docs/architecture/SERVE_OS_SETTINGS_ARCHITECTURE.md`](docs/architecture/SERVE_OS_SETTINGS_ARCHITECTURE.md).
+
+Completed this pass:
+
+- Removed Recruiting, Scheduling, and Care Plans from the sidebar.
+  `/recruiting` remains fully functional, now reachable from Workspace's
+  new "Recruiting & Hiring" section ("Open Recruiting Pipeline"). Scheduling
+  and Care Plans never had routes, so nothing was orphaned.
+- Community Intelligence reframed with honest helper copy distinguishing it
+  from Ask Serve, and its existing illustrative metrics reorganized under
+  five named categories (two — Scheduling Intelligence, Quality/Compliance —
+  now show an honest "Not Yet Connected" state instead of no framing at
+  all).
+- Ask Serve helper copy updated with an explicit proactive-vs-on-demand
+  distinction from Community Intelligence.
+- `/settings` is now a real authenticated route (previously a decorative,
+  non-clickable sidebar label) with six sections; only My Account and a
+  real Integrations status list (presence-checked, no secrets) show live
+  data, gated to manager/executive/admin using the existing role model.
+
+Not yet complete:
+
+- Communications still has no route — remains a dimmed "Coming Soon"
+  sidebar label, per this task's explicit scope.
+- Settings: Users & Roles, Workflow Configuration, and Governance & Audit
+  are honest future-state descriptions only — no admin backend exists yet.
+- `/settings` is automatically covered by the existing `proxy.ts` route
+  matcher (Next.js's renamed middleware) — no gating change was needed to
+  protect it; verified it redirects to `/login?next=/settings` when
+  unauthenticated.
+
+## 2026-07-12 — Settings Integrations: Three-Attribute Model
+
+Settings > Integrations now shows Current Status, Role in Serve OS, and
+Current/Future Scope for all ten integrations, not just a status badge and
+a one-line summary. Moved from an inline array in `app/settings/page.tsx`
+into a structured registry,
+[`app/settings/integrations.ts`](app/settings/integrations.ts)
+(`IntegrationDefinition[]`). Full status/role/scope semantics recorded in
+[`docs/architecture/SERVE_OS_SETTINGS_ARCHITECTURE.md`](docs/architecture/SERVE_OS_SETTINGS_ARCHITECTURE.md).
+
+- Status labels expanded for clarity: "Connected Integration", "External
+  System Link", "Planned Integration", "Not Connected" — no longer the
+  shorter, more definitive-sounding forms.
+- SAS Answering Service kept its `planned` status; the ongoing vendor trial
+  is expressed through `currentScope` ("Trial in progress"), not a new
+  "Trial" status.
+- Every external-launch and planned integration's `futureScope` is
+  qualified ("future," "where supported," "subject to API access") — none
+  are stated as committed or already working.
+- No backend, schema, env var, or credential-handling change. Presentation
+  only.

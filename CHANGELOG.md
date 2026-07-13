@@ -78,3 +78,10 @@ Major Milestone
 - Planned the evolution of Resident Detail into a comprehensive Resident 360 experience.
 - Prioritized workflow optimization ahead of additional AI functionality.
 - Refined the long-term product roadmap around employee usability and operational simplicity.
+
+## 2026-07-09
+
+### Changed
+
+- Refined the Serve OS continuation prompt used to start future development chats — reduced to three sections (where we are, what we are building next, how to think) rather than a full archive.
+- Reaffirmed operational pilot status and re-centered product philosophy around reducing clicks, cognitive load, and confusion for Serve staff. No code changes.

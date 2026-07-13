@@ -195,11 +195,11 @@ Each supporting document is tagged with what it becomes once the Future Canonica
 
 | Field | Value |
 |---|---|
-| Current Canonical Source | Operational Readiness & Audit Preparedness Roadmap (`serve-os/documents/`, currently untracked) |
-| Future Canonical Source | Same document, migrated to `docs/architecture/` and formally adopted — it remains authoritative over program sequencing and vision, not over any specific policy's content |
+| Current Canonical Source | Operational Readiness & Audit Preparedness Roadmap (`docs/architecture/`, moved 2026-07-12, still untracked pending commit) |
+| Future Canonical Source | Same document, formally adopted — it remains authoritative over program sequencing and vision, not over any specific policy's content |
 | Supporting Documents | Serve Compliance Coverage Matrix, Serve Governance Crosswalk, Serve Knowledge Architecture Inventory (all → Implementation — this entire architecture series is Phase 1 of this roadmap's own stated plan) |
-| Migration Strategy | Move into `docs/architecture/` essentially immediately — this is close to a zero-effort migration and should not wait for its position in the broader sequence below. Update its "Near-Term Roadmap" section as each phase in this registry's recommended sequence actually completes, since it is a living document rather than a one-time artifact. |
-| Current Status | Fully Canonical at the architecture layer; Needs Migration (untracked). |
+| Migration Strategy | Done — moved into `docs/architecture/` 2026-07-12. Update its "Near-Term Roadmap" section as each phase in this registry's recommended sequence actually completes, since it is a living document rather than a one-time artifact. |
+| Current Status | Fully Canonical at the architecture layer; correctly located, untracked pending commit. |
 
 ---
 
@@ -226,7 +226,7 @@ Fully canonical here means an unambiguous single current source — not that gov
 
 ## Recommended Migration Sequence
 
-1. **Operational Readiness & Audit Preparedness Roadmap** — migrate into `docs/architecture/` immediately; near-zero effort, and every other sequencing decision in this list is downstream of the vision it states.
+1. ~~**Operational Readiness & Audit Preparedness Roadmap**~~ — done 2026-07-12: moved into `docs/architecture/`; every other sequencing decision in this list is downstream of the vision it states.
 2. **Emergency Preparedness** — charter next; cleanest existing content, highest life-safety stakes, least transformation required.
 3. **Incident Reporting** — sequence alongside Emergency Preparedness; both are safety-critical and similarly clean.
 4. **Workforce (remainder) + Personnel Records + Hiring** — builds directly on the momentum and pattern already proven by Background Eligibility Module 1.
