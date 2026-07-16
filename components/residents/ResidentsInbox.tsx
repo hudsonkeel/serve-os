@@ -7,6 +7,13 @@ import {
   ResidentTabValue,
 } from "@/lib/data/communityMetrics";
 import { getCentralDayBoundaryUtc } from "@/lib/utils/date";
+import {
+  buildBlendedGroups,
+  countGroupRecords,
+  filterByTab,
+  matchesSearch,
+  normalizeSearchQuery,
+} from "@/lib/residents/search";
 import { FilterBanner } from "@/components/ui/FilterBanner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ResidentRow } from "./ResidentRow";
@@ -21,56 +28,6 @@ const TABS: { value: ResidentTabValue; label: string }[] = [
 ];
 
 type WellnessDueFilter = "now" | "week";
-
-function matchesSearch(record: CommunityResidentRecord, query: string): boolean {
-  const resident = record.resident;
-  const haystack = [
-    resident.first_name,
-    resident.last_name,
-    resident.preferred_name,
-    resident.display_name,
-    resident.full_name,
-    resident.unit_number,
-    // Staff-captured "goes by" nickname (resident_relationship_profiles.preferred_name),
-    // e.g. searching "Mick" should return Michele Helsley.
-    record.preferredNickname,
-  ];
-
-  return haystack.some(
-    (field) => field && field.toLowerCase().includes(query)
-  );
-}
-
-function filterByTab(
-  records: CommunityResidentRecord[],
-  tab: ResidentTabValue
-): CommunityResidentRecord[] {
-  switch (tab) {
-    case "serve_prospects":
-      return records.filter(
-        (record) => record.serveRelationshipStatus === "prospect"
-      );
-    case "active_clients":
-      return records.filter(
-        (record) => record.serveRelationshipStatus === "active_client"
-      );
-    case "hold":
-      return records.filter(
-        (record) => record.serveRelationshipStatus === "hold"
-      );
-    case "former_clients":
-      return records.filter(
-        (record) => record.serveRelationshipStatus === "former_client"
-      );
-    case "wellness_watch":
-      // Deterministic: at least one open/in_progress resident_wellness_follow_ups
-      // row (see getWellnessWatchSummaryByResident()) — not the legacy
-      // imported serve_relationship_status = 'wellness_watch' value.
-      return records.filter((record) => record.wellnessWatch !== null);
-    default:
-      return records;
-  }
-}
 
 function filterByWellnessDue(
   records: CommunityResidentRecord[],
@@ -87,6 +44,11 @@ function filterByWellnessDue(
     if (dueFilter === "now") return dueAtMs < endOfToday;
     return dueAtMs >= endOfToday && dueAtMs < endOfWeek;
   });
+}
+
+function resultSummaryText(totalCount: number): string {
+  if (totalCount === 0) return "No residents found";
+  return `${totalCount} resident${totalCount === 1 ? "" : "s"} found`;
 }
 
 interface ResidentsInboxProps {
@@ -114,7 +76,12 @@ export function ResidentsInbox({
       ? filterByWellnessDue(tabFiltered, wellnessDueFilter)
       : tabFiltered;
 
-  const trimmedQuery = search.trim().toLowerCase();
+  // Trimmed-but-not-lowercased query, for display in messaging (preserves
+  // what the user actually typed). trimmedQuery (lowercased) drives matching.
+  const displayQuery = search.trim();
+  const trimmedQuery = normalizeSearchQuery(search);
+  const hasActiveSearch = trimmedQuery.length > 0;
+
   const visible = useMemo(() => {
     if (!trimmedQuery) return wellnessDueFiltered;
     return wellnessDueFiltered.filter((record) => matchesSearch(record, trimmedQuery));
@@ -124,31 +91,17 @@ export function ResidentsInbox({
   // else. Each resident appears in exactly one bucket since
   // serveRelationshipStatus is already a single mutually-exclusive value —
   // no separate precedence logic is needed. Reuses the same `records` array
-  // (and search filtering) rather than issuing new queries.
+  // (and search filtering) rather than issuing new queries. Groups with
+  // zero matches are dropped entirely while a search is active — see
+  // buildBlendedGroups() in lib/residents/search.ts.
   const blendedSections = useMemo(() => {
     if (activeTab !== "all") return null;
-
-    const activeClients = records.filter(
-      (record) => record.serveRelationshipStatus === "active_client"
-    );
-    const prospects = records.filter(
-      (record) => record.serveRelationshipStatus === "prospect"
-    );
-    const others = records.filter(
-      (record) =>
-        record.serveRelationshipStatus !== "active_client" &&
-        record.serveRelationshipStatus !== "prospect"
-    );
-
-    const applySearch = (bucket: CommunityResidentRecord[]) =>
-      trimmedQuery ? bucket.filter((record) => matchesSearch(record, trimmedQuery)) : bucket;
-
-    return [
-      { key: "active", heading: "Active Serve Clients", records: applySearch(activeClients) },
-      { key: "prospects", heading: "Serve Prospects", records: applySearch(prospects) },
-      { key: "others", heading: "All Other Watermere Residents", records: applySearch(others) },
-    ];
+    return buildBlendedGroups(records, trimmedQuery);
   }, [activeTab, records, trimmedQuery]);
+
+  const totalMatchCount = blendedSections
+    ? countGroupRecords(blendedSections)
+    : visible.length;
 
   return (
     <div className="space-y-5">
@@ -160,9 +113,23 @@ export function ResidentsInbox({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by resident name or apartment..."
+          aria-label="Search residents"
           className="h-12 w-full max-w-md rounded-lg border border-ivory-border bg-surface pl-11 pr-4 font-sans text-base text-body outline-none transition-colors placeholder:text-subtle focus:border-gold/60 focus:ring-2 focus:ring-gold/20"
         />
       </div>
+
+      {/* Search result summary — mounted only while a search is active, so
+          the normal (no-search) directory layout is unchanged. Content
+          updates are announced to assistive technology via aria-live. */}
+      {hasActiveSearch && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="font-sans text-sm font-medium text-muted"
+        >
+          {resultSummaryText(totalMatchCount)}
+        </p>
+      )}
 
       {/* Tab bar */}
       <div className="flex flex-wrap items-center gap-1 border-b border-ivory-border">
@@ -211,39 +178,44 @@ export function ResidentsInbox({
 
       {/* Resident list */}
       {blendedSections ? (
-        <div className="space-y-8">
-          {blendedSections.map((section) => (
-            <div key={section.key}>
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-sans text-base font-semibold text-body">
-                  {section.heading}
-                </h3>
-                <span className="rounded-full bg-ivory-warm px-2.5 py-0.5 font-sans text-label font-semibold text-muted">
-                  {section.records.length}
-                </span>
+        blendedSections.length > 0 ? (
+          <div className="space-y-8">
+            {blendedSections.map((section) => (
+              <div key={section.key}>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="font-sans text-base font-semibold text-body">
+                    {section.heading}
+                  </h3>
+                  <span className="rounded-full bg-ivory-warm px-2.5 py-0.5 font-sans text-label font-semibold text-muted">
+                    {section.records.length}
+                  </span>
+                </div>
+                <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
+                  {section.records.length > 0 ? (
+                    <div className="divide-y divide-ivory-border">
+                      {section.records.map((record) => (
+                        <ResidentRow key={record.id} record={record} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-5 py-8">
+                      <EmptyState description="No residents in this section." />
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
-                {section.records.length > 0 ? (
-                  <div className="divide-y divide-ivory-border">
-                    {section.records.map((record) => (
-                      <ResidentRow key={record.id} record={record} />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="px-5 py-8">
-                    <EmptyState
-                      description={
-                        trimmedQuery
-                          ? "No residents match your search."
-                          : "No residents in this section."
-                      }
-                    />
-                  </div>
-                )}
-              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
+            <div className="px-5 py-14">
+              <EmptyState
+                title="No residents found"
+                description={`No residents match "${displayQuery}." Try checking the spelling or searching by a different name or apartment number.`}
+              />
             </div>
-          ))}
-        </div>
+          </div>
+        )
       ) : (
         <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
           {visible.length > 0 ? (
@@ -255,9 +227,10 @@ export function ResidentsInbox({
           ) : (
             <div className="px-5 py-14">
               <EmptyState
+                title={hasActiveSearch ? "No residents found" : undefined}
                 description={
-                  trimmedQuery
-                    ? "No residents match your search."
+                  hasActiveSearch
+                    ? `No residents match "${displayQuery}." Try checking the spelling or searching by a different name or apartment number.`
                     : activeTab === "wellness_watch"
                       ? "No residents currently have an open wellness follow-up."
                       : "No residents in this view."
