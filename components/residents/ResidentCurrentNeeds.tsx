@@ -5,6 +5,16 @@ import { useRouter } from "next/navigation";
 import { saveResidentCurrentNeeds } from "@/lib/actions/residentCurrentNeeds";
 import { RESIDENT_CURRENT_NEEDS_MAX_LENGTH } from "@/lib/residentCurrentNeeds/validation";
 import { ResidentCurrentNeeds as ResidentCurrentNeedsRecord } from "@/lib/supabase/types";
+import { MemorySectionHeader } from "./MemorySectionHeader";
+
+const BELONGS_HERE = [
+  "Medication reminders",
+  "Mobility assistance",
+  "Meal escorts",
+  "Safety considerations",
+];
+
+const DOES_NOT_BELONG_HERE = ["Phone calls", "Emails", "Temporary follow-ups"];
 
 function fullDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -65,24 +75,25 @@ export function ResidentCurrentNeeds({
 
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between">
-        <h4 className="font-sans text-label font-semibold uppercase tracking-widest text-muted">
-          Current Needs
-        </h4>
-        {!isEditing && (
-          <button
-            type="button"
-            ref={editButtonRef}
-            onClick={handleEdit}
-            className="font-sans text-sm font-medium text-muted transition-colors hover:text-body"
-          >
-            {currentNeeds ? "Edit" : "Add"}
-          </button>
-        )}
-      </div>
-      <p className="mb-4 font-sans text-sm text-subtle">
-        Current resident care summary.
-      </p>
+      <MemorySectionHeader
+        title="Current Needs"
+        functionalLabel="Every Visit"
+        purpose="What every Serve team member should know before interacting with this resident."
+        belongsHere={!isEditing ? BELONGS_HERE : undefined}
+        doesNotBelongHere={!isEditing ? DOES_NOT_BELONG_HERE : undefined}
+        primaryAction={
+          !isEditing && (
+            <button
+              type="button"
+              ref={editButtonRef}
+              onClick={handleEdit}
+              className="font-sans text-sm font-medium text-muted transition-colors hover:text-body"
+            >
+              {currentNeeds ? "Edit Current Needs" : "Add Current Needs"}
+            </button>
+          )
+        }
+      />
 
       {isEditing ? (
         <form
@@ -94,6 +105,40 @@ export function ResidentCurrentNeeds({
             }
           }}
         >
+          <div className="mb-3 max-w-2xl space-y-2 rounded-lg border border-ivory-border bg-ivory px-4 py-3">
+            <p className="font-sans text-sm text-subtle">
+              <span className="font-semibold text-muted">Use this for: </span>
+              recurring needs, important routines, care-related preferences,
+              essential safety information.
+            </p>
+            <p className="font-sans text-sm text-subtle">
+              <span className="font-semibold text-muted">
+                Temporary or pending item?
+              </span>{" "}
+              Add it to{" "}
+              <a
+                href="#working-notes"
+                className="font-medium text-navy underline-offset-2 hover:underline"
+              >
+                Working Notes
+              </a>
+              .
+            </p>
+            <p className="font-sans text-sm text-subtle">
+              <span className="font-semibold text-muted">
+                Recording something that already happened?
+              </span>{" "}
+              It belongs in{" "}
+              <a
+                href="#timeline"
+                className="font-medium text-navy underline-offset-2 hover:underline"
+              >
+                Timeline
+              </a>
+              .
+            </p>
+          </div>
+
           <label htmlFor={textareaId} className="sr-only">
             Current needs
           </label>
@@ -158,11 +203,15 @@ export function ResidentCurrentNeeds({
       ) : (
         <div className="rounded-xl border border-dashed border-ivory-border bg-ivory px-5 py-8 text-center">
           <p className="font-sans text-base text-muted">
-            No current needs have been documented yet.
+            No current needs documented yet.
           </p>
           <p className="mt-1.5 font-sans text-sm text-subtle">
-            Add the essential information Serve staff should know before
+            Add the essential information someone should know before
             interacting with this resident.
+          </p>
+          <p className="mt-2 font-sans text-sm text-subtle">
+            Medication reminders · Mobility support · Meal escort · Safety
+            considerations
           </p>
         </div>
       )}

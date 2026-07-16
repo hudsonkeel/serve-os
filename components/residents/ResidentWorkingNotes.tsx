@@ -14,6 +14,20 @@ import {
 } from "@/lib/supabase/types";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Badge } from "@/components/ui/Badge";
+import { MemorySectionHeader } from "./MemorySectionHeader";
+
+const BELONGS_HERE = [
+  "Pending decisions",
+  "Scheduled follow-ups",
+  "Proposals in progress",
+  "Pending paperwork",
+];
+
+const DOES_NOT_BELONG_HERE = [
+  "Permanent care needs",
+  "Completed events",
+  "General interests",
+];
 
 const CATEGORY_LABELS: Record<WorkingNoteCategory, string> = {
   operational: "Operational",
@@ -42,6 +56,79 @@ function compactDateTime(iso: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+interface WorkingNoteCardProps {
+  note: ResidentWorkingNote;
+  isBusy: boolean;
+  onResolve: (id: string) => void;
+  onArchive: (id: string) => void;
+  actionError: { id: string; message: string } | null;
+}
+
+function WorkingNoteCard({
+  note,
+  isBusy,
+  onResolve,
+  onArchive,
+  actionError,
+}: WorkingNoteCardProps) {
+  return (
+    <div className="rounded-lg border border-ivory-border bg-ivory px-5 py-4">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {note.status === "open" ? (
+          <Badge tone="blue">Active</Badge>
+        ) : (
+          <Badge tone="success">Resolved</Badge>
+        )}
+        {note.category && (
+          <Badge tone="neutral">{CATEGORY_LABELS[note.category]}</Badge>
+        )}
+      </div>
+
+      <p className="whitespace-pre-wrap font-sans text-base text-body">
+        {note.content}
+      </p>
+
+      <div className="mt-3 space-y-0.5 border-t border-ivory-border/70 pt-2.5">
+        <p className="font-sans text-sm text-subtle">
+          Added by {note.createdBy} · {compactDateTime(note.createdAt)}
+        </p>
+        {note.status === "resolved" && note.resolvedAt && (
+          <p className="font-sans text-sm text-subtle">
+            Resolved by {note.resolvedBy} · {compactDateTime(note.resolvedAt)}
+          </p>
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center gap-3">
+        {note.status === "open" && (
+          <button
+            type="button"
+            onClick={() => onResolve(note.id)}
+            disabled={isBusy}
+            className="font-sans text-sm font-medium text-navy transition-colors hover:text-navy-light disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isBusy ? "Resolving..." : "Resolve"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onArchive(note.id)}
+          disabled={isBusy}
+          className="font-sans text-sm font-medium text-muted transition-colors hover:text-body disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isBusy ? "Archiving..." : "Archive"}
+        </button>
+      </div>
+
+      {actionError?.id === note.id && (
+        <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 font-sans text-sm text-red-600">
+          {actionError.message}
+        </p>
+      )}
+    </div>
+  );
 }
 
 interface ResidentWorkingNotesProps {
@@ -131,35 +218,38 @@ export function ResidentWorkingNotes({
   }
 
   const remaining = WORKING_NOTE_MAX_LENGTH - content.length;
+  const activeNotes = notes.filter((note) => note.status === "open");
+  const resolvedNotes = notes.filter((note) => note.status === "resolved");
 
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between">
-        <h4 className="font-sans text-label font-semibold uppercase tracking-widest text-muted">
-          Working Notes
-        </h4>
-        {!isAdding && (
-          <button
-            type="button"
-            onClick={handleAddClick}
-            className="font-sans text-sm font-medium text-muted transition-colors hover:text-body"
-          >
-            + Add Working Note
-          </button>
-        )}
-      </div>
-      <p className="mb-4 font-sans text-sm text-subtle">
-        Temporary operational information.
-      </p>
+      <MemorySectionHeader
+        title="Working Notes"
+        functionalLabel="In Progress"
+        purpose="Temporary operational items the Serve team is currently working on."
+        belongsHere={!isAdding ? BELONGS_HERE : undefined}
+        doesNotBelongHere={!isAdding ? DOES_NOT_BELONG_HERE : undefined}
+        primaryAction={
+          !isAdding && (
+            <button
+              type="button"
+              onClick={handleAddClick}
+              className="font-sans text-sm font-medium text-muted transition-colors hover:text-body"
+            >
+              + Add Working Note
+            </button>
+          )
+        }
+      />
 
       {isAdding && (
         <form
           onSubmit={handleSubmit}
-          className="mb-4 rounded-lg border border-ivory-border bg-ivory px-5 py-4"
+          className="mb-4 max-w-2xl rounded-lg border border-ivory-border bg-ivory px-5 py-4"
         >
           <label className="block">
             <span className="mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-muted">
-              Working Note
+              What are we working on?
             </span>
             <textarea
               autoFocus
@@ -167,10 +257,14 @@ export function ResidentWorkingNotes({
               value={content}
               onChange={(e) => setContent(e.target.value)}
               maxLength={WORKING_NOTE_MAX_LENGTH}
-              placeholder="Trevor meeting next Tuesday."
+              placeholder="Cary is considering two recurring weekly visits."
               className="w-full rounded-md border border-ivory-border bg-surface px-3 py-2 font-sans text-base text-body outline-none placeholder:text-subtle focus:border-gold/60"
             />
           </label>
+          <p className="mt-1 font-sans text-sm text-subtle">
+            Capture a temporary operational item that still requires
+            attention, a decision, or follow-through.
+          </p>
 
           <label className="mt-3 block max-w-xs">
             <span className="mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-muted">
@@ -190,6 +284,18 @@ export function ResidentWorkingNotes({
               ))}
             </select>
           </label>
+
+          <p className="mt-3 font-sans text-sm text-subtle">
+            When finished, resolve the note. If it becomes lasting resident
+            guidance, update{" "}
+            <a
+              href="#current-needs"
+              className="font-medium text-navy underline-offset-2 hover:underline"
+            >
+              Current Needs
+            </a>
+            .
+          </p>
 
           <div className="mt-3 flex items-center justify-between">
             <span className="font-sans text-sm text-subtle">
@@ -222,71 +328,45 @@ export function ResidentWorkingNotes({
         </form>
       )}
 
-      {notes.length > 0 ? (
+      {activeNotes.length === 0 && !isAdding && (
+        <EmptyState
+          description="No active operational items. Use Working Notes for things currently in motion, such as a family decision, a scheduled follow-up, or a proposal in progress."
+        />
+      )}
+
+      {activeNotes.length > 0 && (
         <div className="space-y-3">
-          {notes.map((note) => {
-            const isBusy = isActing && actioningId === note.id;
-            return (
-              <div
-                key={note.id}
-                className="rounded-lg border border-ivory-border bg-ivory px-5 py-4"
-              >
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  {note.category && (
-                    <Badge tone="neutral">{CATEGORY_LABELS[note.category]}</Badge>
-                  )}
-                  {note.status === "resolved" && (
-                    <Badge tone="success">Resolved</Badge>
-                  )}
-                </div>
-
-                <p className="whitespace-pre-wrap font-sans text-base text-body">
-                  {note.content}
-                </p>
-
-                <div className="mt-3 space-y-0.5 border-t border-ivory-border/70 pt-2.5">
-                  <p className="font-sans text-sm text-subtle">
-                    Added by {note.createdBy} · {compactDateTime(note.createdAt)}
-                  </p>
-                  {note.status === "resolved" && note.resolvedAt && (
-                    <p className="font-sans text-sm text-subtle">
-                      Resolved by {note.resolvedBy} · {compactDateTime(note.resolvedAt)}
-                    </p>
-                  )}
-                </div>
-
-                <div className="mt-3 flex items-center gap-3">
-                  {note.status === "open" && (
-                    <button
-                      type="button"
-                      onClick={() => handleResolve(note.id)}
-                      disabled={isBusy}
-                      className="font-sans text-sm font-medium text-navy transition-colors hover:text-navy-light disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isBusy ? "Resolving..." : "Resolve"}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleArchive(note.id)}
-                    disabled={isBusy}
-                    className="font-sans text-sm font-medium text-muted transition-colors hover:text-body disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isBusy ? "Archiving..." : "Archive"}
-                  </button>
-                </div>
-
-                {actionError?.id === note.id && (
-                  <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 font-sans text-sm text-red-600">
-                    {actionError.message}
-                  </p>
-                )}
-              </div>
-            );
-          })}
+          {activeNotes.map((note) => (
+            <WorkingNoteCard
+              key={note.id}
+              note={note}
+              isBusy={isActing && actioningId === note.id}
+              onResolve={handleResolve}
+              onArchive={handleArchive}
+              actionError={actionError}
+            />
+          ))}
         </div>
-      ) : (
-        !isAdding && <EmptyState description="No working notes." />
+      )}
+
+      {resolvedNotes.length > 0 && (
+        <div className={activeNotes.length > 0 ? "mt-5" : undefined}>
+          <p className="mb-2 font-sans text-sm font-semibold uppercase tracking-wide text-subtle">
+            Resolved
+          </p>
+          <div className="space-y-3">
+            {resolvedNotes.map((note) => (
+              <WorkingNoteCard
+                key={note.id}
+                note={note}
+                isBusy={isActing && actioningId === note.id}
+                onResolve={handleResolve}
+                onArchive={handleArchive}
+                actionError={actionError}
+              />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

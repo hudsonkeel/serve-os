@@ -33,23 +33,26 @@ export function ResidentMemory({
         <h2 className="font-serif text-card-title font-light text-body">
           Resident Memory
         </h2>
-        <p className="mt-1 font-sans text-sm text-subtle">
-          Institutional knowledge about this resident — how we care for
-          them, what&apos;s currently in motion, and what&apos;s happened.
+        <p className="mt-1 max-w-2xl font-sans text-sm text-subtle">
+          How we care for this resident, what is currently in motion, and
+          what has happened over time.
+        </p>
+        <p className="mt-2 font-sans text-sm font-medium text-muted">
+          Every Visit · In Progress · History
         </p>
       </div>
 
       <div className="divide-y divide-ivory-border">
-        <div className="p-6">
+        <div id="current-needs" className="p-6">
           <ResidentCurrentNeeds
             residentId={residentId}
             currentNeeds={currentNeeds}
           />
         </div>
-        <div className="p-6">
+        <div id="working-notes" className="p-6">
           <ResidentWorkingNotes residentId={residentId} notes={workingNotes} />
         </div>
-        <div className="p-6">
+        <div id="timeline" className="p-6">
           <ResidentTimeline events={timelineEvents} />
         </div>
       </div>

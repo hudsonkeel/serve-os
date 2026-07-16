@@ -1,11 +1,10 @@
 import { ResidentTimelineEvent } from "@/lib/supabase/types";
+import { groupTimelineEventsByDay } from "@/lib/residentTimeline/grouping";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MemorySectionHeader } from "./MemorySectionHeader";
 
-function compactDateTime(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
+function eventTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -18,39 +17,54 @@ interface ResidentTimelineProps {
 // Read-only and system generated — there is no manual-entry path, so this
 // component has no client-side state or actions.
 export function ResidentTimeline({ events }: ResidentTimelineProps) {
+  const dayGroups = groupTimelineEventsByDay(events);
+
   return (
     <div>
-      <h4 className="mb-1 font-sans text-label font-semibold uppercase tracking-widest text-muted">
-        Timeline
-      </h4>
-      <p className="mb-4 font-sans text-sm text-subtle">
-        Assessments, calls, emails, visits, updates and important resident
-        events will appear here automatically.
+      <MemorySectionHeader
+        title="Timeline"
+        functionalLabel="History"
+        purpose="A chronological record of important resident events and interactions."
+      />
+      <p className="-mt-2 mb-4 max-w-2xl font-sans text-sm text-subtle">
+        <span className="font-semibold text-muted">
+          Automatically records:{" "}
+        </span>
+        Resident added · Current Needs updates · Working Note activity
       </p>
 
-      {events.length > 0 ? (
-        <ul className="space-y-3">
-          {events.map((event) => (
-            <li
-              key={event.id}
-              className="border-l-2 border-ivory-border pl-4"
-            >
-              <p className="font-sans text-sm font-semibold text-body">
-                {event.eventTitle}
+      {dayGroups.length > 0 ? (
+        <div className="space-y-5">
+          {dayGroups.map((group) => (
+            <div key={group.label}>
+              <p className="mb-2 font-sans text-sm font-semibold uppercase tracking-wide text-subtle">
+                {group.label}
               </p>
-              {event.eventDescription && (
-                <p className="font-sans text-sm text-muted">
-                  {event.eventDescription}
-                </p>
-              )}
-              <p className="mt-0.5 font-sans text-sm text-subtle">
-                {compactDateTime(event.createdAt)}
-              </p>
-            </li>
+              <ul className="space-y-3">
+                {group.events.map((event) => (
+                  <li key={event.id} className="border-l-2 border-ivory-border pl-4">
+                    <p className="font-sans text-sm font-semibold text-body">
+                      {event.eventTitle}
+                    </p>
+                    {event.eventDescription && (
+                      <p className="font-sans text-sm text-muted">
+                        {event.eventDescription}
+                      </p>
+                    )}
+                    <p className="mt-0.5 font-sans text-sm text-subtle">
+                      {eventTime(event.createdAt)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       ) : (
-        <EmptyState description="No resident activity yet." />
+        <EmptyState
+          title="No resident history yet."
+          description="Important events will appear here automatically as the team works with this resident — for example, Current Needs updated or Working Note added."
+        />
       )}
     </div>
   );
