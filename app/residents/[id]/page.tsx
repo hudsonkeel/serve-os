@@ -9,6 +9,7 @@ import { FamilyContactsCard } from "@/components/residents/FamilyContactsCard";
 import { WellnessNotes } from "@/components/residents/WellnessNotes";
 import { getWellnessNotes } from "@/lib/data/wellnessNotes";
 import { getOpenResidentWellnessFollowUps } from "@/lib/data/wellnessFollowUps";
+import { getResidentCurrentNeeds } from "@/lib/data/residentCurrentNeeds";
 import { Badge } from "@/components/ui/Badge";
 
 export const dynamic = "force-dynamic";
@@ -102,6 +103,7 @@ export default async function ResidentDetailPage({
   const connections = await getResidentConnections(id);
   const wellnessNotes = await getWellnessNotes(id);
   const openFollowUps = await getOpenResidentWellnessFollowUps(id);
+  const currentNeeds = await getResidentCurrentNeeds(id);
 
   const resident = record.resident;
   const contactName =
@@ -163,6 +165,7 @@ export default async function ResidentDetailPage({
               initialDateOfAdmission={resident.date_of_admission}
               initialPreferredLanguage={resident.preferred_language ?? ""}
               initialMobility={resident.mobility ?? ""}
+              currentNeeds={currentNeeds}
             />
           </Section>
 

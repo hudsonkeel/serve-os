@@ -599,6 +599,34 @@ export interface CreateWellnessNoteInput {
   follow_ups?: CreateWellnessNoteFollowUpInput[];
 }
 
+// Resident Current Needs — the first layer of resident memory. A concise,
+// curated summary of what Serve staff should know before interacting with
+// a resident, versioned so a save never silently overwrites what was
+// documented before. See save_resident_current_needs() in
+// 20260716000000_create_resident_current_needs.sql for how versions supersede
+// one another.
+
+export type ResidentCurrentNeedsSourceType =
+  | "staff_entry"
+  | "assessment"
+  | "conversation"
+  | "document_import"
+  | "system";
+
+export interface ResidentCurrentNeeds {
+  id: string;
+  residentId: string;
+  content: string;
+  versionNumber: number;
+  sourceType: ResidentCurrentNeedsSourceType;
+  sourceLabel: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  // Display-friendly author label — createdBy with a fallback for the rare
+  // case a historical row has no actor recorded.
+  authorName: string;
+}
+
 export interface ResidentContactImport {
   id?: string | null;
   resident_id?: string | null;

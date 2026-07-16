@@ -3,6 +3,8 @@
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { saveResidentProfile } from "@/lib/actions/residents";
+import { ResidentCurrentNeeds } from "@/components/residents/ResidentCurrentNeeds";
+import { ResidentCurrentNeeds as ResidentCurrentNeedsRecord } from "@/lib/supabase/types";
 
 function titleCase(value: string | null) {
   if (!value) return "-";
@@ -83,6 +85,7 @@ interface ResidentProfileCardProps {
   initialDateOfAdmission: string | null;
   initialPreferredLanguage: string;
   initialMobility: string;
+  currentNeeds: ResidentCurrentNeedsRecord | null;
 }
 
 export function ResidentProfileCard({
@@ -101,6 +104,7 @@ export function ResidentProfileCard({
   initialDateOfAdmission,
   initialPreferredLanguage,
   initialMobility,
+  currentNeeds,
 }: ResidentProfileCardProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -206,97 +210,103 @@ export function ResidentProfileCard({
           />
           <ReadOnlyField label="Needs Review" value={titleCase(needsReview)} />
         </div>
+
+        <ResidentCurrentNeeds residentId={residentId} currentNeeds={currentNeeds} />
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="mb-4 flex items-center justify-between">
-        <p className="font-sans text-sm text-muted">
-          Editing resident profile
-        </p>
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={isPending}
-            className="inline-flex h-11 items-center justify-center rounded-md bg-navy px-5 font-sans text-button font-semibold text-white transition-colors hover:bg-navy/90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isPending ? "Saving..." : "Save Changes"}
-          </button>
-          <button
-            type="button"
-            onClick={handleCancel}
-            disabled={isPending}
-            className="rounded-md border border-ivory-border px-3 py-1.5 font-sans text-sm font-medium text-body transition-colors hover:border-navy/20 hover:bg-ivory-warm disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Cancel
-          </button>
+    <div>
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4 flex items-center justify-between">
+          <p className="font-sans text-sm text-muted">
+            Editing resident profile
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={isPending}
+              className="inline-flex h-11 items-center justify-center rounded-md bg-navy px-5 font-sans text-button font-semibold text-white transition-colors hover:bg-navy/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isPending ? "Saving..." : "Save Changes"}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancel}
+              disabled={isPending}
+              className="rounded-md border border-ivory-border px-3 py-1.5 font-sans text-sm font-medium text-body transition-colors hover:border-navy/20 hover:bg-ivory-warm disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
-      </div>
 
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 font-sans text-sm text-red-600">
-          {error}
-        </p>
-      )}
+        {error && (
+          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 font-sans text-sm text-red-600">
+            {error}
+          </p>
+        )}
 
-      <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-        <ReadOnlyField label="Full Name" value={fullName} />
-        <EditableField
-          label="Preferred Name"
-          value={preferredName}
-          onChange={setPreferredName}
-          placeholder="e.g. Mick"
-        />
-        <EditableField
-          label="Resident Email"
-          value={email}
-          onChange={setEmail}
-          type="email"
-          placeholder="name@example.com"
-        />
-        <EditableField
-          label="Resident Phone"
-          value={phone}
-          onChange={setPhone}
-          type="tel"
-          placeholder="(555) 555-5555"
-        />
-        <ReadOnlyField label="Location" value={location || "-"} />
-        <ReadOnlyField label="Resident Type" value={titleCase(residentType)} />
-        <ReadOnlyField
-          label="Serve Relationship Status"
-          value={serveRelationshipLabel}
-        />
-        <ReadOnlyField label="Service Model" value={titleCase(serviceModel)} />
-        <ReadOnlyField label="Resident Status" value={titleCase(residentStatus)} />
-        <EditableField
-          label="Date of Birth"
-          value={dateOfBirth}
-          onChange={setDateOfBirth}
-          type="date"
-        />
-        <EditableField
-          label="Date of Admission"
-          value={dateOfAdmission}
-          onChange={setDateOfAdmission}
-          type="date"
-        />
-        <EditableField
-          label="Mobility"
-          value={mobility}
-          onChange={setMobility}
-          placeholder="e.g. Walker, Independent"
-        />
-        <EditableField
-          label="Preferred Language"
-          value={preferredLanguage}
-          onChange={setPreferredLanguage}
-          placeholder="e.g. English"
-        />
-        <ReadOnlyField label="Needs Review" value={titleCase(needsReview)} />
-      </div>
-    </form>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-4">
+          <ReadOnlyField label="Full Name" value={fullName} />
+          <EditableField
+            label="Preferred Name"
+            value={preferredName}
+            onChange={setPreferredName}
+            placeholder="e.g. Mick"
+          />
+          <EditableField
+            label="Resident Email"
+            value={email}
+            onChange={setEmail}
+            type="email"
+            placeholder="name@example.com"
+          />
+          <EditableField
+            label="Resident Phone"
+            value={phone}
+            onChange={setPhone}
+            type="tel"
+            placeholder="(555) 555-5555"
+          />
+          <ReadOnlyField label="Location" value={location || "-"} />
+          <ReadOnlyField label="Resident Type" value={titleCase(residentType)} />
+          <ReadOnlyField
+            label="Serve Relationship Status"
+            value={serveRelationshipLabel}
+          />
+          <ReadOnlyField label="Service Model" value={titleCase(serviceModel)} />
+          <ReadOnlyField label="Resident Status" value={titleCase(residentStatus)} />
+          <EditableField
+            label="Date of Birth"
+            value={dateOfBirth}
+            onChange={setDateOfBirth}
+            type="date"
+          />
+          <EditableField
+            label="Date of Admission"
+            value={dateOfAdmission}
+            onChange={setDateOfAdmission}
+            type="date"
+          />
+          <EditableField
+            label="Mobility"
+            value={mobility}
+            onChange={setMobility}
+            placeholder="e.g. Walker, Independent"
+          />
+          <EditableField
+            label="Preferred Language"
+            value={preferredLanguage}
+            onChange={setPreferredLanguage}
+            placeholder="e.g. English"
+          />
+          <ReadOnlyField label="Needs Review" value={titleCase(needsReview)} />
+        </div>
+      </form>
+
+      <ResidentCurrentNeeds residentId={residentId} currentNeeds={currentNeeds} />
+    </div>
   );
 }
