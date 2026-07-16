@@ -64,7 +64,7 @@ export function ResidentCurrentNeeds({
   const remaining = RESIDENT_CURRENT_NEEDS_MAX_LENGTH - content.length;
 
   return (
-    <div className="mt-6 border-t border-ivory-border pt-6">
+    <div>
       <div className="mb-1 flex items-center justify-between">
         <h4 className="font-sans text-label font-semibold uppercase tracking-widest text-muted">
           Current Needs
@@ -81,7 +81,7 @@ export function ResidentCurrentNeeds({
         )}
       </div>
       <p className="mb-4 font-sans text-sm text-subtle">
-        What Serve staff should know before interacting with this resident.
+        Current resident care summary.
       </p>
 
       {isEditing ? (
@@ -109,17 +109,11 @@ export function ResidentCurrentNeeds({
             className="w-full rounded-md border border-ivory-border bg-surface px-3 py-2 font-sans text-base text-body outline-none placeholder:text-subtle focus:border-gold/60"
           />
 
-          <div id={helperId} className="mt-2 space-y-1">
-            <p className="font-sans text-sm text-subtle">
-              Keep this concise and current. Include the resident&apos;s most
-              important needs, routines, preferences and safety
-              considerations.
-            </p>
-            <p className="font-sans text-sm text-subtle">
-              This is not an activity log. Historical events will eventually
-              belong in Working Notes or Timeline.
-            </p>
-          </div>
+          <p id={helperId} className="mt-2 font-sans text-sm text-subtle">
+            Keep this concise and current. Include the resident&apos;s most
+            important needs, routines, preferences and safety
+            considerations.
+          </p>
 
           <div className="mt-3 flex items-center justify-between">
             <span className="font-sans text-sm text-subtle">

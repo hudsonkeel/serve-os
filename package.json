@@ -14,6 +14,7 @@
     "test:intelligence": "node --experimental-strip-types --conditions=react-server lib/intelligence/core/__tests__/boundaries.test.ts",
     "test:residentCurrentNeeds": "node --experimental-strip-types --conditions=react-server lib/residentCurrentNeeds/__tests__/validation.test.ts",
     "test:residents": "node --experimental-strip-types --conditions=react-server lib/residents/__tests__/search.test.ts",
+    "test:residentWorkingNotes": "node --experimental-strip-types --conditions=react-server lib/residentWorkingNotes/__tests__/validation.test.ts",
     "schedule:preview": "node --env-file-if-exists=.env.local --experimental-strip-types --conditions=react-server scripts/serve-schedule-preview.ts"
   },
   "dependencies": {

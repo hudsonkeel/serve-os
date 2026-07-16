@@ -1,0 +1,100 @@
+begin;
+
+-- Wires Current Needs saves into the Resident Timeline (resident_timeline,
+-- 20260716010000). Same function signature as the original
+-- save_resident_current_needs() from 20260716000000_create_resident_current_needs.sql
+-- — this is a true replace, not a new overload. Only the actual-change path
+-- logs an event: the existing early return for an unchanged save (content
+-- identical to the current version) is untouched, so a no-op save never
+-- produces a duplicate "Current Needs updated" entry.
+create or replace function save_resident_current_needs(
+  p_resident_id uuid,
+  p_content text,
+  p_source_type text,
+  p_source_label text,
+  p_actor text
+)
+returns table (
+  id uuid,
+  version_number integer,
+  created_at timestamptz,
+  changed boolean
+)
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_current resident_current_needs%rowtype;
+  v_next_version integer;
+  v_new_id uuid;
+begin
+  if p_actor is null or length(trim(p_actor)) = 0 then
+    raise exception 'An authenticated actor is required to save current needs';
+  end if;
+
+  if length(trim(p_content)) = 0 then
+    raise exception 'Current needs cannot be blank';
+  end if;
+
+  select * into v_current
+  from resident_current_needs
+  where resident_id = p_resident_id and is_current = true
+  for update;
+
+  if found and v_current.content = p_content then
+    return query
+    select v_current.id, v_current.version_number, v_current.created_at, false;
+    return;
+  end if;
+
+  if found then
+    update resident_current_needs
+    set is_current = false,
+        superseded_at = now(),
+        superseded_by = p_actor
+    where id = v_current.id;
+
+    v_next_version := v_current.version_number + 1;
+  else
+    v_next_version := 1;
+  end if;
+
+  insert into resident_current_needs (
+    resident_id,
+    content,
+    version_number,
+    is_current,
+    source_type,
+    source_label,
+    created_by
+  ) values (
+    p_resident_id,
+    p_content,
+    v_next_version,
+    true,
+    coalesce(p_source_type, 'staff_entry'),
+    p_source_label,
+    p_actor
+  )
+  returning resident_current_needs.id into v_new_id;
+
+  insert into resident_timeline (
+    resident_id, event_type, event_title, event_description, source, created_by, system_generated
+  ) values (
+    p_resident_id,
+    'current_needs_updated',
+    'Current Needs updated',
+    'Version ' || v_next_version || ' saved.',
+    'resident_current_needs',
+    p_actor,
+    true
+  );
+
+  return query
+  select rcn.id, rcn.version_number, rcn.created_at, true
+  from resident_current_needs rcn
+  where rcn.id = v_new_id;
+end;
+$$;
+
+commit;

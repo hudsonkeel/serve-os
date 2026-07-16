@@ -10,6 +10,9 @@ import { WellnessNotes } from "@/components/residents/WellnessNotes";
 import { getWellnessNotes } from "@/lib/data/wellnessNotes";
 import { getOpenResidentWellnessFollowUps } from "@/lib/data/wellnessFollowUps";
 import { getResidentCurrentNeeds } from "@/lib/data/residentCurrentNeeds";
+import { getResidentWorkingNotes } from "@/lib/data/residentWorkingNotes";
+import { getResidentTimeline } from "@/lib/data/residentTimeline";
+import { ResidentMemory } from "@/components/residents/ResidentMemory";
 import { Badge } from "@/components/ui/Badge";
 
 export const dynamic = "force-dynamic";
@@ -104,6 +107,8 @@ export default async function ResidentDetailPage({
   const wellnessNotes = await getWellnessNotes(id);
   const openFollowUps = await getOpenResidentWellnessFollowUps(id);
   const currentNeeds = await getResidentCurrentNeeds(id);
+  const workingNotes = await getResidentWorkingNotes(id);
+  const timelineEvents = await getResidentTimeline(id);
 
   const resident = record.resident;
   const contactName =
@@ -165,9 +170,15 @@ export default async function ResidentDetailPage({
               initialDateOfAdmission={resident.date_of_admission}
               initialPreferredLanguage={resident.preferred_language ?? ""}
               initialMobility={resident.mobility ?? ""}
-              currentNeeds={currentNeeds}
             />
           </Section>
+
+          <ResidentMemory
+            residentId={id}
+            currentNeeds={currentNeeds}
+            workingNotes={workingNotes}
+            timelineEvents={timelineEvents}
+          />
 
           {record.importReviewNotes.length > 0 && (
             <Section title="Review Notes">

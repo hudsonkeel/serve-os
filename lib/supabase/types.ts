@@ -627,6 +627,60 @@ export interface ResidentCurrentNeeds {
   authorName: string;
 }
 
+// Resident Working Notes — the second resident-memory layer. Temporary
+// operational thoughts ("what is currently in motion?"), append-only:
+// resolving/archiving updates the row in place rather than superseding it
+// with a new one (contrast with Current Needs above). See
+// 20260716020000_create_resident_working_notes.sql.
+
+export type WorkingNoteCategory =
+  | "operational"
+  | "family"
+  | "scheduling"
+  | "sales"
+  | "clinical"
+  | "general";
+
+export type WorkingNoteStatus = "open" | "resolved" | "archived";
+
+export interface ResidentWorkingNote {
+  id: string;
+  residentId: string;
+  content: string;
+  category: WorkingNoteCategory | null;
+  status: WorkingNoteStatus;
+  resolved: boolean;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  archivedAt: string | null;
+}
+
+// Resident Timeline — the third resident-memory layer. Chronological,
+// factual, append-only, and system generated only (no manual entry in this
+// phase). See 20260716010000_create_resident_timeline.sql.
+
+export type ResidentTimelineEventType =
+  | "resident_created"
+  | "current_needs_updated"
+  | "working_note_created"
+  | "working_note_resolved";
+
+export interface ResidentTimelineEvent {
+  id: string;
+  residentId: string;
+  eventType: ResidentTimelineEventType;
+  eventTitle: string;
+  eventDescription: string | null;
+  source: string;
+  createdAt: string;
+  createdBy: string | null;
+  systemGenerated: boolean;
+}
+
 export interface ResidentContactImport {
   id?: string | null;
   resident_id?: string | null;
