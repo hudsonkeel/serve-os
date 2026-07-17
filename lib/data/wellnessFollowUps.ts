@@ -339,6 +339,54 @@ export async function dismissResidentWellnessFollowUp(
   return {};
 }
 
+export interface UpdateFollowUpInput {
+  followUpId: string;
+  residentId: string;
+  title: string;
+  description: string | null;
+  followUpType: WellnessFollowUpType;
+  dueAt: string | null;
+  assignedTo: string | null;
+  priority: WellnessNotePriority;
+  actor: string;
+}
+
+// Diffs the six editable fields against the current row, writes one audit
+// row per changed field, updates the follow-up, and logs a Timeline event
+// — all in one transaction via update_resident_wellness_follow_up() (see
+// 20260716050000_add_wellness_follow_up_editing.sql). A save with no
+// actual changes writes nothing at all.
+export async function updateResidentWellnessFollowUp(
+  input: UpdateFollowUpInput
+): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+  const { error } = await supabase.rpc("update_resident_wellness_follow_up", {
+    p_follow_up_id: input.followUpId,
+    p_resident_id: input.residentId,
+    p_title: input.title,
+    p_description: input.description,
+    p_follow_up_type: input.followUpType,
+    p_due_at: input.dueAt,
+    p_assigned_to: input.assignedTo,
+    p_priority: input.priority,
+    p_actor: input.actor,
+  });
+
+  if (error) {
+    console.error("[wellnessFollowUps:updateResidentWellnessFollowUp:error]", {
+      followUpId: input.followUpId,
+      residentId: input.residentId,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    return { error: "Could not save changes to this follow-up." };
+  }
+
+  return {};
+}
+
 export interface CreateManualFollowUpInput {
   residentId: string;
   title: string;

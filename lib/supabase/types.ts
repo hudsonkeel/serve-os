@@ -532,6 +532,17 @@ export interface ResidentWellnessFollowUp {
   dismissed_by: string | null;
   created_at: string;
   updated_at: string;
+  updated_by: string | null;
+}
+
+export interface ResidentWellnessFollowUpEdit {
+  id: string;
+  follow_up_id: string;
+  field_name: "title" | "description" | "follow_up_type" | "due_at" | "assigned_to" | "priority";
+  old_value: string | null;
+  new_value: string | null;
+  edited_by: string;
+  edited_at: string;
 }
 
 export type ResidentWellnessFollowUpInsert = Partial<

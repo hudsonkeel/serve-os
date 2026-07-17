@@ -5,8 +5,17 @@ import {
   completeResidentWellnessFollowUp,
   createManualResidentWellnessFollowUp,
   dismissResidentWellnessFollowUp,
+  updateResidentWellnessFollowUp,
 } from "@/lib/data/wellnessFollowUps";
 import { WellnessFollowUpType, WellnessNotePriority } from "@/lib/supabase/types";
+import {
+  isValidFollowUpType as isValidFollowUpTypeShared,
+  isValidPriority as isValidPriorityShared,
+  normalizeAssignedTo,
+  normalizeFollowUpTitle,
+  parseFollowUpDueDate,
+  validateFollowUpDueDateNotPast,
+} from "@/lib/wellnessFollowUps/validation";
 
 const VALID_FOLLOW_UP_TYPES: readonly WellnessFollowUpType[] = [
   "reassessment",
@@ -125,6 +134,79 @@ export async function createManualWellnessFollowUp(
     assignedTo: data.assignedTo?.trim() || null,
     priority: data.priority,
     createdBy: actor,
+  });
+
+  if (result.error) {
+    return { error: result.error };
+  }
+
+  return {};
+}
+
+export interface EditFollowUpFormData {
+  followUpId: string;
+  residentId: string;
+  title: string;
+  description?: string;
+  followUpType: string;
+  dueAt?: string;
+  // The due date the editor was opened with — used only to decide whether
+  // a past due date is a newly-typed change (rejected) or an unchanged,
+  // already-overdue value (allowed). The save itself is always scoped by
+  // followUpId/residentId regardless of this value.
+  previousDueAt?: string | null;
+  assignedTo?: string;
+  priority: string;
+}
+
+export async function editWellnessFollowUp(
+  data: EditFollowUpFormData
+): Promise<{ error?: string }> {
+  if (!data.followUpId || !data.residentId) {
+    return { error: "Missing follow-up." };
+  }
+
+  const normalizedTitle = normalizeFollowUpTitle(data.title);
+  if (normalizedTitle.error || !normalizedTitle.title) {
+    return { error: normalizedTitle.error };
+  }
+
+  if (!isValidFollowUpTypeShared(data.followUpType)) {
+    return { error: "Select a follow-up type." };
+  }
+
+  if (!isValidPriorityShared(data.priority)) {
+    return { error: "Select a valid priority." };
+  }
+
+  const dueDate = parseFollowUpDueDate(data.dueAt);
+  if (dueDate.error || dueDate.iso === undefined) {
+    return { error: dueDate.error };
+  }
+
+  const pastDateCheck = validateFollowUpDueDateNotPast(
+    dueDate.iso,
+    data.previousDueAt ?? null
+  );
+  if (pastDateCheck.error) {
+    return { error: pastDateCheck.error };
+  }
+
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to edit a follow-up." };
+  }
+
+  const result = await updateResidentWellnessFollowUp({
+    followUpId: data.followUpId,
+    residentId: data.residentId,
+    title: normalizedTitle.title,
+    description: data.description?.trim() || null,
+    followUpType: data.followUpType,
+    dueAt: dueDate.iso,
+    assignedTo: normalizeAssignedTo(data.assignedTo),
+    priority: data.priority,
+    actor,
   });
 
   if (result.error) {
