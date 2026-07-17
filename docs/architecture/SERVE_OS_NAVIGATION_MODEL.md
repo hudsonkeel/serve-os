@@ -48,6 +48,15 @@ week) is a reasonable *future* addition to Workspace, the same way
 Wellness Follow-up counts already appear there — but the record-management
 surface itself belongs at the top level.
 
+The `/relationships` sidebar item is itself a small hub, not a single
+page: it lands on the "All Relationships" table and offers two sibling
+views one click away — the Daily Action Board (`/relationships/actions`)
+and the Operational Whiteboard (`/relationships/whiteboard`) — via the
+`RelationshipViewTabs` switcher present on all three. This mirrors how a
+single sidebar entry can front more than one working surface without
+earning its own top-level item, the same reasoning applied to Workspace's
+internal sections.
+
 ## Why Recruiting, Scheduling, and Care Plans are not top-level items
 
 **Recruiting** — Recruiting is primarily operational work (applicants

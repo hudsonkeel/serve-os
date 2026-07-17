@@ -6,7 +6,9 @@ import {
   normalizeDisplayName,
   normalizeOptionalText,
   normalizeTouchSummary,
+  parseOptionalBoundedInteger,
   parseOptionalDate,
+  parseOptionalDateOnly,
   validateDueDateNotPast,
 } from "../validation.ts";
 
@@ -70,10 +72,79 @@ test("8. validateDueDateNotPast allows an unchanged past date", () => {
   assert.equal(result.error, undefined);
 });
 
+test("8b. validateDueDateNotPast allows an unchanged date even when the previous value carried a time-of-day component", () => {
+  // Reproduces a real bug found via manual verification: editing any
+  // field on an overdue action whose due_at was set with a precise
+  // timestamp (e.g. via a script or RPC, not this date-only form) used
+  // to be spuriously rejected, because the date-only <input> always
+  // resubmits midnight UTC, which never byte-matched the original
+  // instant even though the calendar day was untouched.
+  const now = new Date("2026-07-17T12:00:00.000Z");
+  const result = validateDueDateNotPast(
+    "2026-07-16T00:00:00.000Z", // resubmitted by the date-only input
+    "2026-07-16T05:31:38.968Z", // original precise timestamp, same day
+    now
+  );
+  assert.equal(result.error, undefined);
+});
+
+test("8c. validateDueDateNotPast still rejects a genuinely different past date, time-of-day aside", () => {
+  const now = new Date("2026-07-17T12:00:00.000Z");
+  const result = validateDueDateNotPast(
+    "2026-07-10T00:00:00.000Z",
+    "2026-07-16T05:31:38.968Z",
+    now
+  );
+  assert.ok(result.error);
+});
+
 test("9. normalizeOptionalText trims and treats blank as null", () => {
   assert.equal(normalizeOptionalText("  Elizabeth Butler  "), "Elizabeth Butler");
   assert.equal(normalizeOptionalText("   "), null);
   assert.equal(normalizeOptionalText(undefined), null);
+});
+
+test("10. parseOptionalBoundedInteger returns null when blank", () => {
+  const result = parseOptionalBoundedInteger(undefined, 0, 21, "Visits per week");
+  assert.equal(result.value, null);
+  assert.equal(result.error, undefined);
+  assert.equal(parseOptionalBoundedInteger("", 0, 21, "Visits per week").value, null);
+});
+
+test("11. parseOptionalBoundedInteger accepts an in-range value", () => {
+  assert.equal(parseOptionalBoundedInteger("3", 0, 21, "Visits per week").value, 3);
+  assert.equal(parseOptionalBoundedInteger("0", 0, 21, "Visits per week").value, 0);
+  assert.equal(parseOptionalBoundedInteger("21", 0, 21, "Visits per week").value, 21);
+});
+
+test("12. parseOptionalBoundedInteger rejects out-of-range values", () => {
+  assert.ok(parseOptionalBoundedInteger("-1", 0, 21, "Visits per week").error);
+  assert.ok(parseOptionalBoundedInteger("22", 0, 21, "Visits per week").error);
+});
+
+test("13. parseOptionalBoundedInteger rejects non-integer input", () => {
+  assert.ok(parseOptionalBoundedInteger("3.5", 0, 21, "Visits per week").error);
+  assert.ok(parseOptionalBoundedInteger("abc", 1, 1440, "Estimated visit duration").error);
+});
+
+test("14. estimated-visit-duration bounds (1-1440 minutes)", () => {
+  assert.equal(parseOptionalBoundedInteger("45", 1, 1440, "Estimated visit duration").value, 45);
+  assert.ok(parseOptionalBoundedInteger("0", 1, 1440, "Estimated visit duration").error);
+  assert.ok(parseOptionalBoundedInteger("1441", 1, 1440, "Estimated visit duration").error);
+});
+
+test("15. parseOptionalDateOnly returns null iso when nothing supplied", () => {
+  const result = parseOptionalDateOnly(undefined);
+  assert.equal(result.iso, null);
+  assert.equal(result.error, undefined);
+});
+
+test("16. parseOptionalDateOnly parses a valid date", () => {
+  assert.equal(parseOptionalDateOnly("2026-08-01").iso, "2026-08-01");
+});
+
+test("17. parseOptionalDateOnly rejects an invalid date", () => {
+  assert.ok(parseOptionalDateOnly("not-a-date").error);
 });
 
 // ─── Runner ──────────────────────────────────────────────────────────

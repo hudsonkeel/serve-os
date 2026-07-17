@@ -1,4 +1,9 @@
-import type { PipelineStage, RelationshipStatus, RelationshipType } from "@/lib/supabase/types";
+import type {
+  PipelineStage,
+  RelationshipPriority,
+  RelationshipStatus,
+  RelationshipType,
+} from "@/lib/supabase/types";
 
 // Pure search/filter logic for the Relationships workspace table. Mirrors
 // the pattern established for the Residents directory
@@ -16,11 +21,15 @@ export interface RelationshipWorkspaceRow {
   residentId: string | null;
   residentName: string | null;
   ownerLabel: string | null;
+  priority: RelationshipPriority;
+  prospectiveResidentName: string | null;
   primaryContactName: string | null;
   primaryContactPhone: string | null;
   primaryContactEmail: string | null;
   organizationName: string | null;
   communityName: string | null;
+  lastMeaningfulTouchAt: string | null;
+  updatedAt: string;
 }
 
 export function normalizeSearchQuery(raw: string): string {
@@ -67,6 +76,30 @@ export const RELATIONSHIP_FILTER_OPTIONS: { value: RelationshipFilterValue; labe
   { value: "on_hold", label: "On Hold" },
   { value: "closed", label: "Closed" },
 ];
+
+// Whiteboard "Prospect / Resident" column (Part 9): never presents a
+// primary contact (often an adult child) as if they were the resident.
+// Priority: linked resident name → named prospective resident → primary
+// contact, explicitly labeled as a contact → nothing.
+export interface ProspectOrResidentLabel {
+  text: string;
+  isContact: boolean;
+}
+
+export function getProspectOrResidentLabel(
+  row: Pick<RelationshipWorkspaceRow, "residentId" | "residentName" | "prospectiveResidentName" | "primaryContactName">
+): ProspectOrResidentLabel | null {
+  if (row.residentId) {
+    return { text: row.residentName ?? "Linked resident", isContact: false };
+  }
+  if (row.prospectiveResidentName) {
+    return { text: row.prospectiveResidentName, isContact: false };
+  }
+  if (row.primaryContactName) {
+    return { text: `Contact: ${row.primaryContactName}`, isContact: true };
+  }
+  return null;
+}
 
 export function filterByRelationshipFilter<T extends RelationshipWorkspaceRow>(
   rows: T[],

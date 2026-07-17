@@ -6,6 +6,7 @@ import {
 import { getRelationshipAttentionStatus } from "@/lib/relationships/attention";
 import { RelationshipTableRow } from "@/components/relationships/RelationshipsWorkspace";
 import { RelationshipsWorkspace } from "@/components/relationships/RelationshipsWorkspace";
+import { RelationshipViewTabs } from "@/components/relationships/RelationshipViewTabs";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -34,6 +35,7 @@ export default async function RelationshipsPage() {
 
   return (
     <PageContainer title="Relationships">
+      <RelationshipViewTabs active="all" />
       <div className="mb-6 flex items-baseline justify-between">
         <div>
           <h1 className="font-serif text-page-title font-light text-body">

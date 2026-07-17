@@ -5,6 +5,7 @@ import {
   RelationshipAction,
   RelationshipActionType,
   RelationshipPriority,
+  RelationshipServiceOpportunity,
   RelationshipTimelineEvent,
   RelationshipTouch,
   RelationshipTouchType,
@@ -13,6 +14,7 @@ import {
   RelationshipWorkingNoteCategory,
 } from "@/lib/supabase/types";
 import { RelationshipWorkspaceRow } from "@/lib/relationships/search";
+import { selectPrimaryOpenAction } from "@/lib/relationships/sorting";
 
 function residentDisplayName(row: {
   first_name: string | null;
@@ -112,24 +114,41 @@ export async function getRelationshipWorkspaceRows(): Promise<RelationshipWorksp
     residentId: r.resident_id,
     residentName: r.resident_id ? residentNames.get(r.resident_id) ?? null : null,
     ownerLabel: r.owner_label,
+    priority: r.priority,
+    prospectiveResidentName: r.prospective_resident_name,
     primaryContactName: r.primary_contact_name,
     primaryContactPhone: r.primary_contact_phone,
     primaryContactEmail: r.primary_contact_email,
     organizationName: r.organization_name,
     communityName: r.community_name,
+    lastMeaningfulTouchAt: r.last_meaningful_touch_at,
+    updatedAt: r.updated_at,
   }));
 }
 
-// Nearest (soonest-due) open action per relationship, for the workspace
-// table's "Next Action"/"Due" columns and the daily attention derivation.
-// A relationship with no open action is simply absent from the returned
-// map — callers distinguish "no open action" from "open action, no due
-// date" the same way lib/relationships/attention.ts expects
-// (nearestOpenActionDueAt undefined vs. null).
+// Primary (see lib/relationships/sorting.ts#selectPrimaryOpenAction) open
+// action per relationship, for the workspace/board/whiteboard "Next
+// Action"/"Due" columns and the daily attention derivation. A relationship
+// with no open action is simply absent from the returned map — callers
+// distinguish "no open action" from "open action, no due date" the same
+// way lib/relationships/attention.ts expects (nearestOpenActionDueAt
+// undefined vs. null). Fetches every open action (not just one per
+// relationship via SQL LIMIT) so the pure, unit-tested selector — not
+// incidental Postgres row order — decides ties when a relationship has
+// more than one open action.
+// Carries every field the Action Board's inline edit form needs (the same
+// fields RelationshipActionsList's detail-page ActionCard edits), not just
+// title/dueAt — so the board can edit its primary action without a trip to
+// the detail page.
 export interface NearestOpenAction {
   id: string;
   title: string;
+  description: string | null;
+  actionType: RelationshipActionType;
   dueAt: string | null;
+  assignedTo: string | null;
+  priority: RelationshipPriority;
+  createdAt: string;
 }
 
 export async function getNearestOpenActionByRelationship(): Promise<
@@ -138,9 +157,8 @@ export async function getNearestOpenActionByRelationship(): Promise<
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("relationship_actions")
-    .select("id, relationship_id, title, due_at")
-    .eq("status", "open")
-    .order("due_at", { ascending: true, nullsFirst: false });
+    .select("id, relationship_id, title, description, action_type, due_at, assigned_to, priority, created_at")
+    .eq("status", "open");
 
   if (error) {
     console.error("[relationships:getNearestOpenActionByRelationship:error]", {
@@ -150,12 +168,184 @@ export async function getNearestOpenActionByRelationship(): Promise<
     return new Map();
   }
 
-  const result = new Map<string, NearestOpenAction>();
+  const byRelationship = new Map<string, NearestOpenAction[]>();
   for (const row of data ?? []) {
-    if (result.has(row.relationship_id)) continue;
-    result.set(row.relationship_id, { id: row.id, title: row.title, dueAt: row.due_at });
+    const list = byRelationship.get(row.relationship_id) ?? [];
+    list.push({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      actionType: row.action_type,
+      dueAt: row.due_at,
+      assignedTo: row.assigned_to,
+      priority: row.priority,
+      createdAt: row.created_at,
+    });
+    byRelationship.set(row.relationship_id, list);
+  }
+
+  const result = new Map<string, NearestOpenAction>();
+  for (const [relationshipId, actions] of byRelationship) {
+    const primary = selectPrimaryOpenAction(actions);
+    if (primary) result.set(relationshipId, primary);
   }
   return result;
+}
+
+// Active (open) Working Note preview per relationship, for the Whiteboard's
+// "Active Note" column — the single most recent open note, or none. One
+// bulk query (order by created_at desc, first-match-wins reduction) rather
+// than one query per relationship, same batching principle as
+// getRelationshipWorkspaceRows()'s resident-name lookup.
+export interface ActiveNotePreview {
+  id: string;
+  content: string;
+  category: RelationshipWorkingNoteCategory | null;
+}
+
+export async function getActiveNotePreviewByRelationship(): Promise<
+  Map<string, ActiveNotePreview>
+> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("relationship_working_notes")
+    .select("id, relationship_id, content, category")
+    .eq("status", "open")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[relationships:getActiveNotePreviewByRelationship:error]", {
+      message: error.message,
+      code: error.code,
+    });
+    return new Map();
+  }
+
+  const result = new Map<string, ActiveNotePreview>();
+  for (const row of data ?? []) {
+    if (result.has(row.relationship_id)) continue;
+    result.set(row.relationship_id, { id: row.id, content: row.content, category: row.category });
+  }
+  return result;
+}
+
+// One Service Opportunity row per relationship (unique relationship_id —
+// see 20260718010000_create_relationship_service_opportunities.sql), for
+// the Whiteboard's "Service Opportunity" column.
+export async function getServiceOpportunityByRelationship(): Promise<
+  Map<string, RelationshipServiceOpportunity>
+> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase.from("relationship_service_opportunities").select("*");
+
+  if (error) {
+    console.error("[relationships:getServiceOpportunityByRelationship:error]", {
+      message: error.message,
+      code: error.code,
+    });
+    return new Map();
+  }
+
+  const result = new Map<string, RelationshipServiceOpportunity>();
+  for (const row of (data as RelationshipServiceOpportunity[] | null) ?? []) {
+    result.set(row.relationship_id, row);
+  }
+  return result;
+}
+
+export async function getServiceOpportunityByRelationshipId(
+  relationshipId: string
+): Promise<RelationshipServiceOpportunity | null> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("relationship_service_opportunities")
+    .select("*")
+    .eq("relationship_id", relationshipId)
+    .maybeSingle<RelationshipServiceOpportunity>();
+
+  if (error) {
+    console.error("[relationships:getServiceOpportunityByRelationshipId:error]", {
+      relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return null;
+  }
+
+  return data;
+}
+
+// Relationship Actions completed within the last `days` days, most
+// recently completed first — the Action Board's "Recently Completed"
+// section (Part 7). Deliberately excludes dismissed actions (Part 7:
+// "Do not mix dismissed actions into Recently Completed").
+export interface RecentlyCompletedAction {
+  id: string;
+  relationshipId: string;
+  title: string;
+  completedAt: string;
+  completedBy: string | null;
+  completionOutcome: string | null;
+}
+
+export async function getRecentlyCompletedActions(
+  days = 7,
+  limit = 25
+): Promise<RecentlyCompletedAction[]> {
+  const supabase = createServerClient();
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("relationship_actions")
+    .select("id, relationship_id, title, completed_at, completed_by, completion_outcome")
+    .eq("status", "completed")
+    .gte("completed_at", cutoff)
+    .order("completed_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("[relationships:getRecentlyCompletedActions:error]", {
+      message: error.message,
+      code: error.code,
+    });
+    return [];
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    relationshipId: row.relationship_id,
+    title: row.title,
+    completedAt: row.completed_at as string,
+    completedBy: row.completed_by,
+    completionOutcome: row.completion_outcome,
+  }));
+}
+
+// Assembled once, shared by the Action Board and Whiteboard (Part 17: "Avoid
+// one query per Relationship" and "avoid... duplicate queries between the
+// two pages") — four bulk queries total, run in parallel, merged in memory.
+// Neither page fetches relationships/actions/notes/service-opportunities
+// separately; each just picks the fields it displays from this one row set.
+export interface RelationshipBoardRow extends RelationshipWorkspaceRow {
+  nearestAction: NearestOpenAction | null;
+  activeNote: ActiveNotePreview | null;
+  serviceOpportunity: RelationshipServiceOpportunity | null;
+}
+
+export async function getRelationshipBoardRows(): Promise<RelationshipBoardRow[]> {
+  const [rows, nearestActions, activeNotes, serviceOpportunities] = await Promise.all([
+    getRelationshipWorkspaceRows(),
+    getNearestOpenActionByRelationship(),
+    getActiveNotePreviewByRelationship(),
+    getServiceOpportunityByRelationship(),
+  ]);
+
+  return rows.map((row) => ({
+    ...row,
+    nearestAction: nearestActions.get(row.id) ?? null,
+    activeNote: activeNotes.get(row.id) ?? null,
+    serviceOpportunity: serviceOpportunities.get(row.id) ?? null,
+  }));
 }
 
 export async function getRelationshipTimeline(
@@ -383,6 +573,32 @@ export async function createRelationship(
   return { id: data as string };
 }
 
+export async function updateRelationshipOwnerAndPriority(
+  relationshipId: string,
+  ownerLabel: string | null,
+  priority: RelationshipPriority,
+  actor: string
+): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+  const { error } = await supabase.rpc("update_relationship_owner_and_priority", {
+    p_relationship_id: relationshipId,
+    p_owner_label: ownerLabel,
+    p_priority: priority,
+    p_actor: actor,
+  });
+
+  if (error) {
+    console.error("[relationships:updateRelationshipOwnerAndPriority:error]", {
+      relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not update this relationship." };
+  }
+
+  return {};
+}
+
 export async function changeRelationshipStage(
   relationshipId: string,
   toStage: PipelineStage,
@@ -602,6 +818,48 @@ export async function dismissRelationshipAction(
   }
 
   return {};
+}
+
+export interface UpsertServiceOpportunityInput {
+  relationshipId: string;
+  serviceSummary: string | null;
+  visitsPerWeek: number | null;
+  preferredDays: string | null;
+  preferredTimeWindows: string | null;
+  estimatedVisitMinutes: number | null;
+  anticipatedStartDate: string | null;
+  serviceLocationSummary: string | null;
+  status: string | null;
+  actor: string;
+}
+
+export async function upsertRelationshipServiceOpportunity(
+  input: UpsertServiceOpportunityInput
+): Promise<{ id?: string; error?: string }> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase.rpc("upsert_relationship_service_opportunity", {
+    p_relationship_id: input.relationshipId,
+    p_service_summary: input.serviceSummary,
+    p_visits_per_week: input.visitsPerWeek,
+    p_preferred_days: input.preferredDays,
+    p_preferred_time_windows: input.preferredTimeWindows,
+    p_estimated_visit_minutes: input.estimatedVisitMinutes,
+    p_anticipated_start_date: input.anticipatedStartDate,
+    p_service_location_summary: input.serviceLocationSummary,
+    p_status: input.status,
+    p_actor: input.actor,
+  });
+
+  if (error) {
+    console.error("[relationships:upsertRelationshipServiceOpportunity:error]", {
+      relationshipId: input.relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not save this service opportunity." };
+  }
+
+  return { id: data as string };
 }
 
 export async function createRelationshipWorkingNote(

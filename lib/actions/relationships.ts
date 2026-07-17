@@ -14,6 +14,8 @@ import {
   resolveRelationshipWorkingNote as resolveRelationshipWorkingNoteRecord,
   searchResidentsForLinking as searchResidentsForLinkingRecord,
   updateRelationshipAction as updateRelationshipActionRecord,
+  updateRelationshipOwnerAndPriority as updateRelationshipOwnerAndPriorityRecord,
+  upsertRelationshipServiceOpportunity as upsertRelationshipServiceOpportunityRecord,
   ResidentSearchResult,
 } from "@/lib/data/relationships";
 import {
@@ -29,7 +31,9 @@ import {
   normalizeDisplayName,
   normalizeOptionalText,
   normalizeTouchSummary,
+  parseOptionalBoundedInteger,
   parseOptionalDate,
+  parseOptionalDateOnly,
   validateDueDateNotPast,
 } from "@/lib/relationships/validation";
 import {
@@ -163,6 +167,33 @@ export async function changeRelationshipStage(data: {
     data.relationshipId,
     data.toStage,
     normalizeOptionalText(data.changeReason),
+    actor
+  );
+}
+
+// ─── Owner / Priority (Whiteboard inline edit) ──────────────────────────
+
+export async function updateRelationshipOwnerAndPriority(data: {
+  relationshipId: string;
+  ownerLabel?: string;
+  priority: string;
+}): Promise<{ error?: string }> {
+  if (!data.relationshipId) {
+    return { error: "Missing relationship." };
+  }
+  if (!isValidRelationshipPriority(data.priority)) {
+    return { error: "Select a valid priority." };
+  }
+
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to update a relationship." };
+  }
+
+  return updateRelationshipOwnerAndPriorityRecord(
+    data.relationshipId,
+    normalizeOptionalText(data.ownerLabel),
+    data.priority as RelationshipPriority,
     actor
   );
 }
@@ -408,6 +439,73 @@ export async function searchResidentsForLinking(
   query: string
 ): Promise<ResidentSearchResult[]> {
   return searchResidentsForLinkingRecord(query);
+}
+
+// ─── Service Opportunity ─────────────────────────────────────────────────
+
+const SERVICE_OPPORTUNITY_STATUSES = ["draft", "ready_for_proposal", "superseded"];
+
+export async function upsertServiceOpportunity(data: {
+  relationshipId: string;
+  serviceSummary?: string;
+  visitsPerWeek?: string;
+  preferredDays?: string;
+  preferredTimeWindows?: string;
+  estimatedVisitMinutes?: string;
+  anticipatedStartDate?: string;
+  serviceLocationSummary?: string;
+  status?: string;
+}): Promise<{ error?: string }> {
+  if (!data.relationshipId) {
+    return { error: "Missing relationship." };
+  }
+
+  const visitsPerWeek = parseOptionalBoundedInteger(data.visitsPerWeek, 0, 21, "Visits per week");
+  if (visitsPerWeek.error) {
+    return { error: visitsPerWeek.error };
+  }
+
+  const estimatedVisitMinutes = parseOptionalBoundedInteger(
+    data.estimatedVisitMinutes,
+    1,
+    1440,
+    "Estimated visit duration"
+  );
+  if (estimatedVisitMinutes.error) {
+    return { error: estimatedVisitMinutes.error };
+  }
+
+  const anticipatedStartDate = parseOptionalDateOnly(data.anticipatedStartDate);
+  if (anticipatedStartDate.error) {
+    return { error: anticipatedStartDate.error };
+  }
+
+  const status =
+    data.status && SERVICE_OPPORTUNITY_STATUSES.includes(data.status) ? data.status : null;
+
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to save a service opportunity." };
+  }
+
+  const result = await upsertRelationshipServiceOpportunityRecord({
+    relationshipId: data.relationshipId,
+    serviceSummary: normalizeOptionalText(data.serviceSummary),
+    visitsPerWeek: visitsPerWeek.value ?? null,
+    preferredDays: normalizeOptionalText(data.preferredDays),
+    preferredTimeWindows: normalizeOptionalText(data.preferredTimeWindows),
+    estimatedVisitMinutes: estimatedVisitMinutes.value ?? null,
+    anticipatedStartDate: anticipatedStartDate.iso ?? null,
+    serviceLocationSummary: normalizeOptionalText(data.serviceLocationSummary),
+    status,
+    actor,
+  });
+
+  if (result.error) {
+    return { error: result.error };
+  }
+
+  return {};
 }
 
 // ─── Working Notes ───────────────────────────────────────────────────────

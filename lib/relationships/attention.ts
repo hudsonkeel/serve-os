@@ -73,3 +73,23 @@ export const RELATIONSHIP_ATTENTION_LABELS: Record<RelationshipAttentionStatus, 
   on_hold: "On Hold",
   closed: "Closed",
 };
+
+// Shared by every surface that renders an attention-status Badge
+// (RelationshipsWorkspace, Whiteboard) so the color meaning stays
+// consistent app-wide. Uses Badge's own tone names as plain string
+// literals rather than importing BadgeTone — this file has zero runtime
+// dependencies outside lib/utils/date.ts by design (it's executed directly
+// by the plain-node test runner), and a type-only import would work but
+// isn't worth the coupling for four literal strings.
+export const RELATIONSHIP_ATTENTION_BADGE_TONE: Record<
+  RelationshipAttentionStatus,
+  "danger" | "warning" | "gold" | "neutral"
+> = {
+  overdue: "danger",
+  due_today: "warning",
+  due_this_week: "gold",
+  upcoming: "neutral",
+  no_next_action: "warning",
+  on_hold: "neutral",
+  closed: "neutral",
+};

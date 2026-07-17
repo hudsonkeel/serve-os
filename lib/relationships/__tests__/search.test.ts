@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import {
   filterByRelationshipFilter,
+  getProspectOrResidentLabel,
   matchesRelationshipSearch,
   normalizeSearchQuery,
 } from "../search.ts";
@@ -24,11 +25,15 @@ function makeRow(overrides: Partial<RelationshipWorkspaceRow> = {}): Relationshi
     residentId: null,
     residentName: null,
     ownerLabel: null,
+    priority: "normal",
+    prospectiveResidentName: null,
     primaryContactName: null,
     primaryContactPhone: null,
     primaryContactEmail: null,
     organizationName: null,
     communityName: null,
+    lastMeaningfulTouchAt: null,
+    updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
 }
@@ -108,6 +113,35 @@ test("10. 'on_hold' and 'closed' scope by status, not type", () => {
   ];
   assert.equal(filterByRelationshipFilter(rows, "on_hold")[0].id, "a");
   assert.equal(filterByRelationshipFilter(rows, "closed")[0].id, "b");
+});
+
+// ─── getProspectOrResidentLabel ──────────────────────────────────────
+
+test("11. linked resident wins even if a prospective-resident name is also set", () => {
+  const row = makeRow({
+    residentId: "res-1",
+    residentName: "Doris Kakazu",
+    prospectiveResidentName: "Someone Else",
+  });
+  const label = getProspectOrResidentLabel(row);
+  assert.deepEqual(label, { text: "Doris Kakazu", isContact: false });
+});
+
+test("12. no resident but a named prospective resident -> shown as the prospect, not a contact", () => {
+  const row = makeRow({ prospectiveResidentName: "Margaret Smith", primaryContactName: "Jennifer Smith" });
+  const label = getProspectOrResidentLabel(row);
+  assert.deepEqual(label, { text: "Margaret Smith", isContact: false });
+});
+
+test("13. no resident, no named prospect -> falls back to primary contact, explicitly labeled", () => {
+  const row = makeRow({ primaryContactName: "Jennifer Smith" });
+  const label = getProspectOrResidentLabel(row);
+  assert.deepEqual(label, { text: "Contact: Jennifer Smith", isContact: true });
+});
+
+test("14. nothing known at all -> null, never a fabricated label", () => {
+  const row = makeRow();
+  assert.equal(getProspectOrResidentLabel(row), null);
 });
 
 // ─── Runner ──────────────────────────────────────────────────────────

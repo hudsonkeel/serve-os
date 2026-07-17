@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  RELATIONSHIP_ATTENTION_BADGE_TONE,
   RELATIONSHIP_ATTENTION_LABELS,
   RelationshipAttentionStatus,
 } from "@/lib/relationships/attention";
@@ -36,16 +37,6 @@ function compactDate(iso: string | null) {
     year: "numeric",
   });
 }
-
-const ATTENTION_BADGE_TONE: Record<RelationshipAttentionStatus, "danger" | "warning" | "gold" | "neutral"> = {
-  overdue: "danger",
-  due_today: "warning",
-  due_this_week: "gold",
-  upcoming: "neutral",
-  no_next_action: "warning",
-  on_hold: "neutral",
-  closed: "neutral",
-};
 
 interface RelationshipsWorkspaceProps {
   rows: RelationshipTableRow[];
@@ -230,7 +221,7 @@ export function RelationshipsWorkspace({ rows }: RelationshipsWorkspaceProps) {
                     {row.ownerLabel ?? <span className="text-subtle">Unassigned</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge tone={ATTENTION_BADGE_TONE[row.attentionStatus]}>
+                    <Badge tone={RELATIONSHIP_ATTENTION_BADGE_TONE[row.attentionStatus]}>
                       {RELATIONSHIP_ATTENTION_LABELS[row.attentionStatus]}
                     </Badge>
                   </td>

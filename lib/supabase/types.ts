@@ -793,6 +793,11 @@ export interface Relationship {
   updated_at: string;
   closed_at: string | null;
   closed_by: string | null;
+  // Test-data hygiene only (docs/engineering/TEST_DATA_HYGIENE.md) — never
+  // set or read by normal application UI. Identifies every row created by
+  // a live-database verification run so scripts/cleanup-test-data.ts can
+  // remove the whole run (root + every dependent record) deterministically.
+  test_marker: string | null;
 }
 
 export interface RelationshipStageHistoryEntry {
@@ -818,7 +823,9 @@ export type RelationshipTimelineEventType =
   | "relationship_on_hold"
   | "relationship_closed"
   | "working_note_created"
-  | "working_note_resolved";
+  | "working_note_resolved"
+  | "service_opportunity_updated"
+  | "relationship_updated";
 
 export interface RelationshipTimelineEvent {
   id: string;
@@ -935,4 +942,30 @@ export interface RelationshipWorkingNote {
   created_by: string;
   updated_at: string | null;
   updated_by: string | null;
+}
+
+// Early, nonclinical service-planning information for a prospect-oriented
+// Relationship — the digital equivalent of what Brian jots on his physical
+// whiteboard before a proposal exists. Deliberately not a care plan (no
+// clinical fields), not an AxisCare schedule, and not a Cinch visit — see
+// docs/design/RELATIONSHIPS.md, "Service Opportunity". One row per
+// Relationship (unique relationship_id), edited in place; no field-level
+// audit table (unlike relationship_actions) because this is preliminary,
+// frequently-revised planning context, not accountable history — one
+// Relationship Timeline event per save is sufficient.
+export interface RelationshipServiceOpportunity {
+  id: string;
+  relationship_id: string;
+  service_summary: string | null;
+  visits_per_week: number | null;
+  preferred_days: string | null;
+  preferred_time_windows: string | null;
+  estimated_visit_minutes: number | null;
+  anticipated_start_date: string | null;
+  service_location_summary: string | null;
+  status: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
 }
