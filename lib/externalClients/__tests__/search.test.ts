@@ -28,6 +28,7 @@ function makeRow(overrides: Partial<ExternalClientWorkspaceRow> = {}): ExternalC
     ownerLabel: null,
     priority: "normal",
     prospectiveResidentName: null,
+    prospectiveClientName: null,
     primaryContactName: null,
     primaryContactPhone: null,
     primaryContactEmail: null,
@@ -41,6 +42,10 @@ function makeRow(overrides: Partial<ExternalClientWorkspaceRow> = {}): ExternalC
     externalClientId: null,
     externalClientStatus: null,
     city: null,
+    state: null,
+    postalCode: null,
+    residenceType: null,
+    facilityName: null,
     serviceStartDate: null,
     ...overrides,
   };
@@ -128,6 +133,16 @@ test("12. matchesExternalClientSearch matches city", () => {
 test("13. matchesExternalClientSearch returns false when nothing matches", () => {
   const row = makeRow({ displayName: "Jones Family", city: "Plano" });
   assert.equal(matchesExternalClientSearch(row, "smith"), false);
+});
+
+test("14. matchesExternalClientSearch matches postal code", () => {
+  const row = makeRow({ postalCode: "75034" });
+  assert.equal(matchesExternalClientSearch(row, "75034"), true);
+});
+
+test("15. matchesExternalClientSearch matches facility/community name", () => {
+  const row = makeRow({ facilityName: "Sunrise Senior Living" });
+  assert.equal(matchesExternalClientSearch(row, "sunrise"), true);
 });
 
 // ─── Runner ──────────────────────────────────────────────────────────

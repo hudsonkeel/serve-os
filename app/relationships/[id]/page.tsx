@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/PageContainer";
 import { Badge } from "@/components/ui/Badge";
 import {
+  getCurrentServiceLocationByRelationshipId,
   getRelationshipActions,
   getRelationshipById,
   getRelationshipTimeline,
@@ -17,6 +18,7 @@ import { RelationshipActionsList } from "@/components/relationships/Relationship
 import { RelationshipWorkingNotesSection } from "@/components/relationships/RelationshipWorkingNotesSection";
 import { RelationshipTouchesSection } from "@/components/relationships/RelationshipTouchesSection";
 import { RelationshipTimelineSection } from "@/components/relationships/RelationshipTimelineSection";
+import { RelationshipServiceLocationSection } from "@/components/relationships/RelationshipServiceLocationSection";
 import { ConvertRelationshipPanel } from "@/components/relationships/ConvertRelationshipPanel";
 import { ExternalClientPanel } from "@/components/relationships/ExternalClientPanel";
 
@@ -33,13 +35,14 @@ export default async function RelationshipDetailPage({
 
   if (!relationship) notFound();
 
-  const [actions, notes, touches, timeline, linkedResidentName, externalClient] = await Promise.all([
+  const [actions, notes, touches, timeline, linkedResidentName, externalClient, currentLocation] = await Promise.all([
     getRelationshipActions(id),
     getRelationshipWorkingNotes(id),
     getRelationshipTouches(id),
     getRelationshipTimeline(id),
     relationship.resident_id ? getResidentDisplayNameById(relationship.resident_id) : Promise.resolve(null),
     getExternalClientByRelationshipId(id),
+    getCurrentServiceLocationByRelationshipId(id),
   ]);
 
   return (
@@ -68,10 +71,14 @@ export default async function RelationshipDetailPage({
         <div className="space-y-6 lg:col-span-2">
           <RelationshipOverview relationship={relationship} linkedResidentName={linkedResidentName} />
 
+          {relationship.relationship_type === "external_prospect" && !externalClient && (
+            <RelationshipServiceLocationSection relationshipId={id} location={currentLocation} />
+          )}
+
           {externalClient ? (
             <ExternalClientPanel client={externalClient} />
           ) : (
-            <ConvertRelationshipPanel relationship={relationship} />
+            <ConvertRelationshipPanel relationship={relationship} currentLocation={currentLocation} />
           )}
 
           <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">

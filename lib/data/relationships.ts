@@ -5,6 +5,7 @@ import {
   RelationshipAction,
   RelationshipActionType,
   RelationshipPriority,
+  RelationshipServiceLocation,
   RelationshipServiceOpportunity,
   RelationshipStatus,
   RelationshipTimelineEvent,
@@ -13,6 +14,7 @@ import {
   RelationshipType,
   RelationshipWorkingNote,
   RelationshipWorkingNoteCategory,
+  ResidenceType,
 } from "@/lib/supabase/types";
 import { RelationshipWorkspaceRow } from "@/lib/relationships/search";
 import { selectPrimaryOpenAction } from "@/lib/relationships/sorting";
@@ -141,6 +143,8 @@ export async function getRelationshipWorkspaceRows(): Promise<RelationshipWorksp
     ownerLabel: r.owner_label,
     priority: r.priority,
     prospectiveResidentName: r.prospective_resident_name,
+    prospectiveClientName:
+      [r.prospective_client_first_name, r.prospective_client_last_name].filter(Boolean).join(" ") || null,
     primaryContactName: r.primary_contact_name,
     primaryContactPhone: r.primary_contact_phone,
     primaryContactEmail: r.primary_contact_email,
@@ -298,6 +302,59 @@ export async function getServiceOpportunityByRelationshipId(
   }
 
   return data;
+}
+
+// The current (is_current = true) expected service location for a single
+// Relationship — the editable, pre-conversion proposed address. See
+// docs/design/RELATIONSHIPS.md, "External Prospect domain model."
+export async function getCurrentServiceLocationByRelationshipId(
+  relationshipId: string
+): Promise<RelationshipServiceLocation | null> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("relationship_service_locations")
+    .select("*")
+    .eq("relationship_id", relationshipId)
+    .eq("is_current", true)
+    .maybeSingle<RelationshipServiceLocation>();
+
+  if (error) {
+    console.error("[relationships:getCurrentServiceLocationByRelationshipId:error]", {
+      relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return null;
+  }
+
+  return data;
+}
+
+// Bulk map of every Relationship's current service location, for the
+// External Clients → Prospects workspace display (Part 20 of the
+// External Prospect domain-model scope) — one query, never one per row.
+export async function getCurrentServiceLocationsByRelationship(): Promise<
+  Map<string, RelationshipServiceLocation>
+> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("relationship_service_locations")
+    .select("*")
+    .eq("is_current", true);
+
+  if (error) {
+    console.error("[relationships:getCurrentServiceLocationsByRelationship:error]", {
+      message: error.message,
+      code: error.code,
+    });
+    return new Map();
+  }
+
+  const result = new Map<string, RelationshipServiceLocation>();
+  for (const row of (data as RelationshipServiceLocation[] | null) ?? []) {
+    result.set(row.relationship_id, row);
+  }
+  return result;
 }
 
 // Relationship Actions completed within the last `days` days, most
@@ -618,6 +675,15 @@ export interface CreateRelationshipInput {
   sourceType: string | null;
   sourceLabel: string | null;
   actor: string;
+  // Structured External Prospect identity (see docs/design/RELATIONSHIPS.md,
+  // "External Prospect domain model") — optional for every other
+  // relationship type.
+  prospectiveClientFirstName?: string | null;
+  prospectiveClientLastName?: string | null;
+  prospectiveClientPreferredName?: string | null;
+  prospectiveClientPhone?: string | null;
+  prospectiveClientEmail?: string | null;
+  primaryContactIsProspectiveClient?: boolean;
 }
 
 export async function createRelationship(
@@ -643,6 +709,12 @@ export async function createRelationship(
     p_source_type: input.sourceType,
     p_source_label: input.sourceLabel,
     p_actor: input.actor,
+    p_prospective_client_first_name: input.prospectiveClientFirstName ?? null,
+    p_prospective_client_last_name: input.prospectiveClientLastName ?? null,
+    p_prospective_client_preferred_name: input.prospectiveClientPreferredName ?? null,
+    p_prospective_client_phone: input.prospectiveClientPhone ?? null,
+    p_prospective_client_email: input.prospectiveClientEmail ?? null,
+    p_primary_contact_is_prospective_client: input.primaryContactIsProspectiveClient ?? false,
   });
 
   if (error) {
@@ -942,6 +1014,48 @@ export async function upsertRelationshipServiceOpportunity(
       code: error.code,
     });
     return { error: "Could not save this service opportunity." };
+  }
+
+  return { id: data as string };
+}
+
+export interface UpsertServiceLocationInput {
+  relationshipId: string;
+  addressLine1: string;
+  addressLine2: string | null;
+  city: string;
+  state: string;
+  postalCode: string;
+  residenceType: ResidenceType | null;
+  facilityName: string | null;
+  locationNotes: string | null;
+  actor: string;
+}
+
+export async function upsertRelationshipServiceLocation(
+  input: UpsertServiceLocationInput
+): Promise<{ id?: string; error?: string }> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase.rpc("upsert_relationship_service_location", {
+    p_relationship_id: input.relationshipId,
+    p_address_line_1: input.addressLine1,
+    p_address_line_2: input.addressLine2,
+    p_city: input.city,
+    p_state: input.state,
+    p_postal_code: input.postalCode,
+    p_residence_type: input.residenceType,
+    p_facility_name: input.facilityName,
+    p_location_notes: input.locationNotes,
+    p_actor: input.actor,
+  });
+
+  if (error) {
+    console.error("[relationships:upsertRelationshipServiceLocation:error]", {
+      relationshipId: input.relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not save this service location." };
   }
 
   return { id: data as string };

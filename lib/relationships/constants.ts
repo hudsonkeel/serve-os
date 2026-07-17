@@ -6,6 +6,7 @@ import type {
   RelationshipTouchType,
   RelationshipType,
   RelationshipWorkingNoteCategory,
+  ResidenceType,
 } from "@/lib/supabase/types";
 
 // Controlled-value lists and their user-facing labels for the Relationship
@@ -184,4 +185,31 @@ export function isValidTouchType(value: string): value is RelationshipTouchType 
 
 export function isValidActionType(value: string): value is RelationshipActionType {
   return (RELATIONSHIP_ACTION_TYPES as readonly string[]).includes(value);
+}
+
+// Residence context for an External Prospect's expected service location
+// (Part 4 of the External Prospect domain-model scope) — contextual only,
+// never a substitute for the structured postal address.
+export const RESIDENCE_TYPES: readonly ResidenceType[] = [
+  "private_home",
+  "apartment",
+  "independent_living",
+  "assisted_living",
+  "skilled_nursing",
+  "family_member_home",
+  "other",
+];
+
+export const RESIDENCE_TYPE_LABELS: Record<ResidenceType, string> = {
+  private_home: "Private Home",
+  apartment: "Apartment",
+  independent_living: "Independent Living",
+  assisted_living: "Assisted Living",
+  skilled_nursing: "Skilled Nursing",
+  family_member_home: "Family Member's Home",
+  other: "Other",
+};
+
+export function isValidResidenceType(value: string): value is ResidenceType {
+  return (RESIDENCE_TYPES as readonly string[]).includes(value);
 }

@@ -23,6 +23,12 @@ export interface RelationshipWorkspaceRow {
   ownerLabel: string | null;
   priority: RelationshipPriority;
   prospectiveResidentName: string | null;
+  // Structured External Prospect identity (first + last, joined) — see
+  // docs/design/RELATIONSHIPS.md, "External Prospect domain model."
+  // Preferred over prospectiveResidentName wherever both could apply,
+  // since it's the current, structured field going forward;
+  // prospectiveResidentName is kept for historical/legacy rows only.
+  prospectiveClientName: string | null;
   primaryContactName: string | null;
   primaryContactPhone: string | null;
   primaryContactEmail: string | null;
@@ -87,10 +93,16 @@ export interface ProspectOrResidentLabel {
 }
 
 export function getProspectOrResidentLabel(
-  row: Pick<RelationshipWorkspaceRow, "residentId" | "residentName" | "prospectiveResidentName" | "primaryContactName">
+  row: Pick<
+    RelationshipWorkspaceRow,
+    "residentId" | "residentName" | "prospectiveResidentName" | "prospectiveClientName" | "primaryContactName"
+  >
 ): ProspectOrResidentLabel | null {
   if (row.residentId) {
     return { text: row.residentName ?? "Linked resident", isContact: false };
+  }
+  if (row.prospectiveClientName) {
+    return { text: row.prospectiveClientName, isContact: false };
   }
   if (row.prospectiveResidentName) {
     return { text: row.prospectiveResidentName, isContact: false };

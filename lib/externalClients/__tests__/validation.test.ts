@@ -2,6 +2,8 @@
 //   npm run test:externalClients
 import assert from "node:assert/strict";
 import {
+  isValidUsState,
+  isValidZipCode,
   normalizeOptionalText,
   normalizeRequiredName,
   validateServiceAddress,
@@ -27,9 +29,37 @@ test("2. normalizeRequiredName rejects a blank value", () => {
   assert.equal(result.error, "Enter a first name.");
 });
 
+// ─── isValidUsState ─────────────────────────────────────────────────────
+
+test("3. isValidUsState accepts a known state, case-insensitively", () => {
+  assert.equal(isValidUsState("TX"), true);
+  assert.equal(isValidUsState("tx"), true);
+});
+
+test("4. isValidUsState rejects an unknown value", () => {
+  assert.equal(isValidUsState("XX"), false);
+  assert.equal(isValidUsState("Texas"), false);
+});
+
+// ─── isValidZipCode ───────────────────────────────────────────────────
+
+test("5. isValidZipCode accepts a 5-digit ZIP", () => {
+  assert.equal(isValidZipCode("75034"), true);
+});
+
+test("6. isValidZipCode accepts a ZIP+4", () => {
+  assert.equal(isValidZipCode("75034-1234"), true);
+});
+
+test("7. isValidZipCode rejects a malformed value", () => {
+  assert.equal(isValidZipCode("ABCDE"), false);
+  assert.equal(isValidZipCode("123"), false);
+  assert.equal(isValidZipCode("75034-12"), false);
+});
+
 // ─── validateServiceAddress ───────────────────────────────────────────
 
-test("3. validateServiceAddress accepts a complete address", () => {
+test("8. validateServiceAddress accepts a complete address", () => {
   const result = validateServiceAddress({
     addressLine1: "123 Main St",
     city: "Frisco",
@@ -38,6 +68,7 @@ test("3. validateServiceAddress accepts a complete address", () => {
   });
   assert.deepEqual(result.value, {
     addressLine1: "123 Main St",
+    addressLine2: null,
     city: "Frisco",
     state: "TX",
     postalCode: "75034",
@@ -45,39 +76,63 @@ test("3. validateServiceAddress accepts a complete address", () => {
   assert.equal(result.error, undefined);
 });
 
-test("4. validateServiceAddress rejects a missing street", () => {
+test("9. validateServiceAddress carries addressLine2 through when supplied", () => {
+  const result = validateServiceAddress({
+    addressLine1: "123 Main St",
+    addressLine2: "Apt 4B",
+    city: "Frisco",
+    state: "TX",
+    postalCode: "75034",
+  });
+  assert.equal(result.value?.addressLine2, "Apt 4B");
+});
+
+test("10. validateServiceAddress rejects a missing street", () => {
   const result = validateServiceAddress({ addressLine1: "", city: "Frisco", state: "TX", postalCode: "75034" });
   assert.equal(result.value, undefined);
   assert.ok(result.error);
 });
 
-test("5. validateServiceAddress rejects a missing city", () => {
+test("11. validateServiceAddress rejects a missing city", () => {
   const result = validateServiceAddress({ addressLine1: "123 Main St", city: "  ", state: "TX", postalCode: "75034" });
   assert.equal(result.value, undefined);
   assert.ok(result.error);
 });
 
-test("6. validateServiceAddress rejects a missing state", () => {
+test("12. validateServiceAddress rejects a missing state", () => {
   const result = validateServiceAddress({ addressLine1: "123 Main St", city: "Frisco", state: "", postalCode: "75034" });
   assert.equal(result.value, undefined);
   assert.ok(result.error);
 });
 
-test("7. validateServiceAddress rejects a missing postal code", () => {
+test("13. validateServiceAddress rejects a missing postal code", () => {
   const result = validateServiceAddress({ addressLine1: "123 Main St", city: "Frisco", state: "TX", postalCode: "" });
   assert.equal(result.value, undefined);
   assert.ok(result.error);
 });
 
-test("8. validateServiceAddress trims all fields", () => {
+test("14. validateServiceAddress rejects an invalid state abbreviation", () => {
+  const result = validateServiceAddress({ addressLine1: "123 Main St", city: "Frisco", state: "ZZ", postalCode: "75034" });
+  assert.equal(result.value, undefined);
+  assert.ok(result.error?.includes("state"));
+});
+
+test("15. validateServiceAddress rejects a malformed ZIP code", () => {
+  const result = validateServiceAddress({ addressLine1: "123 Main St", city: "Frisco", state: "TX", postalCode: "abc" });
+  assert.equal(result.value, undefined);
+  assert.ok(result.error?.includes("ZIP"));
+});
+
+test("16. validateServiceAddress trims and uppercases the state", () => {
   const result = validateServiceAddress({
     addressLine1: "  123 Main St  ",
     city: " Frisco ",
-    state: " TX ",
+    state: " tx ",
     postalCode: " 75034 ",
   });
   assert.deepEqual(result.value, {
     addressLine1: "123 Main St",
+    addressLine2: null,
     city: "Frisco",
     state: "TX",
     postalCode: "75034",
@@ -86,12 +141,12 @@ test("8. validateServiceAddress trims all fields", () => {
 
 // ─── normalizeOptionalText ─────────────────────────────────────────────
 
-test("9. normalizeOptionalText returns null for undefined/blank", () => {
+test("17. normalizeOptionalText returns null for undefined/blank", () => {
   assert.equal(normalizeOptionalText(undefined), null);
   assert.equal(normalizeOptionalText("   "), null);
 });
 
-test("10. normalizeOptionalText trims a real value", () => {
+test("18. normalizeOptionalText trims a real value", () => {
   assert.equal(normalizeOptionalText("  hello  "), "hello");
 });
 

@@ -27,6 +27,7 @@ function makeRow(overrides: Partial<RelationshipWorkspaceRow> = {}): Relationshi
     ownerLabel: null,
     priority: "normal",
     prospectiveResidentName: null,
+    prospectiveClientName: null,
     primaryContactName: null,
     primaryContactPhone: null,
     primaryContactEmail: null,
@@ -129,6 +130,15 @@ test("11. linked resident wins even if a prospective-resident name is also set",
 
 test("12. no resident but a named prospective resident -> shown as the prospect, not a contact", () => {
   const row = makeRow({ prospectiveResidentName: "Margaret Smith", primaryContactName: "Jennifer Smith" });
+  const label = getProspectOrResidentLabel(row);
+  assert.deepEqual(label, { text: "Margaret Smith", isContact: false });
+});
+
+test("12b. structured prospectiveClientName wins over the legacy prospectiveResidentName", () => {
+  const row = makeRow({
+    prospectiveClientName: "Margaret Smith",
+    prospectiveResidentName: "Legacy Name",
+  });
   const label = getProspectOrResidentLabel(row);
   assert.deepEqual(label, { text: "Margaret Smith", isContact: false });
 });

@@ -132,7 +132,7 @@ export function ExternalClientsWorkspace({ rows, autoOpenAdd = false }: External
               <tr className="border-b border-ivory-border text-left">
                 {(isLifecycleTab
                   ? ["Client", "City", "Service Start", "Owner", "Next Action", "Due", "Status"]
-                  : ["Prospect", "Care Recipient", "Source", "Stage", "Next Action", "Due", "Owner", "Attention"]
+                  : ["Prospect", "Care Recipient", "Expected Service Location", "Stage", "Next Action", "Due", "Owner", "Attention"]
                 ).map((heading) => (
                   <th
                     key={heading}
@@ -174,10 +174,24 @@ export function ExternalClientsWorkspace({ rows, autoOpenAdd = false }: External
                   ) : (
                     <>
                       <td className="px-4 py-3 font-sans text-sm text-body">
-                        {row.prospectiveResidentName ?? <span className="text-subtle">-</span>}
+                        {row.prospectiveClientName ?? row.prospectiveResidentName ?? <span className="text-subtle">-</span>}
                       </td>
                       <td className="px-4 py-3 font-sans text-sm text-body">
                         {row.primaryContactName ?? <span className="text-subtle">-</span>}
+                      </td>
+                      <td className="px-4 py-3 font-sans text-sm text-body">
+                        {row.city ? (
+                          <>
+                            {row.city}
+                            {row.state ? `, ${row.state}` : ""}
+                            {row.postalCode ? ` ${row.postalCode}` : ""}
+                            {row.facilityName ? (
+                              <span className="block text-subtle">{row.facilityName}</span>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-subtle">-</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 font-sans text-sm text-body">
                         {RELATIONSHIP_STAGE_LABELS[row.stage]}

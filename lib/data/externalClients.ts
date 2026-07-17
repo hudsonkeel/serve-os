@@ -1,6 +1,10 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { ExternalClient, RelationshipActionType } from "@/lib/supabase/types";
-import { getRelationshipBoardRows, RelationshipBoardRow } from "@/lib/data/relationships";
+import {
+  getCurrentServiceLocationsByRelationship,
+  getRelationshipBoardRows,
+  RelationshipBoardRow,
+} from "@/lib/data/relationships";
 import { getRelationshipAttentionStatus } from "@/lib/relationships/attention";
 import { ExternalClientWorkspaceRow, isExternalWorkspaceRow } from "@/lib/externalClients/search";
 
@@ -58,15 +62,21 @@ export async function getExternalClientByRelationshipId(
 // external prospects and external active/on-hold/former clients and merges
 // in each row's external_clients fields where present.
 export async function getExternalClientWorkspaceRows(): Promise<ExternalClientWorkspaceRow[]> {
-  const [boardRows, externalClients] = await Promise.all([
+  const [boardRows, externalClients, serviceLocations] = await Promise.all([
     getRelationshipBoardRows(),
     getExternalClientsByRelationship(),
+    getCurrentServiceLocationsByRelationship(),
   ]);
 
   return boardRows
     .filter((row: RelationshipBoardRow) => isExternalWorkspaceRow(row))
     .map((row) => {
       const client = externalClients.get(row.id) ?? null;
+      // Pre-conversion (Prospects tab), there is no external_clients row
+      // yet — the expected service location is the only address on file.
+      // Post-conversion, external_clients.* is authoritative (see
+      // docs/design/RELATIONSHIPS.md, "Address source of truth").
+      const location = serviceLocations.get(row.id) ?? null;
       const nearestOpenActionDueAt = row.nearestAction ? row.nearestAction.dueAt : undefined;
 
       return {
@@ -80,8 +90,12 @@ export async function getExternalClientWorkspaceRows(): Promise<ExternalClientWo
         }),
         externalClientId: client?.id ?? null,
         externalClientStatus: client?.status ?? null,
-        city: client?.city ?? null,
         serviceStartDate: client?.service_start_date ?? null,
+        city: client?.city ?? location?.city ?? null,
+        state: client?.state ?? location?.state ?? null,
+        postalCode: client?.postal_code ?? location?.postal_code ?? null,
+        residenceType: location?.residence_type ?? null,
+        facilityName: location?.facility_name ?? null,
       };
     });
 }

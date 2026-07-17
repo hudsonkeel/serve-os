@@ -90,6 +90,7 @@ async function cleanupRelationshipsByIds(relationshipIds: readonly string[]): Pr
   await deleteByColumnIn("relationship_timeline", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_working_notes", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_service_opportunities", "relationship_id", relationshipIds);
+  await deleteByColumnIn("relationship_service_locations", "relationship_id", relationshipIds);
   await deleteByColumnIn("external_clients", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationships", "id", relationshipIds);
 }

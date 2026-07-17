@@ -171,6 +171,10 @@ derivation.
 
 ## External Clients
 
+> **External Clients are defined by receiving services outside supported
+> communities. External Prospects must capture the expected service
+> location so future service-area and travel logic can be applied.**
+
 `/external-clients` is a fourth top-level workspace (immediately below
 Relationships in the sidebar), not a second CRM. It is four lifecycle
 *views* over the same `relationships` rows Relationships itself reads —
@@ -183,6 +187,57 @@ see "Reuse existing Relationship infrastructure" below.
 | On Hold | `active_client` | linked `external_clients.status = 'on_hold'` |
 | Former Clients | `active_client` | linked `external_clients.status = 'former'` |
 
+### External Prospect domain model
+
+An External Prospect is a prospective client who may receive Serve
+services outside a supported community. **The defining characteristic is
+the expected service location, not merely the absence of a linked
+resident record.** Before the phase that introduced
+`relationship_service_locations`, the only thing distinguishing an
+External Prospect was what it *lacked* (a `resident_id`) — this
+under-specified the actual business rule and left the creation form
+implicitly modeled on a community resident (a "Community" field, a
+free-text "prospective resident" name) rather than on where Serve would
+actually deliver care.
+
+**Prospective client vs. primary contact.** These may be the same person
+or different people, and the schema makes that explicit rather than
+inferred:
+
+- `relationships.prospective_client_first_name` / `_last_name` /
+  `_preferred_name` / `_phone` / `_email` — the structured identity of the
+  person who may receive service. Never stored only inside the free-text
+  `display_name` (though `display_name` may still be auto-suggested from
+  it, e.g. "Smith Family Inquiry").
+- `relationships.primary_contact_name` / `_relationship` / `_phone` /
+  `_email` — who Serve actually talks to. When
+  `primary_contact_is_prospective_client` is true, these are derived from
+  the prospective client's own fields at write time (one authoritative
+  value, not two independently editable, potentially conflicting sets —
+  see `lib/actions/relationships.ts#createRelationship()`), rather than
+  duplicated as separate user-entered data.
+- `prospective_resident_name` (the older, single free-text field — see
+  "Resident Prospect creation" above) is untouched for historical rows
+  and Resident Prospect flows, but the External Prospect creation form no
+  longer writes to it; `getProspectOrResidentLabel()`
+  (`lib/relationships/search.ts`) now prefers the structured
+  `prospectiveClientName` wherever both could apply.
+
+**Expected service location vs. community context.** `community_name` on
+`relationships` is a leftover generic field from before this
+correction — the External Prospect form no longer sets it (a "Community"
+field implied every external prospect belonged to a supported community,
+which contradicts the whole point of "external"). Structured location
+data lives in `relationship_service_locations` instead: a required postal
+address (line 1, city, state, ZIP — validated against a real two-letter
+state list and a plausible ZIP format, see
+`lib/externalClients/validation.ts`), plus optional *contextual* fields —
+`residence_type` (Private Home, Apartment, Independent Living, Assisted
+Living, Skilled Nursing, Family Member's Home, Other) and `facility_name`.
+**Community/facility name is optional context and never replaces a
+postal address** — it is never accepted as a substitute for address line
+1/city/state/ZIP, at creation or at conversion.
+
 `lib/externalClients/search.ts#isExternalWorkspaceRow()` is the one
 predicate that decides whether a Relationship row belongs in External
 Clients at all: `relationship_type === 'external_prospect'`, or
@@ -190,6 +245,84 @@ Clients at all: `relationship_type === 'external_prospect'`, or
 resident-linked `active_client` Relationship (from a Resident Prospect
 conversion) never appears here — see "Relationships workspace scope"
 below for the mirror-image rule.
+
+### Expected service location (`relationship_service_locations`)
+
+A structured, Relationship-linked postal address — required to create an
+External Prospect, editable during prospecting, and carried forward
+(confirmed, never silently overwritten) into the External Client's
+operational service address at conversion.
+
+**Why a new table, not `relationship_service_opportunities`**:
+`relationship_service_opportunities` is explicitly a *care-planning*
+surface (visits/week, preferred days, estimated visit duration, a coarse
+draft/ready/superseded status) — the rough shape of a future schedule,
+not a postal address. A service *location* is a different kind of fact
+(where, not how much care), with its own lifecycle (proposed while
+prospecting → confirmed at conversion → operational once active) and its
+own required-field rule (a real address is mandatory for External
+Prospect creation; nothing in `relationship_service_opportunities` is
+mandatory). Conflating the two would either force an address into a
+table designed for optional planning notes, or make service-opportunity
+fields artificially required. A dedicated table keeps one unambiguous
+source of truth for "where."
+
+**Lifecycle**: `location_type = 'expected_service_location'`,
+`is_current = true` — the one editable, pre-conversion row (enforced by a
+partial unique index on `relationship_id` where `is_current`, Part 15:
+"no duplicate active service-location records"), upserted in place via
+`upsert_relationship_service_location()` (no-op-safe, one Timeline event
+per meaningful change, same pattern as
+`upsert_relationship_service_opportunity()`). At conversion, this row is
+marked `is_current = false` and a new, immutable
+`location_type = 'confirmed_at_conversion'` row is inserted with whatever
+values the user confirmed on the activation form — see "Address
+source-of-truth" below.
+
+**Forward compatibility**: `latitude`, `longitude`, `geocoded_at`, and
+`distance_from_office_miles` columns exist but are deliberately
+unpopulated and uncalculated in this phase — no geocoding, no mileage, no
+service-radius enforcement. Adding real values later must never require
+changing what the postal-address columns mean.
+
+### Address source-of-truth
+
+- **Before activation**: the current `expected_service_location` row is
+  authoritative — editable on the Relationship detail page
+  (`RelationshipServiceLocationSection.tsx`) at any time while
+  prospecting.
+- **During conversion**: `ActivateExternalClientForm`
+  (`ConvertRelationshipPanel.tsx`) prepopulates every field from that
+  current row (and the prospective client's structured identity) so the
+  user never re-enters an address from scratch — but every field stays
+  editable, so a correction doesn't require leaving the form.
+- **After activation**: `external_clients.service_address_*` becomes
+  authoritative for operational service delivery. The confirmed values
+  are *also* snapshotted into a new `confirmed_at_conversion` row (not a
+  second copy the user can edit — an immutable historical record), so the
+  Relationship always shows exactly what was confirmed at that moment
+  even if the External Client's own address is later changed through a
+  different path. The original `expected_service_location` row is never
+  deleted or overwritten — it simply stops being current.
+
+### Conversion path address behavior
+
+- **External Prospect → Active External Client**: the only path where the
+  expected service location becomes the operational service address by
+  default (see "Address source-of-truth" above).
+- **External Prospect → Existing Resident Prospect**
+  (`convert_external_prospect_to_existing_resident()`): does not read
+  from or write to `relationship_service_locations` at all — the
+  Resident's own `community_name`/`unit_number` are never touched. The
+  prospect's expected-service-location history remains on the
+  Relationship, untouched, as historical context.
+- **External Prospect → New Resident Prospect**
+  (`convert_external_prospect_to_new_resident()`): takes the new
+  Resident's `community_name`/`unit_number` as its own explicit form
+  fields (captured fresh, not defaulted from the external address) — the
+  RPC has no code path that reads `relationship_service_locations`.
+  Watermere community/unit and an external service address are
+  fundamentally different kinds of location and are never conflated.
 
 ### The `external_clients` table
 
@@ -765,8 +898,8 @@ row involved).
 
 **UI**: `app/external-clients/page.tsx` +
 `components/externalClients/ExternalClientsWorkspace.tsx` (four tabs,
-search, "+ Add External Prospect" — reuses `AddExternalProspectForm.tsx`
-unchanged); `components/relationships/ConvertRelationshipPanel.tsx`
+search, "+ Add External Prospect" — reuses `AddExternalProspectForm.tsx`,
+since rewritten in phase 5, see below); `components/relationships/ConvertRelationshipPanel.tsx`
 (all four conversion forms, rendered on `/relationships/[id]`);
 `components/relationships/ExternalClientPanel.tsx` (address/service-date
 display + On Hold / Reactivate / Mark Former actions, rendered on
@@ -775,6 +908,49 @@ external client exists); `components/Sidebar.tsx` (External Clients nav
 item, immediately below Relationships); `components/relationships/RelationshipsWorkspace.tsx`
 ("+ Add Relationship" chooser replacing the two separate Add buttons; the
 Include-External-Client-records toggle).
+
+**Phase 5 (External Prospect domain model correction)**
+
+**Migrations**: `20260720000000_add_external_prospect_service_location.sql`
+— structured `prospective_client_first_name`/`_last_name`/
+`_preferred_name`/`_phone`/`_email`/`primary_contact_is_prospective_client`
+columns on `relationships`; `relationship_service_locations` (see
+"Expected service location" above); `upsert_relationship_service_location()`;
+`create_relationship()` extended with the new prospective-client params
+(dropped and recreated — Postgres function overload rules, same as every
+prior signature change in this migration set);
+`convert_external_prospect_to_active_client()` extended to snapshot the
+confirmed address into a `confirmed_at_conversion` row; the
+`service_location_updated` Relationship Timeline event type.
+
+**Pure logic**: `lib/externalClients/validation.ts` extended with
+`isValidUsState()`, `isValidZipCode()`, and a stricter
+`validateServiceAddress()` (state + ZIP format, not just non-blank);
+`lib/relationships/constants.ts` extended with `RESIDENCE_TYPES`/
+`RESIDENCE_TYPE_LABELS`/`isValidResidenceType()`.
+
+**Data/actions**: `lib/data/relationships.ts` extended with
+`getCurrentServiceLocationByRelationshipId()`,
+`getCurrentServiceLocationsByRelationship()` (bulk map, for the External
+Clients → Prospects workspace display),
+`upsertRelationshipServiceLocation()`, and `CreateRelationshipInput`'s new
+prospective-client fields; `lib/actions/relationships.ts#createRelationship()`
+extended with conditional External-Prospect-only validation (structured
+client name + required address) and the primary-contact-is-prospective-
+client derivation; `lib/actions/relationships.ts#updateRelationshipServiceLocation()`
+(new — editing the expected location after creation).
+
+**UI**: `components/relationships/AddExternalProspectForm.tsx` (rewritten
+— five sections: Prospective Client, Primary Contact, Expected Service
+Location, Residence Context, Opportunity); `components/relationships/RelationshipServiceLocationSection.tsx`
+(new — editable expected-location panel on `/relationships/[id]`, shown
+only for open External Prospects); `ConvertRelationshipPanel.tsx`'s
+`ActivateExternalClientForm` (now prepopulates from the prospective
+client's structured identity and the current expected location);
+`RelationshipOverview.tsx` (new "Prospective Client" field, distinct from
+"Primary Contact," shown when structured identity exists);
+`ExternalClientsWorkspace.tsx` ("Expected Service Location" column
+replacing any community-flavored display in the Prospects tab).
 
 ## Non-goals of this phase
 

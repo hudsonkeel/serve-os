@@ -1,4 +1,4 @@
-import type { ExternalClientStatus } from "@/lib/supabase/types";
+import type { ExternalClientStatus, ResidenceType } from "@/lib/supabase/types";
 import type { RelationshipWorkspaceRow } from "@/lib/relationships/search";
 import type { RelationshipAttentionStatus } from "@/lib/relationships/attention";
 
@@ -30,8 +30,18 @@ export interface ExternalClientWorkspaceRow extends RelationshipWorkspaceRow {
   attentionStatus: RelationshipAttentionStatus;
   externalClientId: string | null;
   externalClientStatus: ExternalClientStatus | null;
-  city: string | null;
   serviceStartDate: string | null;
+  // Expected/operational service location — see
+  // docs/design/RELATIONSHIPS.md, "External Prospect domain model."
+  // Sourced from external_clients (once active) or the current
+  // relationship_service_locations row (while prospecting); never from
+  // `communityName` — External Clients are, by definition, outside a
+  // supported community.
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  residenceType: ResidenceType | null;
+  facilityName: string | null;
 }
 
 export function isExternalWorkspaceRow(row: {
@@ -74,6 +84,8 @@ export function matchesExternalClientSearch(
     row.primaryContactPhone,
     row.primaryContactEmail,
     row.city,
+    row.postalCode,
+    row.facilityName,
     row.ownerLabel,
   ];
 

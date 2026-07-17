@@ -782,6 +782,18 @@ export interface Relationship {
   primary_contact_phone: string | null;
   primary_contact_email: string | null;
   prospective_resident_name: string | null;
+  // Structured External Prospect identity — see docs/design/RELATIONSHIPS.md,
+  // "External Prospect domain model." An External Prospect is defined by
+  // an expected service location, not by the absence of a linked resident;
+  // the prospective client and the primary contact may be the same person
+  // or different people, tracked explicitly via
+  // primary_contact_is_prospective_client rather than inferred.
+  prospective_client_first_name: string | null;
+  prospective_client_last_name: string | null;
+  prospective_client_preferred_name: string | null;
+  prospective_client_phone: string | null;
+  prospective_client_email: string | null;
+  primary_contact_is_prospective_client: boolean;
   summary: string | null;
   owner_label: string | null;
   priority: RelationshipPriority;
@@ -828,7 +840,8 @@ export type RelationshipTimelineEventType =
   | "service_opportunity_updated"
   | "relationship_updated"
   | "relationship_converted"
-  | "external_client_status_changed";
+  | "external_client_status_changed"
+  | "service_location_updated";
 
 export interface RelationshipTimelineEvent {
   id: string;
@@ -967,6 +980,45 @@ export interface RelationshipServiceOpportunity {
   anticipated_start_date: string | null;
   service_location_summary: string | null;
   status: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+// A Relationship-linked, structured expected service address — see
+// docs/design/RELATIONSHIPS.md, "External Prospect domain model." Not
+// tied to a Resident, not a billing or mailing address, and not a
+// confirmed scheduling location until an External Prospect converts (see
+// ExternalClient above, the operational address once active).
+export type RelationshipServiceLocationType = "expected_service_location" | "confirmed_at_conversion";
+
+export type ResidenceType =
+  | "private_home"
+  | "apartment"
+  | "independent_living"
+  | "assisted_living"
+  | "skilled_nursing"
+  | "family_member_home"
+  | "other";
+
+export interface RelationshipServiceLocation {
+  id: string;
+  relationship_id: string;
+  location_type: RelationshipServiceLocationType;
+  address_line_1: string;
+  address_line_2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  residence_type: ResidenceType | null;
+  facility_name: string | null;
+  location_notes: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  geocoded_at: string | null;
+  distance_from_office_miles: number | null;
+  is_current: boolean;
   created_by: string;
   created_at: string;
   updated_by: string | null;

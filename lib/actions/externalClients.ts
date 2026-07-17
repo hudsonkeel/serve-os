@@ -70,6 +70,7 @@ export async function convertExternalProspectToActiveClient(data: {
 
   const address = validateServiceAddress({
     addressLine1: data.serviceAddressLine1,
+    addressLine2: data.serviceAddressLine2,
     city: data.city,
     state: data.state,
     postalCode: data.postalCode,
@@ -95,7 +96,7 @@ export async function convertExternalProspectToActiveClient(data: {
     phone: normalizeOptionalText(data.phone),
     email: normalizeOptionalText(data.email),
     serviceAddressLine1: address.value.addressLine1,
-    serviceAddressLine2: normalizeOptionalText(data.serviceAddressLine2),
+    serviceAddressLine2: address.value.addressLine2,
     city: address.value.city,
     state: address.value.state,
     postalCode: address.value.postalCode,

@@ -20,7 +20,7 @@ import {
   RELATIONSHIP_ACTION_TYPES,
 } from "@/lib/relationships/constants";
 import type { ResidentSearchResult } from "@/lib/data/relationships";
-import type { Relationship, RelationshipActionType } from "@/lib/supabase/types";
+import type { Relationship, RelationshipActionType, RelationshipServiceLocation } from "@/lib/supabase/types";
 
 const fieldClassName =
   "w-full rounded-md border border-ivory-border bg-surface px-3 py-2 font-sans text-base text-body outline-none placeholder:text-subtle focus:border-gold/60";
@@ -175,19 +175,32 @@ function ResidentProspectConversionForm({ relationship, onDone }: { relationship
   );
 }
 
-function ActivateExternalClientForm({ relationship, onDone }: { relationship: Relationship; onDone: () => void }) {
+function ActivateExternalClientForm({
+  relationship,
+  currentLocation,
+  onDone,
+}: {
+  relationship: Relationship;
+  currentLocation: RelationshipServiceLocation | null;
+  onDone: () => void;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [addressLine1, setAddressLine1] = useState("");
-  const [addressLine2, setAddressLine2] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [postalCode, setPostalCode] = useState("");
+  // Prepopulated from the relationship's structured prospective-client
+  // identity and its current expected service location — Part 8 of the
+  // External Prospect domain-model scope: "Do not require the user to
+  // re-enter the address," while still leaving every field editable so
+  // the user can confirm or correct it before conversion.
+  const [firstName, setFirstName] = useState(relationship.prospective_client_first_name ?? "");
+  const [lastName, setLastName] = useState(relationship.prospective_client_last_name ?? "");
+  const [phone, setPhone] = useState(relationship.prospective_client_phone ?? "");
+  const [email, setEmail] = useState(relationship.prospective_client_email ?? "");
+  const [addressLine1, setAddressLine1] = useState(currentLocation?.address_line_1 ?? "");
+  const [addressLine2, setAddressLine2] = useState(currentLocation?.address_line_2 ?? "");
+  const [city, setCity] = useState(currentLocation?.city ?? "");
+  const [state, setState] = useState(currentLocation?.state ?? "");
+  const [postalCode, setPostalCode] = useState(currentLocation?.postal_code ?? "");
   const [serviceStartDate, setServiceStartDate] = useState("");
   const [conversionNote, setConversionNote] = useState("");
   const [disposition, setDisposition] = useState<OpenActionDisposition>("keep_open");
@@ -256,6 +269,11 @@ function ActivateExternalClientForm({ relationship, onDone }: { relationship: Re
 
       <div className="rounded-lg border border-ivory-border bg-surface px-4 py-3">
         <p className="mb-3 font-sans text-label font-semibold uppercase tracking-widest text-subtle">Service Address</p>
+        {currentLocation && (
+          <p className="-mt-2 mb-3 font-sans text-sm text-subtle">
+            Prepopulated from the expected service location — confirm or correct before activating.
+          </p>
+        )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="block sm:col-span-2">
             <span className={labelClassName}>Street</span>
@@ -526,7 +544,13 @@ function ExistingResidentProspectForm({ relationship, onDone }: { relationship: 
 
 type ExternalChoice = "activate" | "new_resident" | "existing_resident" | null;
 
-export function ConvertRelationshipPanel({ relationship }: { relationship: Relationship }) {
+export function ConvertRelationshipPanel({
+  relationship,
+  currentLocation,
+}: {
+  relationship: Relationship;
+  currentLocation: RelationshipServiceLocation | null;
+}) {
   const [isResidentConverting, setIsResidentConverting] = useState(false);
   const [isChoosing, setIsChoosing] = useState(false);
   const [externalChoice, setExternalChoice] = useState<ExternalChoice>(null);
@@ -550,7 +574,13 @@ export function ConvertRelationshipPanel({ relationship }: { relationship: Relat
 
   if (relationship.relationship_type === "external_prospect") {
     if (externalChoice === "activate") {
-      return <ActivateExternalClientForm relationship={relationship} onDone={() => setExternalChoice(null)} />;
+      return (
+        <ActivateExternalClientForm
+          relationship={relationship}
+          currentLocation={currentLocation}
+          onDone={() => setExternalChoice(null)}
+        />
+      );
     }
     if (externalChoice === "new_resident") {
       return <NewResidentProspectForm relationship={relationship} onDone={() => setExternalChoice(null)} />;

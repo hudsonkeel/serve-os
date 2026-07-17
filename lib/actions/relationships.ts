@@ -16,6 +16,7 @@ import {
   searchResidentsForLinking as searchResidentsForLinkingRecord,
   updateRelationshipAction as updateRelationshipActionRecord,
   updateRelationshipOwnerAndPriority as updateRelationshipOwnerAndPriorityRecord,
+  upsertRelationshipServiceLocation as upsertRelationshipServiceLocationRecord,
   upsertRelationshipServiceOpportunity as upsertRelationshipServiceOpportunityRecord,
   ResidentSearchResult,
 } from "@/lib/data/relationships";
@@ -26,10 +27,12 @@ import {
   isValidRelationshipPriority,
   isValidRelationshipStage,
   isValidRelationshipType,
+  isValidResidenceType,
   isValidTouchType,
   RELATIONSHIP_WORKING_NOTE_CATEGORIES,
 } from "@/lib/relationships/constants";
 import { isValidOpenActionDisposition } from "@/lib/externalClients/constants";
+import { normalizeRequiredName, validateServiceAddress } from "@/lib/externalClients/validation";
 import {
   normalizeActionTitle,
   normalizeDisplayName,
@@ -86,6 +89,23 @@ export interface CreateRelationshipFormData {
   // the app layer rather than one all-in-one creation RPC).
   workingNoteContent?: string;
   serviceOpportunitySummary?: string;
+  // Structured External Prospect identity + expected service location
+  // (see docs/design/RELATIONSHIPS.md, "External Prospect domain model")
+  // — required only when relationshipType is 'external_prospect'.
+  prospectiveClientFirstName?: string;
+  prospectiveClientLastName?: string;
+  prospectiveClientPreferredName?: string;
+  prospectiveClientPhone?: string;
+  prospectiveClientEmail?: string;
+  primaryContactIsProspectiveClient?: boolean;
+  serviceAddressLine1?: string;
+  serviceAddressLine2?: string;
+  serviceCity?: string;
+  serviceState?: string;
+  servicePostalCode?: string;
+  residenceType?: string;
+  facilityName?: string;
+  locationNotes?: string;
 }
 
 export async function createRelationship(
@@ -106,10 +126,59 @@ export async function createRelationship(
     return { error: displayName.error };
   }
 
+  const isExternalProspect = data.relationshipType === "external_prospect";
+
+  // An External Prospect is defined by an expected service location, not
+  // by the absence of a linked resident — a structured client identity
+  // and a complete service address are both required at creation (see
+  // docs/design/RELATIONSHIPS.md, "External Prospect domain model").
+  let prospectiveClientFirstName: string | undefined;
+  let prospectiveClientLastName: string | undefined;
+  let serviceAddress: NonNullable<ReturnType<typeof validateServiceAddress>["value"]> | undefined;
+
+  if (isExternalProspect) {
+    const firstName = normalizeRequiredName(data.prospectiveClientFirstName ?? "", "prospective client first name");
+    if (firstName.error || !firstName.value) return { error: firstName.error };
+    prospectiveClientFirstName = firstName.value;
+
+    const lastName = normalizeRequiredName(data.prospectiveClientLastName ?? "", "prospective client last name");
+    if (lastName.error || !lastName.value) return { error: lastName.error };
+    prospectiveClientLastName = lastName.value;
+
+    const address = validateServiceAddress({
+      addressLine1: data.serviceAddressLine1 ?? "",
+      addressLine2: data.serviceAddressLine2,
+      city: data.serviceCity ?? "",
+      state: data.serviceState ?? "",
+      postalCode: data.servicePostalCode ?? "",
+    });
+    if (address.error || !address.value) return { error: address.error };
+    serviceAddress = address.value;
+
+    if (data.residenceType && !isValidResidenceType(data.residenceType)) {
+      return { error: "Select a valid residence type." };
+    }
+  }
+
   const actor = await currentActorLabel();
   if (!actor) {
     return { error: "You must be signed in to create a relationship." };
   }
+
+  // "Primary contact is the prospective client" — one authoritative value
+  // (the prospective client's own contact details), copied into the
+  // primary-contact fields at write time rather than kept as two
+  // independently editable, potentially-conflicting sets of values.
+  const primaryContactIsProspectiveClient = isExternalProspect && !!data.primaryContactIsProspectiveClient;
+  const derivedPrimaryContactName = primaryContactIsProspectiveClient
+    ? [prospectiveClientFirstName, prospectiveClientLastName].filter(Boolean).join(" ")
+    : normalizeOptionalText(data.primaryContactName);
+  const derivedPrimaryContactPhone = primaryContactIsProspectiveClient
+    ? normalizeOptionalText(data.prospectiveClientPhone)
+    : normalizeOptionalText(data.primaryContactPhone);
+  const derivedPrimaryContactEmail = primaryContactIsProspectiveClient
+    ? normalizeOptionalText(data.prospectiveClientEmail)
+    : normalizeOptionalText(data.primaryContactEmail);
 
   const result = await createRelationshipRecord({
     relationshipType: data.relationshipType as RelationshipType,
@@ -119,10 +188,12 @@ export async function createRelationship(
     prospectId: null,
     communityName: normalizeOptionalText(data.communityName),
     organizationName: normalizeOptionalText(data.organizationName),
-    primaryContactName: normalizeOptionalText(data.primaryContactName),
-    primaryContactRelationship: normalizeOptionalText(data.primaryContactRelationship),
-    primaryContactPhone: normalizeOptionalText(data.primaryContactPhone),
-    primaryContactEmail: normalizeOptionalText(data.primaryContactEmail),
+    primaryContactName: derivedPrimaryContactName,
+    primaryContactRelationship: primaryContactIsProspectiveClient
+      ? "Self"
+      : normalizeOptionalText(data.primaryContactRelationship),
+    primaryContactPhone: derivedPrimaryContactPhone,
+    primaryContactEmail: derivedPrimaryContactEmail,
     prospectiveResidentName: normalizeOptionalText(data.prospectiveResidentName),
     summary: normalizeOptionalText(data.summary),
     ownerLabel: normalizeOptionalText(data.ownerLabel),
@@ -130,10 +201,31 @@ export async function createRelationship(
     sourceType: normalizeOptionalText(data.sourceType),
     sourceLabel: normalizeOptionalText(data.sourceLabel),
     actor,
+    prospectiveClientFirstName,
+    prospectiveClientLastName,
+    prospectiveClientPreferredName: normalizeOptionalText(data.prospectiveClientPreferredName),
+    prospectiveClientPhone: normalizeOptionalText(data.prospectiveClientPhone),
+    prospectiveClientEmail: normalizeOptionalText(data.prospectiveClientEmail),
+    primaryContactIsProspectiveClient,
   });
 
   if (result.error || !result.id) {
     return { error: result.error };
+  }
+
+  if (serviceAddress) {
+    await upsertRelationshipServiceLocationRecord({
+      relationshipId: result.id,
+      addressLine1: serviceAddress.addressLine1,
+      addressLine2: serviceAddress.addressLine2,
+      city: serviceAddress.city,
+      state: serviceAddress.state,
+      postalCode: serviceAddress.postalCode,
+      residenceType: data.residenceType && isValidResidenceType(data.residenceType) ? data.residenceType : null,
+      facilityName: normalizeOptionalText(data.facilityName),
+      locationNotes: normalizeOptionalText(data.locationNotes),
+      actor,
+    });
   }
 
   if (data.firstActionTitle?.trim()) {
@@ -178,6 +270,61 @@ export async function createRelationship(
   }
 
   return { id: result.id };
+}
+
+// ─── Expected service location (External Prospect) ──────────────────────
+
+export async function updateRelationshipServiceLocation(data: {
+  relationshipId: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  residenceType?: string;
+  facilityName?: string;
+  locationNotes?: string;
+}): Promise<{ error?: string }> {
+  if (!data.relationshipId) {
+    return { error: "Missing relationship." };
+  }
+
+  const address = validateServiceAddress({
+    addressLine1: data.addressLine1,
+    addressLine2: data.addressLine2,
+    city: data.city,
+    state: data.state,
+    postalCode: data.postalCode,
+  });
+  if (address.error || !address.value) return { error: address.error };
+
+  if (data.residenceType && !isValidResidenceType(data.residenceType)) {
+    return { error: "Select a valid residence type." };
+  }
+
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to update the service location." };
+  }
+
+  const result = await upsertRelationshipServiceLocationRecord({
+    relationshipId: data.relationshipId,
+    addressLine1: address.value.addressLine1,
+    addressLine2: address.value.addressLine2,
+    city: address.value.city,
+    state: address.value.state,
+    postalCode: address.value.postalCode,
+    residenceType: data.residenceType && isValidResidenceType(data.residenceType) ? data.residenceType : null,
+    facilityName: normalizeOptionalText(data.facilityName),
+    locationNotes: normalizeOptionalText(data.locationNotes),
+    actor,
+  });
+
+  if (result.error) {
+    return { error: result.error };
+  }
+
+  return {};
 }
 
 // ─── Stage change ────────────────────────────────────────────────────────

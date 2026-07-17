@@ -287,13 +287,34 @@ export function RelationshipOverview({
             <LinkResident relationship={relationship} linkedResidentName={linkedResidentName} />
           </div>
         </div>
+        {(relationship.prospective_client_first_name || relationship.prospective_client_last_name) && (
+          <div>
+            <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">
+              Prospective Client
+            </p>
+            <p className="mt-0.5 font-sans text-sm text-body">
+              {[relationship.prospective_client_first_name, relationship.prospective_client_last_name]
+                .filter(Boolean)
+                .join(" ") || "-"}
+              {relationship.prospective_client_preferred_name
+                ? ` "${relationship.prospective_client_preferred_name}"`
+                : ""}
+            </p>
+          </div>
+        )}
         <div>
           <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">
             Primary Contact
+            {relationship.primary_contact_is_prospective_client && (
+              <span className="ml-1 normal-case text-subtle">(is the prospective client)</span>
+            )}
           </p>
           <p className="mt-0.5 font-sans text-sm text-body">
             {relationship.primary_contact_name ?? "-"}
-            {relationship.primary_contact_relationship ? ` (${relationship.primary_contact_relationship})` : ""}
+            {relationship.primary_contact_relationship &&
+            !relationship.primary_contact_is_prospective_client
+              ? ` (${relationship.primary_contact_relationship})`
+              : ""}
           </p>
         </div>
         <div>
