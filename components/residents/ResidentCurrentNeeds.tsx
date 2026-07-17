@@ -14,7 +14,13 @@ const BELONGS_HERE = [
   "Safety considerations",
 ];
 
-const DOES_NOT_BELONG_HERE = ["Phone calls", "Emails", "Temporary follow-ups"];
+const DOES_NOT_BELONG_HERE = [
+  "Phone calls",
+  "Emails",
+  "Temporary follow-ups",
+  "Pending decisions",
+  "Historical events",
+];
 
 function fullDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -77,8 +83,7 @@ export function ResidentCurrentNeeds({
     <div>
       <MemorySectionHeader
         title="Current Needs"
-        functionalLabel="Every Visit"
-        purpose="What every Serve team member should know before interacting with this resident."
+        purpose="Current care guidance. Update whenever the resident's ongoing needs change."
         belongsHere={!isEditing ? BELONGS_HERE : undefined}
         doesNotBelongHere={!isEditing ? DOES_NOT_BELONG_HERE : undefined}
         primaryAction={
@@ -105,37 +110,37 @@ export function ResidentCurrentNeeds({
             }
           }}
         >
-          <div className="mb-3 max-w-2xl space-y-2 rounded-lg border border-ivory-border bg-ivory px-4 py-3">
+          <div
+            id={helperId}
+            className="mb-3 max-w-2xl space-y-2 rounded-lg border border-ivory-border bg-ivory px-4 py-3"
+          >
             <p className="font-sans text-sm text-subtle">
-              <span className="font-semibold text-muted">Use this for: </span>
-              recurring needs, important routines, care-related preferences,
-              essential safety information.
+              Keep this current. Include the resident&apos;s ongoing needs,
+              important routines, care-related preferences, and safety
+              considerations.
             </p>
             <p className="font-sans text-sm text-subtle">
-              <span className="font-semibold text-muted">
-                Temporary or pending item?
-              </span>{" "}
-              Add it to{" "}
+              Update this when the resident&apos;s needs or care
+              expectations change.
+            </p>
+            <p className="font-sans text-sm text-subtle">
+              Use{" "}
               <a
                 href="#working-notes"
                 className="font-medium text-navy underline-offset-2 hover:underline"
               >
                 Working Notes
-              </a>
-              .
+              </a>{" "}
+              for temporary or pending items.
             </p>
             <p className="font-sans text-sm text-subtle">
-              <span className="font-semibold text-muted">
-                Recording something that already happened?
-              </span>{" "}
-              It belongs in{" "}
               <a
                 href="#timeline"
                 className="font-medium text-navy underline-offset-2 hover:underline"
               >
                 Timeline
-              </a>
-              .
+              </a>{" "}
+              records important events and completed actions.
             </p>
           </div>
 
@@ -153,12 +158,6 @@ export function ResidentCurrentNeeds({
             placeholder="Needs medication reminders morning and evening, uses a walker, and prefers an escort to meals."
             className="w-full rounded-md border border-ivory-border bg-surface px-3 py-2 font-sans text-base text-body outline-none placeholder:text-subtle focus:border-gold/60"
           />
-
-          <p id={helperId} className="mt-2 font-sans text-sm text-subtle">
-            Keep this concise and current. Include the resident&apos;s most
-            important needs, routines, preferences and safety
-            considerations.
-          </p>
 
           <div className="mt-3 flex items-center justify-between">
             <span className="font-sans text-sm text-subtle">
@@ -206,8 +205,8 @@ export function ResidentCurrentNeeds({
             No current needs documented yet.
           </p>
           <p className="mt-1.5 font-sans text-sm text-subtle">
-            Add the essential information someone should know before
-            interacting with this resident.
+            Add the ongoing needs, routines, preferences, or safety
+            information Serve staff should know.
           </p>
           <p className="mt-2 font-sans text-sm text-subtle">
             Medication reminders · Mobility support · Meal escort · Safety

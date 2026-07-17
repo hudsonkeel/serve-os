@@ -3,7 +3,11 @@ import { Badge } from "@/components/ui/Badge";
 
 interface MemorySectionHeaderProps {
   title: string;
-  functionalLabel: string;
+  // Optional: not every layer's lifecycle is well summarized by a single
+  // word. Current Needs deliberately has none — "durable, current guidance"
+  // doesn't compress into a frequency-style label without becoming
+  // misleading (see docs/design/RESIDENT_MEMORY.md).
+  functionalLabel?: string;
   purpose: string;
   belongsHere?: string[];
   doesNotBelongHere?: string[];
@@ -30,7 +34,7 @@ export function MemorySectionHeader({
           <h4 className="font-sans text-label font-semibold uppercase tracking-widest text-muted">
             {title}
           </h4>
-          <Badge tone="gold">{functionalLabel}</Badge>
+          {functionalLabel && <Badge tone="gold">{functionalLabel}</Badge>}
         </div>
         {primaryAction}
       </div>

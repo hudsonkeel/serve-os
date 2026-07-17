@@ -37,9 +37,6 @@ export function ResidentMemory({
           How we care for this resident, what is currently in motion, and
           what has happened over time.
         </p>
-        <p className="mt-2 font-sans text-sm font-medium text-muted">
-          Every Visit · In Progress · History
-        </p>
       </div>
 
       <div className="divide-y divide-ivory-border">
