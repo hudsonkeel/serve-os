@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getCommunityResidentById } from "@/lib/data/communityMetrics";
 import { getResidentConnections } from "@/lib/data/connections";
 import { PageContainer } from "@/components/PageContainer";
-import { Connections } from "@/components/residents/Connections";
+import { GettingToKnow } from "@/components/residents/GettingToKnow";
 import { ResidentProfileCard } from "@/components/residents/ResidentProfileCard";
 import { FamilyContactsCard } from "@/components/residents/FamilyContactsCard";
 import { WellnessNotes } from "@/components/residents/WellnessNotes";
@@ -422,7 +422,7 @@ export default async function ResidentDetailPage({
             </p>
           </Section>
 
-          <Connections residentId={id} connections={connections} />
+          <GettingToKnow residentId={id} connections={connections} />
 
           <PlaceholderSection
             title="Assessment History"

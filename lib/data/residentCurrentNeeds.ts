@@ -121,7 +121,9 @@ export async function saveResidentCurrentNeeds(
       details: error.details,
       hint: error.hint,
     });
-    return { error: "Could not save current needs." };
+    return {
+      error: "We couldn't save Current Needs. Your changes are still here — please try again.",
+    };
   }
 
   return {};

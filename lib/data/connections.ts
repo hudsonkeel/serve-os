@@ -230,6 +230,35 @@ export async function createMilestone(
   return { id: data?.id };
 }
 
+// Flips the existing `active` soft-delete flag (already part of the
+// original resident_interests schema — see
+// 20260711000000_create_resident_connections.sql — but never exposed
+// through any UI or action until now). No schema change: archiving simply
+// means the row stops appearing in getActiveInterests() above; the row
+// itself, and its full history, is never deleted.
+export async function archiveInterest(
+  interestId: string
+): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("resident_interests")
+    .update({ active: false })
+    .eq("id", interestId);
+
+  if (error) {
+    console.error("[connections:archiveInterest:error]", {
+      interestId,
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    return { error: "Could not archive this entry." };
+  }
+
+  return {};
+}
+
 export async function createTouch(
   row: ResidentTouchInsert
 ): Promise<{ id?: string; error?: string }> {

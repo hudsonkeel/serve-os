@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  archiveInterest,
   createInterest,
   createMilestone,
   upsertRelationshipProfile,
@@ -52,6 +53,22 @@ export async function addConnectionNote(
     confirmed_by_resident: data.confirmedByResident,
     supports_future_touch: data.supportsFutureTouch,
   });
+
+  if (result.error) {
+    return { error: result.error };
+  }
+
+  return {};
+}
+
+export async function archiveLearnedDetail(data: {
+  interestId: string;
+}): Promise<{ error?: string }> {
+  if (!data.interestId) {
+    return { error: "Missing entry." };
+  }
+
+  const result = await archiveInterest(data.interestId);
 
   if (result.error) {
     return { error: result.error };
