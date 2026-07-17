@@ -115,13 +115,17 @@ export async function createManualWellnessFollowUp(
     return { error: "Select a valid priority." };
   }
 
-  let dueAtIso: string | null = null;
-  if (data.dueAt) {
-    const parsed = new Date(data.dueAt);
-    if (Number.isNaN(parsed.getTime())) {
-      return { error: "Enter a valid due date." };
-    }
-    dueAtIso = parsed.toISOString();
+  const dueDate = parseFollowUpDueDate(data.dueAt);
+  if (dueDate.error || dueDate.iso === undefined) {
+    return { error: dueDate.error };
+  }
+
+  // No previous value on create — validateFollowUpDueDateNotPast rejects
+  // only when the submitted day is strictly before today, at the same
+  // calendar-day granularity as the edit path, so "today" is accepted.
+  const pastDateCheck = validateFollowUpDueDateNotPast(dueDate.iso, null);
+  if (pastDateCheck.error) {
+    return { error: pastDateCheck.error };
   }
 
   const actor = await currentActorLabel();
@@ -131,7 +135,7 @@ export async function createManualWellnessFollowUp(
     title: data.title.trim(),
     description: data.description?.trim() || null,
     followUpType: data.followUpType,
-    dueAt: dueAtIso,
+    dueAt: dueDate.iso,
     assignedTo: data.assignedTo?.trim() || null,
     priority: data.priority,
     createdBy: actor,
