@@ -68,7 +68,15 @@ export function validateDueDateNotPast(
 ): { error?: string } {
   if (!newIso) return {};
   if (previousIso && newIso.slice(0, 10) === previousIso.slice(0, 10)) return {};
-  if (new Date(newIso).getTime() < now.getTime()) {
+  // Day-string comparison, not exact-instant getTime() ordering — the
+  // date-only input this feeds always submits midnight UTC, which is
+  // almost always some hours *before* the current instant, so an
+  // exact-instant check would incorrectly reject "today" on every edit
+  // made after midnight. Discovered and fixed alongside the identical
+  // bug in lib/wellnessFollowUps/validation.ts's
+  // validateFollowUpDueDateNotPast (see that file's tests for the full
+  // reasoning) — both files compare the same way for the same reason.
+  if (newIso.slice(0, 10) < now.toISOString().slice(0, 10)) {
     return { error: "Choose a due date that isn't in the past." };
   }
   return {};

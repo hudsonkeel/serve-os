@@ -9,6 +9,7 @@ import {
 } from "@/lib/data/wellnessFollowUps";
 import { WellnessFollowUpType, WellnessNotePriority } from "@/lib/supabase/types";
 import {
+  isSameDueDateDay,
   isValidFollowUpType as isValidFollowUpTypeShared,
   isValidPriority as isValidPriorityShared,
   normalizeAssignedTo,
@@ -184,13 +185,22 @@ export async function editWellnessFollowUp(
     return { error: dueDate.error };
   }
 
-  const pastDateCheck = validateFollowUpDueDateNotPast(
-    dueDate.iso,
-    data.previousDueAt ?? null
-  );
+  const previousDueAt = data.previousDueAt ?? null;
+
+  const pastDateCheck = validateFollowUpDueDateNotPast(dueDate.iso, previousDueAt);
   if (pastDateCheck.error) {
     return { error: pastDateCheck.error };
   }
+
+  // If the calendar day is unchanged, resubmit the *original* due_at
+  // exactly as stored rather than the date-only input's midnight-UTC
+  // round trip. Otherwise a save that never touched the date field would
+  // still look like a genuine change to update_resident_wellness_follow_up()
+  // (which diffs at exact-instant granularity, correctly, for real edits),
+  // producing a spurious due_at audit row and a confusing "Due date
+  // changed from Jul 10 to Jul 10." Timeline entry.
+  const resolvedDueAtIso =
+    dueDate.iso && isSameDueDateDay(dueDate.iso, previousDueAt) ? previousDueAt : dueDate.iso;
 
   const actor = await currentActorLabel();
   if (!actor) {
@@ -203,7 +213,7 @@ export async function editWellnessFollowUp(
     title: normalizedTitle.title,
     description: data.description?.trim() || null,
     followUpType: data.followUpType,
-    dueAt: dueDate.iso,
+    dueAt: resolvedDueAtIso,
     assignedTo: normalizeAssignedTo(data.assignedTo),
     priority: data.priority,
     actor,

@@ -6,6 +6,7 @@
 //
 //   npm run cleanup:test-data -- --legacy-doris [--dry-run]
 //   npm run cleanup:test-data -- --marker=<value> [--dry-run]
+//   npm run cleanup:test-data -- --wellness-title="<exact title>" [--dry-run]
 //
 // --legacy-doris   Removes the specific, pre-marker-era synthetic records
 //                   documented in TEST_DATA_HYGIENE.md's "Known Doris
@@ -16,6 +17,18 @@
 //                   reachable through relationship_id, in dependency
 //                   order. This is the mechanism every future
 //                   live-database verification run should use.
+// --wellness-title="<exact title>"
+//                   Removes a resident_wellness_follow_ups row matched by
+//                   an exact title (resident_wellness_follow_ups has no
+//                   test_marker-style column — see TEST_DATA_HYGIENE.md —
+//                   so a distinctly unique title, per the
+//                   "__SERVE_TEST__ <purpose> <run-id>" naming pattern, is
+//                   the only reliable handle). Also removes its
+//                   resident_wellness_follow_up_edits and any
+//                   resident_timeline rows generated for it (matched by
+//                   resident_id + source + the title appearing in
+//                   event_title, since resident_timeline has no
+//                   source_record_id column to join on precisely).
 // --dry-run         Prints what would be deleted without deleting it.
 //
 // Never touches the residents table under any code path.
@@ -25,6 +38,7 @@ const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const markerArg = args.find((a) => a.startsWith("--marker="));
 const legacyDoris = args.includes("--legacy-doris");
+const wellnessTitleArg = args.find((a) => a.startsWith("--wellness-title="));
 
 const supabase = createServerClient();
 
@@ -162,9 +176,55 @@ async function cleanupLegacyDoris(): Promise<void> {
   }
 }
 
+async function cleanupWellnessFollowUpByTitle(title: string): Promise<void> {
+  console.log(`\n=== Cleaning up wellness follow-up titled "${title}" ${dryRun ? "(dry run)" : ""} ===`);
+
+  const { data, error } = await supabase
+    .from("resident_wellness_follow_ups")
+    .select("id, resident_id")
+    .eq("title", title);
+  if (error) throw new Error(`Lookup by title failed: ${error.message}`);
+
+  const followUpIds = (data ?? []).map((r) => r.id as string);
+  const residentIds = [...new Set((data ?? []).map((r) => r.resident_id as string))];
+
+  if (followUpIds.length === 0) {
+    console.log("No wellness follow-ups matched — nothing to clean up.");
+    return;
+  }
+  console.log(`Follow-ups to remove: ${followUpIds.join(", ")}`);
+
+  await deleteByColumnIn("resident_wellness_follow_up_edits", "follow_up_id", followUpIds);
+  await deleteByColumnIn("resident_wellness_follow_ups", "id", followUpIds);
+
+  // resident_timeline has no source_record_id column — match by
+  // resident_id + source + the exact title text inside event_title
+  // ("<title> follow-up updated." per update_resident_wellness_follow_up()).
+  for (const residentId of residentIds) {
+    const { data: timelineRows } = await supabase
+      .from("resident_timeline")
+      .select("id, event_title")
+      .eq("resident_id", residentId)
+      .eq("source", "resident_wellness_follow_ups")
+      .ilike("event_title", `${title}%`);
+    const timelineIds = (timelineRows ?? []).map((r) => r.id as string);
+    await deleteByColumnIn("resident_timeline", "id", timelineIds);
+  }
+
+  if (!dryRun) {
+    const { count } = await supabase
+      .from("resident_wellness_follow_ups")
+      .select("*", { count: "exact", head: true })
+      .eq("title", title);
+    console.log(`\nVerification: ${count ?? 0} wellness follow-ups remain titled "${title}" (expect 0).`);
+  }
+}
+
 async function main() {
-  if (!legacyDoris && !markerArg) {
-    console.error("Usage: npm run cleanup:test-data -- --legacy-doris | --marker=<value> [--dry-run]");
+  if (!legacyDoris && !markerArg && !wellnessTitleArg) {
+    console.error(
+      "Usage: npm run cleanup:test-data -- --legacy-doris | --marker=<value> | --wellness-title=<title> [--dry-run]"
+    );
     process.exit(1);
   }
 
@@ -179,6 +239,15 @@ async function main() {
       process.exit(1);
     }
     await cleanupByMarker(marker);
+  }
+
+  if (wellnessTitleArg) {
+    const title = wellnessTitleArg.slice("--wellness-title=".length);
+    if (!title) {
+      console.error('--wellness-title requires a value, e.g. --wellness-title="__SERVE_TEST__ wellness-overdue-edit 20260716T000000Z-abcd"');
+      process.exit(1);
+    }
+    await cleanupWellnessFollowUpByTitle(title);
   }
 
   console.log("\nDone.");

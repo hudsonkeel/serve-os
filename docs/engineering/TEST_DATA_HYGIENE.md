@@ -84,7 +84,16 @@ established this policy):
    needs its own marker column on every table — one root marker is enough
    to identify an entire run's footprint.
 4. Deterministic name markers plus a tracked ID list, when a schema change
-   isn't warranted for a one-off verification.
+   isn't warranted for a one-off verification. Example:
+   `resident_wellness_follow_ups` has no metadata field and no root marker
+   column — adding one wasn't warranted for a single-scope verification —
+   so `scripts/cleanup-test-data.ts --wellness-title="<exact title>"`
+   matches by the row's own (uniquely-named, `__SERVE_TEST__`-prefixed)
+   title instead, then removes its `resident_wellness_follow_up_edits`
+   rows and any `resident_timeline` rows it generated (matched by
+   `resident_id` + `source` + the title appearing in `event_title`, since
+   `resident_timeline` has no `source_record_id` column to join on
+   precisely — a real limitation of that table, not of this policy).
 
 Rules for whichever mechanism is used:
 - Never add `is_test_data` (or equivalent) to every table casually. Ask

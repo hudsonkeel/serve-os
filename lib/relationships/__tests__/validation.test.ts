@@ -98,6 +98,21 @@ test("8c. validateDueDateNotPast still rejects a genuinely different past date, 
   assert.ok(result.error);
 });
 
+test("8d. validateDueDateNotPast allows changing an overdue date to TODAY", () => {
+  // Second bug found alongside 8b/8c: comparing exact instants meant
+  // "today" (always midnight, via the date-only input) was almost always
+  // "less than" the current moment, so changing an overdue action's due
+  // date to today was incorrectly rejected too. Fixed the same way as
+  // lib/wellnessFollowUps/validation.ts's validateFollowUpDueDateNotPast.
+  const now = new Date("2026-07-17T12:00:00.000Z");
+  const result = validateDueDateNotPast(
+    "2026-07-17T00:00:00.000Z", // today, submitted via the date-only input
+    "2026-07-10T05:31:38.968Z", // was overdue
+    now
+  );
+  assert.equal(result.error, undefined);
+});
+
 test("9. normalizeOptionalText trims and treats blank as null", () => {
   assert.equal(normalizeOptionalText("  Elizabeth Butler  "), "Elizabeth Butler");
   assert.equal(normalizeOptionalText("   "), null);
