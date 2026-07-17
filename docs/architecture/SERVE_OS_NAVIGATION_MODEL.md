@@ -14,19 +14,39 @@ TOP-LEVEL (CORE OPERATING AREAS)
 1. Workspace               /workspace
 2. Dashboard                /
 3. Residents                /residents
-4. Community Intelligence   /community-intelligence
-5. Ask Serve                /ask-serve
+4. Relationships            /relationships
+5. Community Intelligence   /community-intelligence
+6. Ask Serve                /ask-serve
 
 COMING SOON
-6. Communications           (no route yet — dimmed, non-interactive)
+7. Communications           (no route yet — dimmed, non-interactive)
 
 SYSTEM
-7. Settings                 /settings
+8. Settings                 /settings
 ```
 
 Each top-level item maps to exactly one operating mode from
 [`SERVE_OS_OPERATING_MODEL.md`](./SERVE_OS_OPERATING_MODEL.md): Know, Do,
-Manage, Think proactively, Think on demand.
+Manage, Think proactively, Think on demand. Residents and Relationships
+are both Manage — the former manages identity records, the latter manages
+engagement records; see below for why that split earns a second top-level
+item rather than folding into Residents or Workspace.
+
+## Why Relationships is a top-level item, not a Workspace action
+
+This is the same test applied to Recruiting below — is it a distinct
+management *domain* with its own structured, growing record set, or is it
+operational work that belongs inside Workspace? Relationships passes that
+test where Recruiting didn't: it's not a task list, it's a new class of
+persistent record (`relationships`, with its own stage history, touches,
+next actions, working notes, and Timeline — see
+[`docs/design/RELATIONSHIPS.md`](../design/RELATIONSHIPS.md)) that Brian
+is expected to open many times a day as his primary CRM surface, the same
+way Residents is opened as the primary resident-management surface. A
+Workspace tile pointing at attention counts (overdue/due today/due this
+week) is a reasonable *future* addition to Workspace, the same way
+Wellness Follow-up counts already appear there — but the record-management
+surface itself belongs at the top level.
 
 ## Why Recruiting, Scheduling, and Care Plans are not top-level items
 

@@ -11,6 +11,8 @@ import { getWellnessNotes } from "@/lib/data/wellnessNotes";
 import { getOpenResidentWellnessFollowUps } from "@/lib/data/wellnessFollowUps";
 import { getResidentCurrentNeeds } from "@/lib/data/residentCurrentNeeds";
 import { getResidentWorkingNotes } from "@/lib/data/residentWorkingNotes";
+import { getRelationshipsByResident } from "@/lib/data/relationships";
+import { StartRelationshipCard } from "@/components/residents/StartRelationshipCard";
 import { getResidentTimeline } from "@/lib/data/residentTimeline";
 import { ResidentMemory } from "@/components/residents/ResidentMemory";
 import { Badge } from "@/components/ui/Badge";
@@ -109,6 +111,7 @@ export default async function ResidentDetailPage({
   const currentNeeds = await getResidentCurrentNeeds(id);
   const workingNotes = await getResidentWorkingNotes(id);
   const timelineEvents = await getResidentTimeline(id);
+  const relationships = await getRelationshipsByResident(id);
 
   const resident = record.resident;
   const contactName =
@@ -421,6 +424,17 @@ export default async function ResidentDetailPage({
                   : "No resident action is currently flagged from the imported record."}
             </p>
           </Section>
+
+          <StartRelationshipCard
+            residentId={id}
+            residentName={record.residentName}
+            communityName={resident.community_name}
+            initialContactName={contactName === "-" ? "" : contactName}
+            initialContactRelationship={resident.family_contact_relationship ?? ""}
+            initialContactPhone={record.phone ?? ""}
+            initialContactEmail={record.email ?? ""}
+            existingRelationships={relationships}
+          />
 
           <GettingToKnow residentId={id} connections={connections} />
 

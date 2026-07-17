@@ -721,3 +721,218 @@ export interface ResidentContactImport {
   updated_at?: string | null;
   raw_data?: Record<string, unknown> | null;
 }
+
+// Relationship CRM foundation — see docs/design/RELATIONSHIPS.md.
+// Resident = identity. Relationship = Serve's engagement with a person,
+// family, or organization, which may exist with no resident at all (an
+// external prospect) and may later be linked to one without losing
+// history. Every actor field here is `text` (email/full name from
+// getCurrentAuthorizedUser()), matching every other table in this app —
+// there is no uuid staff identifier anywhere to reference.
+
+export type RelationshipType =
+  | "resident_prospect"
+  | "external_prospect"
+  | "active_client"
+  | "former_client"
+  | "referral_source"
+  | "community_partner"
+  | "professional_contact"
+  | "other";
+
+// Named PipelineStage, not RelationshipStage — that name is already taken
+// above by resident_relationship_profiles.relationship_stage (a personal-
+// closeness scale for Getting to Know: unknown/introduced/acquaintance/
+// familiar/established_relationship). This is an unrelated concept: where
+// a Relationship (the CRM entity) currently stands in Serve's engagement
+// pipeline.
+export type PipelineStage =
+  | "new_inquiry"
+  | "contact_attempted"
+  | "connected"
+  | "discovery"
+  | "assessment_scheduled"
+  | "assessment_completed"
+  | "proposal_in_progress"
+  | "proposal_sent"
+  | "considering"
+  | "follow_up_needed"
+  | "ready_to_start"
+  | "won"
+  | "on_hold"
+  | "closed_lost";
+
+export type RelationshipStatus = "active" | "on_hold" | "closed";
+
+export type RelationshipPriority = "low" | "normal" | "high" | "urgent";
+
+export interface Relationship {
+  id: string;
+  relationship_type: RelationshipType;
+  stage: PipelineStage;
+  status: RelationshipStatus;
+  display_name: string;
+  resident_id: string | null;
+  prospect_id: string | null;
+  community_name: string | null;
+  organization_name: string | null;
+  primary_contact_name: string | null;
+  primary_contact_relationship: string | null;
+  primary_contact_phone: string | null;
+  primary_contact_email: string | null;
+  prospective_resident_name: string | null;
+  summary: string | null;
+  owner_label: string | null;
+  priority: RelationshipPriority;
+  source_type: string | null;
+  source_label: string | null;
+  last_meaningful_touch_at: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+  closed_at: string | null;
+  closed_by: string | null;
+}
+
+export interface RelationshipStageHistoryEntry {
+  id: string;
+  relationship_id: string;
+  from_stage: PipelineStage | null;
+  to_stage: PipelineStage;
+  change_reason: string | null;
+  changed_by: string;
+  changed_at: string;
+}
+
+export type RelationshipTimelineEventType =
+  | "relationship_created"
+  | "resident_linked"
+  | "stage_changed"
+  | "touch_logged"
+  | "action_created"
+  | "action_updated"
+  | "action_completed"
+  | "action_dismissed"
+  | "relationship_won"
+  | "relationship_on_hold"
+  | "relationship_closed"
+  | "working_note_created"
+  | "working_note_resolved";
+
+export interface RelationshipTimelineEvent {
+  id: string;
+  relationship_id: string;
+  event_type: RelationshipTimelineEventType;
+  event_title: string;
+  event_description: string | null;
+  source_type: string;
+  source_record_id: string | null;
+  system_generated: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+export type RelationshipTouchType =
+  | "call"
+  | "email"
+  | "text"
+  | "meeting"
+  | "assessment"
+  | "resident_visit"
+  | "proposal"
+  | "other";
+
+export interface RelationshipTouch {
+  id: string;
+  relationship_id: string;
+  touch_type: RelationshipTouchType;
+  occurred_at: string;
+  summary: string;
+  outcome: string | null;
+  contact_name: string | null;
+  created_by: string;
+  created_at: string;
+  source_type: string;
+  source_record_id: string | null;
+}
+
+export type RelationshipActionType =
+  | "call"
+  | "email"
+  | "text"
+  | "schedule_assessment"
+  | "complete_assessment"
+  | "prepare_proposal"
+  | "send_proposal"
+  | "follow_up"
+  | "resident_visit"
+  | "family_meeting"
+  | "other";
+
+export type RelationshipActionStatus = "open" | "completed" | "dismissed";
+
+export interface RelationshipAction {
+  id: string;
+  relationship_id: string;
+  action_type: RelationshipActionType;
+  title: string;
+  description: string | null;
+  due_at: string | null;
+  assigned_to: string | null;
+  priority: RelationshipPriority;
+  status: RelationshipActionStatus;
+  completion_outcome: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+  completed_by: string | null;
+  completed_at: string | null;
+  dismissed_by: string | null;
+  dismissed_at: string | null;
+}
+
+export type RelationshipActionEditField =
+  | "title"
+  | "description"
+  | "action_type"
+  | "due_at"
+  | "assigned_to"
+  | "priority";
+
+export interface RelationshipActionEdit {
+  id: string;
+  relationship_action_id: string;
+  field_name: RelationshipActionEditField;
+  old_value: string | null;
+  new_value: string | null;
+  edited_by: string;
+  edited_at: string;
+}
+
+export type RelationshipWorkingNoteCategory =
+  | "operational"
+  | "family"
+  | "scheduling"
+  | "sales"
+  | "clinical"
+  | "general";
+
+export type RelationshipWorkingNoteStatus = "open" | "resolved" | "archived";
+
+export interface RelationshipWorkingNote {
+  id: string;
+  relationship_id: string;
+  content: string;
+  category: RelationshipWorkingNoteCategory | null;
+  status: RelationshipWorkingNoteStatus;
+  resolved: boolean;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  archived_at: string | null;
+  created_at: string;
+  created_by: string;
+  updated_at: string | null;
+  updated_by: string | null;
+}

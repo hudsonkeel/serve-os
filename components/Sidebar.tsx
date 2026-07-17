@@ -6,6 +6,7 @@ import {
   Briefcase,
   LayoutDashboard,
   Users,
+  Handshake,
   BarChart2,
   Sparkles,
   MessageSquare,
@@ -15,12 +16,14 @@ import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
 
 // Core operating areas — Dashboard = Know, Workspace = Do, Residents =
-// Manage, Community Intelligence = Think proactively, Ask Serve = Think on
-// demand. See docs/architecture/SERVE_OS_NAVIGATION_MODEL.md.
+// Manage (identity), Relationships = Manage (engagement), Community
+// Intelligence = Think proactively, Ask Serve = Think on demand. See
+// docs/architecture/SERVE_OS_NAVIGATION_MODEL.md.
 const primaryNav = [
   { icon: Briefcase,       label: "Workspace",              href: "/workspace" },
   { icon: LayoutDashboard, label: "Dashboard",              href: "/" },
   { icon: Users,           label: "Residents",             href: "/residents" },
+  { icon: Handshake,       label: "Relationships",          href: "/relationships" },
   { icon: BarChart2,       label: "Community Intelligence", href: "/community-intelligence" },
   { icon: Sparkles,        label: "Ask Serve",             href: "/ask-serve" },
 ];
