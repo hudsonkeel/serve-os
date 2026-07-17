@@ -5,6 +5,7 @@ import {
   buildBlendedGroups,
   collapseLegacyProspectStatus,
   countGroupRecords,
+  deriveServeRelationshipStatus,
   filterByTab,
   matchesSearch,
   normalizeSearchQuery,
@@ -130,6 +131,37 @@ test("0b. collapseLegacyProspectStatus leaves every other status untouched", () 
   assert.equal(collapseLegacyProspectStatus("hold"), "hold");
   assert.equal(collapseLegacyProspectStatus("former_client"), "former_client");
   assert.equal(collapseLegacyProspectStatus("wellness_watch"), "wellness_watch");
+});
+
+// ─── deriveServeRelationshipStatus ───────────────────────────────────
+
+test("0c. deriveServeRelationshipStatus returns the base status when there's no active_client Relationship", () => {
+  assert.equal(deriveServeRelationshipStatus("none", []), "none");
+  assert.equal(
+    deriveServeRelationshipStatus("hold", [{ relationshipType: "resident_prospect" }]),
+    "hold"
+  );
+});
+
+test("0d. deriveServeRelationshipStatus overrides to active_client when an active_client Relationship exists, regardless of base status", () => {
+  assert.equal(
+    deriveServeRelationshipStatus("none", [{ relationshipType: "active_client" }]),
+    "active_client"
+  );
+  assert.equal(
+    deriveServeRelationshipStatus("former_client", [{ relationshipType: "active_client" }]),
+    "active_client"
+  );
+});
+
+test("0e. deriveServeRelationshipStatus ignores non-active_client relationship types", () => {
+  assert.equal(
+    deriveServeRelationshipStatus("none", [
+      { relationshipType: "resident_prospect" },
+      { relationshipType: "referral_source" },
+    ]),
+    "none"
+  );
 });
 
 // ─── normalizeSearchQuery ───────────────────────────────────────────

@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Users,
   Handshake,
+  Home,
   BarChart2,
   Sparkles,
   MessageSquare,
@@ -16,14 +17,19 @@ import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
 
 // Core operating areas — Dashboard = Know, Workspace = Do, Residents =
-// Manage (identity), Relationships = Manage (engagement), Community
-// Intelligence = Think proactively, Ask Serve = Think on demand. See
+// Manage (identity), Relationships = Manage (engagement, resident-linked
+// and non-client relationship work), External Clients = Manage (the
+// durable prospective/active/paused/former traditional-home-care client
+// lifecycle outside supported communities — see
+// docs/design/RELATIONSHIPS.md), Community Intelligence = Think
+// proactively, Ask Serve = Think on demand. See
 // docs/architecture/SERVE_OS_NAVIGATION_MODEL.md.
 const primaryNav = [
   { icon: Briefcase,       label: "Workspace",              href: "/workspace" },
   { icon: LayoutDashboard, label: "Dashboard",              href: "/" },
   { icon: Users,           label: "Residents",             href: "/residents" },
   { icon: Handshake,       label: "Relationships",          href: "/relationships" },
+  { icon: Home,            label: "External Clients",       href: "/external-clients" },
   { icon: BarChart2,       label: "Community Intelligence", href: "/community-intelligence" },
   { icon: Sparkles,        label: "Ask Serve",             href: "/ask-serve" },
 ];

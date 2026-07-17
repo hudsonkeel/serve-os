@@ -19,6 +19,7 @@ import {
   upsertRelationshipServiceOpportunity as upsertRelationshipServiceOpportunityRecord,
   ResidentSearchResult,
 } from "@/lib/data/relationships";
+import { convertResidentProspectToActiveClient as convertResidentProspectToActiveClientRecord } from "@/lib/data/externalClients";
 import { findActiveResidentProspect } from "@/lib/relationships/duplicateDetection";
 import {
   isValidActionType,
@@ -28,6 +29,7 @@ import {
   isValidTouchType,
   RELATIONSHIP_WORKING_NOTE_CATEGORIES,
 } from "@/lib/relationships/constants";
+import { isValidOpenActionDisposition } from "@/lib/externalClients/constants";
 import {
   normalizeActionTitle,
   normalizeDisplayName,
@@ -649,4 +651,48 @@ export async function archiveRelationshipWorkingNote(data: {
   }
 
   return archiveRelationshipWorkingNoteRecord(data.workingNoteId, actor);
+}
+
+// ─── Part 12: Resident Prospect → Active Serve Client ───────────────────
+
+export async function convertResidentProspectToActiveClient(data: {
+  relationshipId: string;
+  effectiveStartDate?: string;
+  conversionNote?: string;
+  openActionDisposition?: string;
+  onboardingActionTitle?: string;
+  onboardingActionType?: string;
+  onboardingActionDueAt?: string;
+}): Promise<{ error?: string }> {
+  if (!data.relationshipId) {
+    return { error: "Missing relationship." };
+  }
+
+  const effectiveStartDate = parseOptionalDateOnly(data.effectiveStartDate);
+  if (effectiveStartDate.error) return { error: effectiveStartDate.error };
+
+  const onboardingDueAt = parseOptionalDate(data.onboardingActionDueAt);
+  if (onboardingDueAt.error) return { error: onboardingDueAt.error };
+
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to convert this relationship." };
+  }
+
+  return convertResidentProspectToActiveClientRecord({
+    relationshipId: data.relationshipId,
+    effectiveStartDate: effectiveStartDate.iso ?? null,
+    conversionNote: normalizeOptionalText(data.conversionNote),
+    openActionDisposition:
+      data.openActionDisposition && isValidOpenActionDisposition(data.openActionDisposition)
+        ? data.openActionDisposition
+        : "keep_open",
+    onboardingActionTitle: normalizeOptionalText(data.onboardingActionTitle),
+    onboardingActionType:
+      data.onboardingActionType && isValidActionType(data.onboardingActionType)
+        ? (data.onboardingActionType as RelationshipActionType)
+        : null,
+    onboardingActionDueAt: onboardingDueAt.iso ?? null,
+    actor,
+  });
 }

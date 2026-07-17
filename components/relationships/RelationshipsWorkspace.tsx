@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   RELATIONSHIP_ATTENTION_BADGE_TONE,
   RELATIONSHIP_ATTENTION_LABELS,
@@ -19,9 +20,9 @@ import {
   RelationshipFilterValue,
   RelationshipWorkspaceRow,
 } from "@/lib/relationships/search";
+import { isExternalWorkspaceRow } from "@/lib/externalClients/search";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Badge } from "@/components/ui/Badge";
-import { AddExternalProspectForm } from "./AddExternalProspectForm";
 import { AddResidentProspectForm } from "./AddResidentProspectForm";
 
 export interface RelationshipTableRow extends RelationshipWorkspaceRow {
@@ -44,13 +45,27 @@ interface RelationshipsWorkspaceProps {
 }
 
 export function RelationshipsWorkspace({ rows }: RelationshipsWorkspaceProps) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<RelationshipFilterValue>("all");
   const [attentionFilter, setAttentionFilter] = useState<RelationshipAttentionStatus | null>(null);
-  const [addingType, setAddingType] = useState<"resident" | "external" | null>(null);
+  const [isAddingResident, setIsAddingResident] = useState(false);
+  const [isChoosingType, setIsChoosingType] = useState(false);
+  // Part 9: External Prospects and external Active Clients are primarily
+  // managed through External Clients, so they're hidden from this default
+  // working view — but never lost: this toggle (the "advanced filter or
+  // direct detail access" Part 9 requires) brings them back into every
+  // filter/search/attention count below, and /relationships/[id] always
+  // works for any relationship regardless of this toggle.
+  const [includeExternal, setIncludeExternal] = useState(false);
 
   const trimmedQuery = normalizeSearchQuery(search);
   const hasActiveSearch = trimmedQuery.length > 0;
+
+  const scopedRows = useMemo(
+    () => (includeExternal ? rows : rows.filter((r) => !isExternalWorkspaceRow(r))),
+    [rows, includeExternal]
+  );
 
   const attentionCounts = useMemo(() => {
     const counts: Record<RelationshipAttentionStatus, number> = {
@@ -62,12 +77,12 @@ export function RelationshipsWorkspace({ rows }: RelationshipsWorkspaceProps) {
       on_hold: 0,
       closed: 0,
     };
-    for (const row of rows) counts[row.attentionStatus] += 1;
+    for (const row of scopedRows) counts[row.attentionStatus] += 1;
     return counts;
-  }, [rows]);
+  }, [scopedRows]);
 
   const filteredRows = useMemo(() => {
-    let result = filterByRelationshipFilter(rows, filter);
+    let result = filterByRelationshipFilter(scopedRows, filter);
     if (attentionFilter) {
       result = result.filter((r) => r.attentionStatus === attentionFilter);
     }
@@ -75,7 +90,7 @@ export function RelationshipsWorkspace({ rows }: RelationshipsWorkspaceProps) {
       result = result.filter((r) => matchesRelationshipSearch(r, trimmedQuery));
     }
     return result;
-  }, [rows, filter, attentionFilter, hasActiveSearch, trimmedQuery]);
+  }, [scopedRows, filter, attentionFilter, hasActiveSearch, trimmedQuery]);
 
   return (
     <div className="space-y-5">
@@ -116,26 +131,58 @@ export function RelationshipsWorkspace({ rows }: RelationshipsWorkspaceProps) {
             className="h-12 w-full rounded-lg border border-ivory-border bg-surface px-4 font-sans text-base text-body outline-none transition-colors placeholder:text-subtle focus:border-gold/60 focus:ring-2 focus:ring-gold/20"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="relative flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setAddingType(addingType === "resident" ? null : "resident")}
+            onClick={() => {
+              setIsAddingResident(false);
+              setIsChoosingType((open) => !open);
+            }}
             className="inline-flex h-11 items-center justify-center rounded-md bg-navy px-5 font-sans text-button font-semibold text-white transition-colors hover:bg-navy/90"
           >
-            {addingType === "resident" ? "Close" : "+ Add Resident Prospect"}
+            {isChoosingType ? "Close" : "+ Add Relationship"}
           </button>
-          <button
-            type="button"
-            onClick={() => setAddingType(addingType === "external" ? null : "external")}
-            className="inline-flex h-11 items-center justify-center rounded-md border border-ivory-border bg-surface px-5 font-sans text-button font-semibold text-body transition-colors hover:border-navy/20 hover:bg-ivory-warm"
-          >
-            {addingType === "external" ? "Close" : "+ Add External Prospect"}
-          </button>
+
+          {isChoosingType && (
+            <div className="absolute right-0 top-full z-10 mt-2 w-64 rounded-lg border border-ivory-border bg-surface py-1 shadow-card">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsChoosingType(false);
+                  setIsAddingResident(true);
+                }}
+                className="block w-full px-4 py-2.5 text-left font-sans text-sm font-medium text-body hover:bg-ivory-warm"
+              >
+                Resident Prospect
+                <span className="block font-sans text-xs text-subtle">A current resident with a sales opportunity</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsChoosingType(false);
+                  router.push("/external-clients?add=prospect");
+                }}
+                className="block w-full px-4 py-2.5 text-left font-sans text-sm font-medium text-body hover:bg-ivory-warm"
+              >
+                External Prospect
+                <span className="block font-sans text-xs text-subtle">A family or inquiry outside a supported community</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {addingType === "resident" && <AddResidentProspectForm onDone={() => setAddingType(null)} />}
-      {addingType === "external" && <AddExternalProspectForm onDone={() => setAddingType(null)} />}
+      {isAddingResident && <AddResidentProspectForm onDone={() => setIsAddingResident(false)} />}
+
+      <label className="flex items-center gap-2 font-sans text-sm text-muted">
+        <input
+          type="checkbox"
+          checked={includeExternal}
+          onChange={(e) => setIncludeExternal(e.target.checked)}
+          className="h-4 w-4 rounded border-ivory-border"
+        />
+        Include External Client records ({rows.length - scopedRows.length} hidden)
+      </label>
 
       {/* Type/status tabs */}
       <div className="flex flex-wrap items-center gap-1 border-b border-ivory-border">

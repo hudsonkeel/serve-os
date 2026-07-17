@@ -24,6 +24,26 @@ export function collapseLegacyProspectStatus(
   return status === "prospect" ? "none" : status;
 }
 
+// Active Client status is derived, not duplicated (see
+// docs/design/RELATIONSHIPS.md, "Active Client status is derived, not
+// duplicated") — there is no persisted, writable `residents` column for
+// service status, so a resident linked to an active_client-type
+// Relationship (via Resident Prospect → Active Client, or External
+// Prospect → Active External Client, conversion) is always treated as an
+// Active Serve Client, overriding whatever staged import data says.
+// Conversion is a real, explicit, in-app event and must never be silently
+// masked by a stale or absent import row the way a persisted resident
+// column could be.
+export function deriveServeRelationshipStatus(
+  baseStatus: ServeRelationshipStatus,
+  activeRelationships: readonly { relationshipType: string }[]
+): ServeRelationshipStatus {
+  const hasActiveClientRelationship = activeRelationships.some(
+    (r) => r.relationshipType === "active_client"
+  );
+  return hasActiveClientRelationship ? "active_client" : baseStatus;
+}
+
 export function normalizeSearchQuery(raw: string): string {
   return raw.trim().toLowerCase();
 }

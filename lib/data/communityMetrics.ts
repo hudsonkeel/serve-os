@@ -16,7 +16,7 @@ import {
   getActiveRelationshipSummariesByResident,
   ResidentRelationshipSummary,
 } from "@/lib/data/relationships";
-import { collapseLegacyProspectStatus } from "@/lib/residents/search";
+import { collapseLegacyProspectStatus, deriveServeRelationshipStatus } from "@/lib/residents/search";
 import {
   Prospect,
   Resident,
@@ -497,9 +497,10 @@ export function mapResidentToRecord(
   const importedContacts = sortNewestFirst(contactImports);
   const importedRelationships = sortNewestFirst(relationshipImports);
   const stagedStatus = stagedServeRelationshipStatus(importedRelationships);
-  const status = collapseLegacyProspectStatus(
+  const baseStatus = collapseLegacyProspectStatus(
     stagedStatus ?? serveRelationshipStatus(resident)
   );
+  const status = deriveServeRelationshipStatus(baseStatus, activeRelationships);
   const primaryImportedContact =
     importedContacts.find((contact) => contact.is_primary) ?? importedContacts[0];
   const importedContactName = primaryImportedContact

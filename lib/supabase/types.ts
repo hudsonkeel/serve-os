@@ -678,7 +678,8 @@ export type ResidentTimelineEventType =
   | "resident_created"
   | "current_needs_updated"
   | "working_note_created"
-  | "working_note_resolved";
+  | "working_note_resolved"
+  | "relationship_conversion";
 
 export interface ResidentTimelineEvent {
   id: string;
@@ -825,7 +826,9 @@ export type RelationshipTimelineEventType =
   | "working_note_created"
   | "working_note_resolved"
   | "service_opportunity_updated"
-  | "relationship_updated";
+  | "relationship_updated"
+  | "relationship_converted"
+  | "external_client_status_changed";
 
 export interface RelationshipTimelineEvent {
   id: string;
@@ -968,4 +971,62 @@ export interface RelationshipServiceOpportunity {
   created_at: string;
   updated_by: string | null;
   updated_at: string;
+}
+
+// External Clients — see docs/design/RELATIONSHIPS.md, "External Clients
+// is the durable workspace for prospective, active, paused, and former
+// clients outside supported communities." One row per Relationship
+// (unique relationship_id) carrying the traditional-home-care-specific
+// fields a Relationship itself has no reason to carry. Never a second CRM
+// entity — every other field (stage, owner, next action, touches, working
+// notes, Timeline) stays on the linked `relationships` row.
+export type ExternalClientStatus = "active" | "on_hold" | "former";
+
+export interface ExternalClient {
+  id: string;
+  relationship_id: string;
+  first_name: string;
+  last_name: string;
+  preferred_name: string | null;
+  phone: string | null;
+  email: string | null;
+  service_address_line_1: string;
+  service_address_line_2: string | null;
+  city: string;
+  state: string;
+  postal_code: string;
+  primary_contact_name: string | null;
+  primary_contact_relationship: string | null;
+  primary_contact_phone: string | null;
+  primary_contact_email: string | null;
+  service_start_date: string | null;
+  service_end_date: string | null;
+  former_reason: string | null;
+  status: ExternalClientStatus;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+// Conversion audit — see docs/design/RELATIONSHIPS.md, "Conversion
+// architecture." Append-only; one row per completed conversion.
+export type RelationshipConversionPath =
+  | "resident_prospect_to_active_client"
+  | "external_prospect_to_external_client"
+  | "external_prospect_to_new_resident"
+  | "external_prospect_to_existing_resident";
+
+export interface RelationshipConversion {
+  id: string;
+  relationship_id: string;
+  from_relationship_type: RelationshipType;
+  to_relationship_type: RelationshipType;
+  conversion_path: RelationshipConversionPath;
+  resident_id: string | null;
+  external_client_id: string | null;
+  effective_date: string | null;
+  conversion_note: string | null;
+  converted_by: string;
+  converted_at: string;
 }

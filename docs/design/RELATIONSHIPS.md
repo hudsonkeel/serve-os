@@ -1,19 +1,45 @@
 # Relationships — Conceptual Model
 
 Status: phase 1 (foundation) + phase 2 (Daily Action Board, Operational
-Whiteboard, Service Opportunity) + phase 3 (prospect consolidation)
-implemented — data model, three views (`/relationships/actions` Action
+Whiteboard, Service Opportunity) + phase 3 (prospect consolidation) +
+phase 4 (External Clients workspace and conversion lifecycle) implemented
+— data model, three Relationships views (`/relationships/actions` Action
 Board, `/relationships/whiteboard` Whiteboard, `/relationships` All
-Relationships), `/relationships/[id]` detail page, resident linking, stage
-history, touches, next actions with edit/audit, working notes, Relationship
-Timeline, early nonclinical service-opportunity planning, and full
-Resident Prospect creation with duplicate prevention. No Kanban, no
-drag-and-drop, no proposal/assessment workflow integration, no
+Relationships), a fourth top-level workspace (`/external-clients`),
+`/relationships/[id]` detail page, resident linking, stage history,
+touches, next actions with edit/audit, working notes, Relationship
+Timeline, early nonclinical service-opportunity planning, full Resident
+Prospect creation with duplicate prevention, and four explicit conversion
+paths (Resident Prospect → Active Client; External Prospect → Active
+External Client / New Resident Prospect / Existing Resident Prospect). No
+Kanban, no drag-and-drop, no proposal/assessment workflow integration, no
 notifications. See "Non-goals" and "Backlog" below.
 
 > **A prospect is a Relationship type, not a Resident classification.**
 > The Residents module has no "Serve Prospect" concept — see "Prospect
 > status belongs exclusively to Relationships" below.
+
+> **External Clients is the durable workspace for prospective, active,
+> paused, and former clients outside supported communities.**
+
+> **External Prospects are one lifecycle view inside External Clients,
+> not a standalone CRM or sidebar workspace.** They are still
+> `relationships` rows (`relationship_type = 'external_prospect'`) —
+> External Clients reuses the Relationship infrastructure end to end
+> rather than forking a second CRM. See "External Clients" below.
+
+> **Conversion preserves the existing Relationship and all of its
+> history.** Every conversion path below updates the same
+> `relationships.id` in place — stage history, touches, actions, Working
+> Notes, Service Opportunity, and Timeline all carry forward. No
+> conversion path ever creates a disconnected replacement Relationship.
+
+> **A Serve client may be a community Resident or an External Client.**
+> Both are represented the same way at the Relationship layer
+> (`relationship_type = 'active_client'`); a Resident-linked one has
+> `resident_id` set and appears in Relationships, an External one has a
+> linked `external_clients` row and appears in External Clients. See
+> "External Clients" and "Conversion architecture" below.
 
 ## The core distinction
 
@@ -126,14 +152,12 @@ When a duplicate is detected, both entry points show the existing
 Relationship's name and stage with "Open Relationship" as the default
 action — never a silent no-op, never a silent second Relationship.
 
-
-
 | Type | Meaning |
 |---|---|
 | `resident_prospect` | A sales/service opportunity connected to an existing resident record |
-| `external_prospect` | A prospective customer or family inquiry not yet connected to a resident |
-| `active_client` | An active Serve customer relationship |
-| `former_client` | A prior customer relationship, possibly reactivated later |
+| `external_prospect` | A prospective customer or family inquiry not yet connected to a resident, managed via External Clients → Prospects |
+| `active_client` | An active Serve customer relationship — either resident-linked (`resident_id` set, appears in Relationships) or external (a linked `external_clients` row, appears in External Clients) |
+| `former_client` | Reserved; unused by any conversion path today — see "Former external clients" below for how that lifecycle is actually represented |
 | `referral_source` | A person or organization that refers prospective customers |
 | `community_partner` | A senior-living community or related organizational relationship |
 | `professional_contact` | A physician, hospital contact, social worker, care manager, etc. |
@@ -144,6 +168,174 @@ Phase 1's UI and pipeline logic are built around `resident_prospect` and
 can be created, staged, searched, and filtered) but don't get
 sales-pipeline-specific treatment like the workspace's attention-status
 derivation.
+
+## External Clients
+
+`/external-clients` is a fourth top-level workspace (immediately below
+Relationships in the sidebar), not a second CRM. It is four lifecycle
+*views* over the same `relationships` rows Relationships itself reads —
+see "Reuse existing Relationship infrastructure" below.
+
+| View | Relationship_type | Selector |
+|---|---|---|
+| Prospects | `external_prospect` | `status != 'closed'` |
+| Active Clients | `active_client` | linked `external_clients.status = 'active'` |
+| On Hold | `active_client` | linked `external_clients.status = 'on_hold'` |
+| Former Clients | `active_client` | linked `external_clients.status = 'former'` |
+
+`lib/externalClients/search.ts#isExternalWorkspaceRow()` is the one
+predicate that decides whether a Relationship row belongs in External
+Clients at all: `relationship_type === 'external_prospect'`, or
+(`relationship_type === 'active_client'` and `resident_id` is null). A
+resident-linked `active_client` Relationship (from a Resident Prospect
+conversion) never appears here — see "Relationships workspace scope"
+below for the mirror-image rule.
+
+### The `external_clients` table
+
+One row per Relationship (`external_clients.relationship_id`, unique),
+created only by `convert_external_prospect_to_active_client()` — never a
+standalone entity a user can create directly. Carries exactly the
+traditional-home-care-specific fields a Relationship has no reason to
+carry: name, service address, primary contact, service start/end date,
+former-reason, and a lifecycle `status` (`active` / `on_hold` / `former`)
+that is **independent of `relationships.status`** — a Relationship stays
+`status = 'active'` for the entire life of an external client engagement
+(it is never "closed" just because the client is temporarily on hold or
+has become former; see "Stage/status semantics" below). Everything else —
+stage, owner, next action, touches, Working Notes, Service Opportunity,
+Timeline — stays on the linked `relationships` row and is reused as-is.
+
+### Reuse existing Relationship infrastructure
+
+`/external-clients` intentionally has no independent write path.
+`getExternalClientWorkspaceRows()` (`lib/data/externalClients.ts`) calls
+the same `getRelationshipBoardRows()` the Action Board and Whiteboard use
+(nearest action, active note, Service Opportunity, attention status — all
+computed identically), narrows to the rows `isExternalWorkspaceRow()`
+selects, and merges in each row's `external_clients` fields where present.
+`/relationships/[id]` remains the one detail page for every Relationship
+type, including externals — External Clients links into it rather than
+building a parallel detail page; `ExternalClientPanel.tsx` (address,
+service dates, lifecycle actions) and `ConvertRelationshipPanel.tsx`
+(conversion entry points) render there conditionally.
+
+### Former external clients
+
+Marking a client Former sets `external_clients.status = 'former'` and
+`service_end_date` — it does not close, delete, or replace the underlying
+Relationship. **Reactivating a Former (or On Hold) client reuses the same
+ongoing Relationship** (`reactivate_external_client()` flips
+`external_clients.status` back to `active`) rather than creating a new
+one — chosen because nothing about this scope's architecture requires a
+distinct second engagement for a returning client, and reusing the
+Relationship preserves its full stage/touch/action/Timeline history
+across the gap, which a brand-new Relationship would discard. If a future
+scope finds a real reason two truly separate engagements are needed
+(e.g. a materially different service arrangement), that would be a new,
+explicit decision — not an accidental default.
+
+## Conversion architecture
+
+Four explicit, user-triggered conversion actions — never automatic, never
+inferred from a stage change alone:
+
+```
+Resident Prospect ──────────────────► Active Client (resident-linked)
+                                        (Part 12)
+
+External Prospect ──┬──► Active External Client
+                     │     (Part 14 — creates external_clients row)
+                     │
+                     ├──► New Resident Prospect
+                     │     (Part 15 — creates a Resident, relinks)
+                     │
+                     └──► Existing Resident Prospect
+                           (Part 16 — links to a Resident, relinks)
+```
+
+Every path is one atomic `plpgsql` RPC
+(`supabase/migrations/20260719000000_create_external_clients_and_conversions.sql`)
+that re-validates the Relationship's current `relationship_type` under a
+row lock before doing anything — the same guard that makes a second
+conversion attempt fail cleanly (`RELATIONSHIP_NOT_ELIGIBLE`) once the
+first has already changed the type, rather than needing a separate
+uniqueness constraint (Part 21: "conversion of an already converted
+Relationship" is rejected by construction, not by a special case).
+
+**The Relationship's own id, stage history, touches, actions, Working
+Notes, Service Opportunity, and Timeline are never recreated or
+disconnected by any conversion** — every RPC above only ever `update`s
+the existing `relationships` row (type, and sometimes `resident_id`) and
+inserts new dependent rows (a stage-history entry, a Timeline event, a
+`relationship_conversions` audit row, and — for two of the four paths —
+an `external_clients` or `residents` row).
+
+### Open sales actions
+
+Part 12/14/17 each accept an open-action disposition
+(`resolve_relationship_open_actions()`, shared): `complete`, `dismiss`, or
+`keep_open` (the default) — applied as one blanket choice to every
+currently-open `relationship_actions` row at the moment of conversion or
+Mark-Former. `keep_open` is a deliberate no-op, not an omission: a
+conversion must never silently resolve open work the user didn't
+explicitly ask to close out.
+
+### Onboarding action
+
+Three of the four conversion forms (everywhere a new service relationship
+begins) offer an optional first onboarding action, created via the same
+`create_relationship_action()` RPC every other Next Action uses — not a
+new creation path.
+
+### Active Client status is derived, not duplicated
+
+Part 12 requires a converted resident to become an "Active Serve Client."
+There is no persisted, writable `residents` column for this (see "Legacy
+classification and its actual source" above — the one migration that
+would add a resident-level status column was never applied, and this
+scope does not revive it). Instead, `mapResidentToRecord()`
+(`lib/data/communityMetrics.ts`) treats **any resident with a linked
+`active_client`-type Relationship** (from
+`getActiveRelationshipSummariesByResident()`, already fetched for the
+Relationship-summary work in phase 3) as an Active Serve Client,
+overriding whatever staged import data says. This is the same principle
+phase 3 established for prospect status — Relationship-derived, computed
+fresh on every load, never written to a resident column that could drift
+out of sync with what actually happened.
+
+### Conversion audit
+
+`relationship_conversions` — append-only, one row per completed
+conversion (`relationship_id`, `from_relationship_type`,
+`to_relationship_type`, `conversion_path`, `resident_id`/
+`external_client_id`, `effective_date`, `conversion_note`, `converted_by`,
+`converted_at`). Never written on a cancelled or failed attempt — every
+insert lives in the same transaction as the conversion it records.
+Reachable through `relationship_id` for test-data cleanup, the same
+one-root-marker principle `docs/engineering/TEST_DATA_HYGIENE.md`
+establishes for every other Relationship-dependent table.
+
+### Workspace movement after conversion
+
+- **External Prospect → Active External Client**: leaves External
+  Clients → Prospects, enters External Clients → Active Clients. Never
+  appears in Relationships' default view (see "Relationships workspace
+  scope" below). Never creates a Resident.
+- **External Prospect → New/Existing Resident Prospect**: leaves External
+  Clients entirely (relationship_type is no longer `external_prospect`),
+  appears in Relationships as a Resident Prospect. Does **not**
+  automatically become an Active Client — that remains Part 12's separate,
+  explicit action.
+- **Resident Prospect → Active Client**: stays in Relationships (now
+  filtered under "Active Clients" rather than "Resident Prospects"); the
+  linked resident's derived status becomes Active Serve Client
+  everywhere it's shown (Residents directory, resident detail page).
+
+Every mutation above calls `router.refresh()` after its server action
+resolves — the same router-refresh-safe pattern every other write in this
+subsystem already uses; no conversion leaves stale client-side state
+behind.
 
 ## Stage
 
@@ -162,9 +354,20 @@ A stage answers "where does this stand right now" — it is not a log of
 every action taken (that's Touches and Timeline) and is deliberately not
 more granular than this list. `status` (`active` / `on_hold` / `closed`)
 is a separate, coarser field derived automatically from stage changes
-(`won`/`closed_lost` → `closed`; `on_hold` → `on_hold`; anything else →
-`active`) — see `change_relationship_stage()` in
-`20260717000000_create_relationships_core.sql`.
+(`on_hold` → `on_hold`; anything else, including `won`, → `active`) — see
+`change_relationship_stage()` in
+`20260719000000_create_external_clients_and_conversions.sql`.
+
+**`won` is not a terminal status** (fixed in phase 4 — see "Stage/status
+semantics" below). Only `closed_lost` — an actual sales outcome that ends
+the relationship — sets `status = 'closed'`. Before phase 4,
+`change_relationship_stage()` treated `won` the same as `closed_lost`,
+which meant a converted Active Client would have disappeared from every
+ongoing operational view (Action Board, Whiteboard, attention counts) the
+moment it reached `won`. Every one of the four conversion RPCs sets
+`stage = 'won'` and `status = 'active'` explicitly for exactly this
+reason — a `won`/Active Client relationship must stay visible as ongoing
+work, not read as finished.
 
 ## Touch
 
@@ -287,6 +490,29 @@ Central-time day-boundary helper, already used identically by
 `getWellnessFollowUpDashboardCounts()`. "Due this week" is the 7-day
 window starting tomorrow (Central), matching that function's bucket
 exactly, not an ISO calendar week.
+
+## Relationships workspace scope (phase 4 addition)
+
+`/relationships`'s default view **excludes** External Prospects and
+external Active Clients — the mirror image of `isExternalWorkspaceRow()`
+above — so the two workspaces don't show overlapping rows for the same
+underlying data. This is the "Preferred" option from the scope that
+introduced External Clients (excludes by default, retains access when
+needed), not the "include everything in one All Relationship Records
+view" alternative:
+
+- `RelationshipsWorkspace.tsx` filters `rows` down to non-external ones
+  before any other filter/search/attention-count runs.
+- An "Include External Client records" checkbox (unchecked by default)
+  restores them into every filter/search/count on the page — the
+  "advanced filter" access Part 9 requires.
+- `/relationships/[id]` always works for any Relationship regardless of
+  this toggle — the exclusion only affects the workspace *list*, never
+  direct detail access.
+- Resident-linked `active_client` Relationships (from Resident Prospect
+  conversions) are never excluded — they belong in Relationships by
+  definition (Part 9: "resident-linked active_client" is explicitly one
+  of the types Relationships owns).
 
 ## View architecture (Part 2 addition)
 
@@ -507,6 +733,49 @@ edit logic).
 the one-time audit of every resident the legacy Serve Prospect
 classification affected.
 
+**Phase 4 (External Clients + conversion lifecycle)**
+
+**Migrations**: `20260719000000_create_external_clients_and_conversions.sql`
+— `external_clients`, `relationship_conversions`; the four conversion RPCs
+(`convert_resident_prospect_to_active_client`,
+`convert_external_prospect_to_active_client`,
+`convert_external_prospect_to_new_resident`,
+`convert_external_prospect_to_existing_resident`); the three External
+Client lifecycle RPCs (`place_external_client_on_hold`,
+`reactivate_external_client`, `mark_external_client_former`); the shared
+`resolve_relationship_open_actions()` helper; the `won`-is-not-terminal
+fix to `change_relationship_stage()`; the `relationship_converted`/
+`external_client_status_changed` Relationship Timeline event types; the
+`relationship_conversion` Resident Timeline event type.
+
+**Pure logic**: `lib/externalClients/constants.ts` (statuses, open-action
+disposition labels), `lib/externalClients/search.ts`
+(`isExternalWorkspaceRow()`, tab filtering, search — mirrors
+`lib/relationships/search.ts`), `lib/externalClients/validation.ts`
+(required-name, required-service-address validation) — all independently
+unit tested (`lib/externalClients/__tests__/*.test.ts`).
+
+**Data/actions**: `lib/data/externalClients.ts` (`getExternalClientWorkspaceRows()`
+— reuses `getRelationshipBoardRows()`, never a second query path; the
+four conversion wrappers; the three lifecycle wrappers),
+`lib/actions/externalClients.ts` (server actions + validation for all of
+the above), `lib/actions/relationships.ts#convertResidentProspectToActiveClient()`
+(Part 12 stays in the Relationships action module — no `external_clients`
+row involved).
+
+**UI**: `app/external-clients/page.tsx` +
+`components/externalClients/ExternalClientsWorkspace.tsx` (four tabs,
+search, "+ Add External Prospect" — reuses `AddExternalProspectForm.tsx`
+unchanged); `components/relationships/ConvertRelationshipPanel.tsx`
+(all four conversion forms, rendered on `/relationships/[id]`);
+`components/relationships/ExternalClientPanel.tsx` (address/service-date
+display + On Hold / Reactivate / Mark Former actions, rendered on
+`/relationships/[id]` in place of `ConvertRelationshipPanel` once an
+external client exists); `components/Sidebar.tsx` (External Clients nav
+item, immediately below Relationships); `components/relationships/RelationshipsWorkspace.tsx`
+("+ Add Relationship" chooser replacing the two separate Add buttons; the
+Include-External-Client-records toggle).
+
 ## Non-goals of this phase
 
 Full Kanban pipeline, drag-and-drop stages, further whiteboard/table
@@ -545,10 +814,6 @@ per-user column customization remain out of scope.)
   real staff-identity table to compare against.
 - **External notifications** — overdue/due-today conditions are only
   visible by opening `/relationships` today.
-- **Conversion from prospect to active client** — moving a `stage` to
-  `won` does not currently change `relationship_type` from
-  `resident_prospect`/`external_prospect` to `active_client`; that
-  transition (and whether it should be automatic) is undecided.
 - **Cross-linking Relationship Timeline into Resident Timeline** — once a
   Relationship is linked to a resident, should its stage changes/touches/
   actions also appear on that resident's own Timeline? Left undecided
@@ -579,6 +844,24 @@ per-user column customization remain out of scope.)
   different resident than the name on the row itself (a pre-existing
   upstream data issue, not introduced by this scope). Worth a future look
   at the import pipeline, not an in-app fix.
+- **`former_client` relationship type is unused** — it remains in the
+  type union and check constraint for backward compatibility but no
+  conversion path or UI writes it; the entire External Client "former"
+  lifecycle is represented by `external_clients.status = 'former'`
+  instead (see "External Clients" above). Left in place rather than
+  removed, since deprecating a check-constraint value isn't required by
+  this scope and doing so without auditing every historical row that
+  might already carry it would be premature.
+- **External Client clinical/operational depth** — no care plans,
+  assessments, schedules, billing, or payroll for External Clients, by
+  explicit non-goal. `relationship_service_opportunities` (reused as-is
+  for External Prospects) remains the only pre-service planning surface.
+- **Website `prospects` → External Client integration** — an External
+  Prospect Relationship still has no path back to a `prospects` row
+  originating from `serve-website`'s intake form (see "The `prospects`
+  table" above); still deferred for the same reason phase 3 deferred it —
+  the two systems don't currently overlap in a way that causes conflicting
+  prospect creation.
 
 Retained from `docs/design/RESIDENT_MEMORY.md`'s backlog: consider
 codifying the Information Affordance Principle in the Serve Intelligence

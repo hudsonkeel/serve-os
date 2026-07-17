@@ -10,12 +10,15 @@ import {
   getRelationshipWorkingNotes,
   getResidentDisplayNameById,
 } from "@/lib/data/relationships";
+import { getExternalClientByRelationshipId } from "@/lib/data/externalClients";
 import { RELATIONSHIP_TYPE_LABELS } from "@/lib/relationships/constants";
 import { RelationshipOverview } from "@/components/relationships/RelationshipOverview";
 import { RelationshipActionsList } from "@/components/relationships/RelationshipActionsList";
 import { RelationshipWorkingNotesSection } from "@/components/relationships/RelationshipWorkingNotesSection";
 import { RelationshipTouchesSection } from "@/components/relationships/RelationshipTouchesSection";
 import { RelationshipTimelineSection } from "@/components/relationships/RelationshipTimelineSection";
+import { ConvertRelationshipPanel } from "@/components/relationships/ConvertRelationshipPanel";
+import { ExternalClientPanel } from "@/components/relationships/ExternalClientPanel";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,12 +33,13 @@ export default async function RelationshipDetailPage({
 
   if (!relationship) notFound();
 
-  const [actions, notes, touches, timeline, linkedResidentName] = await Promise.all([
+  const [actions, notes, touches, timeline, linkedResidentName, externalClient] = await Promise.all([
     getRelationshipActions(id),
     getRelationshipWorkingNotes(id),
     getRelationshipTouches(id),
     getRelationshipTimeline(id),
     relationship.resident_id ? getResidentDisplayNameById(relationship.resident_id) : Promise.resolve(null),
+    getExternalClientByRelationshipId(id),
   ]);
 
   return (
@@ -63,6 +67,12 @@ export default async function RelationshipDetailPage({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <RelationshipOverview relationship={relationship} linkedResidentName={linkedResidentName} />
+
+          {externalClient ? (
+            <ExternalClientPanel client={externalClient} />
+          ) : (
+            <ConvertRelationshipPanel relationship={relationship} />
+          )}
 
           <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
             <RelationshipActionsList relationshipId={id} actions={actions} />
