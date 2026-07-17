@@ -1,14 +1,19 @@
 # Relationships — Conceptual Model
 
 Status: phase 1 (foundation) + phase 2 (Daily Action Board, Operational
-Whiteboard, Service Opportunity) implemented — data model, three views
-(`/relationships/actions` Action Board, `/relationships/whiteboard`
-Whiteboard, `/relationships` All Relationships), `/relationships/[id]`
-detail page, resident linking, stage history, touches, next actions with
-edit/audit, working notes, Relationship Timeline, and early nonclinical
-service-opportunity planning. No Kanban, no drag-and-drop, no
-proposal/assessment workflow integration, no notifications. See "Non-goals"
-and "Backlog" below.
+Whiteboard, Service Opportunity) + phase 3 (prospect consolidation)
+implemented — data model, three views (`/relationships/actions` Action
+Board, `/relationships/whiteboard` Whiteboard, `/relationships` All
+Relationships), `/relationships/[id]` detail page, resident linking, stage
+history, touches, next actions with edit/audit, working notes, Relationship
+Timeline, early nonclinical service-opportunity planning, and full
+Resident Prospect creation with duplicate prevention. No Kanban, no
+drag-and-drop, no proposal/assessment workflow integration, no
+notifications. See "Non-goals" and "Backlog" below.
+
+> **A prospect is a Relationship type, not a Resident classification.**
+> The Residents module has no "Serve Prospect" concept — see "Prospect
+> status belongs exclusively to Relationships" below.
 
 ## The core distinction
 
@@ -30,9 +35,98 @@ and may later be linked to a resident (existing or newly created)
 nullable specifically to make this possible; nothing in this schema
 requires a resident to exist first.
 
-## Relationship Type
+## Prospect status belongs exclusively to Relationships
 
-What kind of Serve relationship this is (`relationships.relationship_type`):
+Every Watermere resident is inherently a *possible* future Serve client
+simply because Serve operates within the community — that alone is not a
+meaningful operational distinction, and a resident-level "Serve Prospect"
+classification only invited two competing prospect systems to drift out of
+sync. As of the prospect-consolidation phase, it no longer exists:
+
+- The Residents module has no Serve Prospects tab, no SERVE PROSPECT
+  badge, and no prospect-driven counts or filters. A resident with no
+  Relationship simply shows their legitimate resident/client information —
+  never a placeholder like "No Relationship" or "Not a Prospect."
+- A resident with one or more active (non-closed) Relationships shows a
+  concise, read-only summary on their directory row and detail page (stage,
+  next action, due date, "Open Relationship") — derived fresh from
+  `relationships` on every load via `getActiveRelationshipSummariesByResident()`
+  (`lib/data/relationships.ts`, one bulk query, never one query per
+  resident), never duplicated onto the resident record.
+- `collapseLegacyProspectStatus()` (`lib/residents/search.ts`) is the one
+  choke point that guarantees a resident's derived `serveRelationshipStatus`
+  can never be `'prospect'`, regardless of which of the two legacy sources
+  (see "Legacy classification and its actual source" below) produced it.
+  Active Client / On Hold / Former Client / Wellness Watch are untouched —
+  only the prospect value collapses to `'none'`.
+- Do not infer a Resident Prospect Relationship merely because a resident
+  lives at Watermere, isn't an Active Client, was recently imported, or has
+  incomplete contact information. A Relationship represents an intentional,
+  active engagement — see "Resident Prospect creation" below for the only
+  two ways one comes into existence.
+
+### Legacy classification and its actual source
+
+`residents.serve_relationship_status` — the column the original prospect
+classification was designed around
+(`20260702000000_add_resident_serve_relationship_status.sql`) — **does not
+exist in the live database.** That migration was never applied (confirmed
+by direct schema inspection). Every "Serve Prospect" resident visible
+before this phase was produced entirely by a *different* mechanism: staged
+`resident_relationship_imports` rows (`is_prospect` / `serve_relationship_status`
+columns), re-matched to a resident at read time by
+`stagedServeRelationshipStatus()` and merged with (given priority over) the
+resident's own field in `mapResidentToRecord()`. See
+`docs/maintenance/LEGACY_RESIDENT_PROSPECT_REVIEW.md` for the full audit of
+which residents this affected and why none warranted an automatic
+Relationship.
+
+Neither the dormant migration nor the raw staged import data was touched
+by this phase — `resident_relationship_imports` is historical provenance
+(what the source system said at import time) and rewriting it would
+destroy that record. The fix lives entirely in the derivation/display
+layer, which is both simpler and equally durable: there is no live column
+value to migrate, and the one collapse function guarantees the UI can
+never surface `'prospect'` again regardless of what any future import
+process stages.
+
+### Resident Prospect creation
+
+Two entry points, both funneling through the same `createRelationship()`
+server action with `relationshipType: "resident_prospect"`:
+
+1. **From Relationships** — "+ Add Resident Prospect"
+   (`components/relationships/AddResidentProspectForm.tsx`): search and
+   select an existing resident (reuses the same picker as "Link Existing
+   Resident" — `searchResidentsForLinking()`), then capture stage, owner,
+   source, primary contact, optional summary/Working Note/Service
+   Opportunity, and an optional first Next Action.
+2. **From a resident's own page** — "Start Relationship"
+   (`components/residents/StartRelationshipCard.tsx`): the same creation
+   flow, with the resident preselected and primary contact pre-filled from
+   Family Contacts.
+
+Both check for an existing active Resident Prospect Relationship *before*
+showing the creation form (see "Duplicate prevention" below) — a duplicate
+is never created silently.
+
+### Duplicate prevention
+
+`lib/relationships/duplicateDetection.ts#findActiveResidentProspect()` —
+pure, unit-tested: one resident may have at most one *active* (status
+`active` or `on_hold` — not `closed`) `resident_prospect` Relationship by
+default. This is a UX rule enforced in the server actions that create
+Relationships, not a hard database uniqueness constraint — a closed
+historical Relationship never blocks a legitimate new one (e.g.
+reactivating after a `closed_lost` outcome), and "Create Another
+Relationship" remains available as an explicit, confirmed override from
+the duplicate-warning step.
+
+When a duplicate is detected, both entry points show the existing
+Relationship's name and stage with "Open Relationship" as the default
+action — never a silent no-op, never a silent second Relationship.
+
+
 
 | Type | Meaning |
 |---|---|
@@ -372,30 +466,46 @@ verification left behind and how it was removed.
 labels), `lib/relationships/validation.ts`, `lib/relationships/attention.ts`,
 `lib/relationships/search.ts`, `lib/relationships/sorting.ts` (primary-
 action selection, Action Board/Whiteboard row ordering),
-`lib/relationships/boardFilters.ts` (shared filter model) — all
-independently unit tested (`lib/relationships/__tests__/*.test.ts`).
+`lib/relationships/boardFilters.ts` (shared filter model),
+`lib/relationships/duplicateDetection.ts` (Resident Prospect duplicate
+rule) — all independently unit tested (`lib/relationships/__tests__/*.test.ts`).
+`lib/residents/search.ts#collapseLegacyProspectStatus()` (the prospect-
+consolidation choke point — lives here, not in `lib/relationships/`,
+because it operates on `ServeRelationshipStatus`, a Resident-side concept).
 
 **Data/actions**: `lib/data/relationships.ts` (includes
 `getRelationshipBoardRows()`, the one shared assembler both new views read
 from — see "Performance" in the original Part 1 scope: avoid one query per
-Relationship, avoid duplicate queries between the two pages),
-`lib/actions/relationships.ts`.
+Relationship, avoid duplicate queries between the two pages;
+`getActiveRelationshipSummariesByResident()` and
+`getActiveProspectRelationshipCount()` for the prospect-consolidation
+phase), `lib/actions/relationships.ts` (includes
+`checkForActiveResidentProspect()`, the duplicate-check server action both
+creation entry points call before showing their form).
 
 **UI**: `app/relationships/page.tsx` + `components/relationships/RelationshipsWorkspace.tsx`
 (table, filters, attention counts, search — hides zero-result states the
-same way the Residents search page does), `AddExternalProspectForm.tsx`;
-`app/relationships/[id]/page.tsx` + `RelationshipOverview.tsx` (stage
-change, resident linking), `RelationshipActionsList.tsx`,
+same way the Residents search page does), `AddExternalProspectForm.tsx`,
+`AddResidentProspectForm.tsx` (search-select-resident → duplicate-check →
+create); `app/relationships/[id]/page.tsx` + `RelationshipOverview.tsx`
+(stage change, resident linking), `RelationshipActionsList.tsx`,
 `RelationshipWorkingNotesSection.tsx`, `RelationshipTouchesSection.tsx`,
 `RelationshipTimelineSection.tsx`; `components/residents/StartRelationshipCard.tsx`
-(the resident-page entry point); `RelationshipViewTabs.tsx` (shared view
-switcher); `app/relationships/actions/page.tsx` + `ActionBoard.tsx` (Daily
-Action Board); `app/relationships/whiteboard/page.tsx` + `Whiteboard.tsx`
+(the resident-page entry point, now duplicate-aware — shows "Open
+Relationship" instead of the creation form when one already exists),
+`components/residents/ResidentRow.tsx` (the Relationship summary on
+directory rows); `RelationshipViewTabs.tsx` (shared view switcher);
+`app/relationships/actions/page.tsx` + `ActionBoard.tsx` (Daily Action
+Board); `app/relationships/whiteboard/page.tsx` + `Whiteboard.tsx`
 (Operational Whiteboard); `RelationshipFilterBar.tsx` (shared filter UI);
 `RelationshipQuickForms.tsx` (the compact inline forms — stage, owner/
 priority, action, touch, working note, service opportunity — shared by
 both the Action Board and the Whiteboard so neither duplicates the other's
 edit logic).
+
+**Maintenance**: `docs/maintenance/LEGACY_RESIDENT_PROSPECT_REVIEW.md` —
+the one-time audit of every resident the legacy Serve Prospect
+classification affected.
 
 ## Non-goals of this phase
 
@@ -453,6 +563,22 @@ per-user column customization remain out of scope.)
   date, location). Still open: nothing consumes this data to seed an
   actual AxisCare/Cinch schedule once a Relationship converts — see
   "Conversion from prospect to active client" above.
+- **Website `prospects` → External Prospect Relationship integration** —
+  `relationships.prospect_id` exists as an optional provenance link (see
+  "The `prospects` table" above), but no UI path currently sets it —
+  `createRelationship()` always passes `prospectId: null`. A website
+  inquiry becoming an External Prospect Relationship, or later matching to
+  a Resident Prospect Relationship, is still a fully manual re-entry today.
+  Deferred per the prospect-consolidation scope's explicit instruction not
+  to build full website-intake integration unless required to prevent
+  conflicting prospect creation — it isn't; the two systems don't currently
+  overlap.
+- **Import pipeline data-quality pass** — the legacy prospect audit
+  (`docs/maintenance/LEGACY_RESIDENT_PROSPECT_REVIEW.md`) surfaced two
+  `resident_relationship_imports` rows whose external key points to a
+  different resident than the name on the row itself (a pre-existing
+  upstream data issue, not introduced by this scope). Worth a future look
+  at the import pipeline, not an in-app fix.
 
 Retained from `docs/design/RESIDENT_MEMORY.md`'s backlog: consider
 codifying the Information Affordance Principle in the Serve Intelligence

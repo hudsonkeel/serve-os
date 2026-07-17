@@ -9,6 +9,7 @@ import {
   createRelationshipWorkingNote as createRelationshipWorkingNoteRecord,
   archiveRelationshipWorkingNote as archiveRelationshipWorkingNoteRecord,
   dismissRelationshipAction as dismissRelationshipActionRecord,
+  getRelationshipsByResident as getRelationshipsByResidentRecord,
   linkRelationshipToResident as linkRelationshipToResidentRecord,
   logRelationshipTouch as logRelationshipTouchRecord,
   resolveRelationshipWorkingNote as resolveRelationshipWorkingNoteRecord,
@@ -18,6 +19,7 @@ import {
   upsertRelationshipServiceOpportunity as upsertRelationshipServiceOpportunityRecord,
   ResidentSearchResult,
 } from "@/lib/data/relationships";
+import { findActiveResidentProspect } from "@/lib/relationships/duplicateDetection";
 import {
   isValidActionType,
   isValidRelationshipPriority,
@@ -38,6 +40,7 @@ import {
 } from "@/lib/relationships/validation";
 import {
   PipelineStage,
+  Relationship,
   RelationshipActionType,
   RelationshipPriority,
   RelationshipTouchType,
@@ -74,6 +77,13 @@ export interface CreateRelationshipFormData {
   firstActionTitle?: string;
   firstActionType?: string;
   firstActionDueAt?: string;
+  // Optional Working Note and Service Opportunity, each created as a
+  // further sequential follow-up call if supplied — same pattern as
+  // firstActionTitle above, not a single database transaction (matches
+  // this app's existing convention of composing several atomic RPCs at
+  // the app layer rather than one all-in-one creation RPC).
+  workingNoteContent?: string;
+  serviceOpportunitySummary?: string;
 }
 
 export async function createRelationship(
@@ -137,6 +147,30 @@ export async function createRelationship(
       dueAt: dueDate.iso ?? null,
       assignedTo: normalizeOptionalText(data.ownerLabel),
       priority: "normal",
+      actor,
+    });
+  }
+
+  if (data.workingNoteContent?.trim()) {
+    await createRelationshipWorkingNoteRecord(
+      result.id,
+      data.workingNoteContent.trim(),
+      null,
+      actor
+    );
+  }
+
+  if (data.serviceOpportunitySummary?.trim()) {
+    await upsertRelationshipServiceOpportunityRecord({
+      relationshipId: result.id,
+      serviceSummary: data.serviceOpportunitySummary.trim(),
+      visitsPerWeek: null,
+      preferredDays: null,
+      preferredTimeWindows: null,
+      estimatedVisitMinutes: null,
+      anticipatedStartDate: null,
+      serviceLocationSummary: null,
+      status: null,
       actor,
     });
   }
@@ -439,6 +473,40 @@ export async function searchResidentsForLinking(
   query: string
 ): Promise<ResidentSearchResult[]> {
   return searchResidentsForLinkingRecord(query);
+}
+
+// ─── Resident Prospect duplicate check (Part 13) ────────────────────────
+//
+// Called before showing the "create" step of the Resident Prospect flow
+// (both from the resident detail page's "Start Relationship" and from
+// Relationships' "Add Resident Prospect") so a duplicate active
+// Relationship is never created silently — the caller shows "Open
+// Relationship" / "Create Another" instead. Read-only; never creates
+// anything itself.
+export interface ResidentProspectDuplicateCheck {
+  existing: Relationship | null;
+}
+
+export async function checkForActiveResidentProspect(
+  residentId: string
+): Promise<ResidentProspectDuplicateCheck> {
+  if (!residentId) return { existing: null };
+
+  const relationships = await getRelationshipsByResidentRecord(residentId);
+  const existing = findActiveResidentProspect(
+    relationships.map((r) => ({
+      id: r.id,
+      relationshipType: r.relationship_type,
+      residentId: r.resident_id,
+      status: r.status,
+      updatedAt: r.updated_at,
+    })),
+    residentId
+  );
+
+  if (!existing) return { existing: null };
+
+  return { existing: relationships.find((r) => r.id === existing.id) ?? null };
 }
 
 // ─── Service Opportunity ─────────────────────────────────────────────────

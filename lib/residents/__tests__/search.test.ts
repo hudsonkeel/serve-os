@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import {
   buildBlendedGroups,
+  collapseLegacyProspectStatus,
   countGroupRecords,
   filterByTab,
   matchesSearch,
@@ -112,9 +113,24 @@ function makeRecord(
     source: "Supabase Resident",
     wellnessWatch: null,
     lastWellnessObservedAt: null,
+    activeRelationships: [],
     ...rest,
   };
 }
+
+// ─── collapseLegacyProspectStatus ────────────────────────────────────
+
+test("0a. collapseLegacyProspectStatus collapses 'prospect' to 'none'", () => {
+  assert.equal(collapseLegacyProspectStatus("prospect"), "none");
+});
+
+test("0b. collapseLegacyProspectStatus leaves every other status untouched", () => {
+  assert.equal(collapseLegacyProspectStatus("none"), "none");
+  assert.equal(collapseLegacyProspectStatus("active_client"), "active_client");
+  assert.equal(collapseLegacyProspectStatus("hold"), "hold");
+  assert.equal(collapseLegacyProspectStatus("former_client"), "former_client");
+  assert.equal(collapseLegacyProspectStatus("wellness_watch"), "wellness_watch");
+});
 
 // ─── normalizeSearchQuery ───────────────────────────────────────────
 
@@ -161,7 +177,7 @@ test("7. matchesSearch returns false when nothing matches", () => {
 test("8. filterByTab scopes to active clients", () => {
   const records = [
     makeRecord({ serveRelationshipStatus: "active_client" }),
-    makeRecord({ serveRelationshipStatus: "prospect" }),
+    makeRecord({ serveRelationshipStatus: "hold" }),
   ];
   const result = filterByTab(records, "active_clients");
   assert.equal(result.length, 1);
@@ -171,9 +187,23 @@ test("8. filterByTab scopes to active clients", () => {
 test("9. filterByTab 'all' returns every record unchanged", () => {
   const records = [
     makeRecord({ serveRelationshipStatus: "active_client" }),
-    makeRecord({ serveRelationshipStatus: "prospect" }),
+    makeRecord({ serveRelationshipStatus: "hold" }),
   ];
   assert.equal(filterByTab(records, "all").length, 2);
+});
+
+test("9b. REGRESSION: filterByTab has no 'serve_prospects' case — prospect status belongs to Relationships now (see docs/design/RELATIONSHIPS.md)", () => {
+  // TypeScript itself now rejects "serve_prospects" as a ResidentTabValue
+  // at compile time (removed from the union) — this asserts the runtime
+  // behavior too: an unrecognized/legacy tab value must fall through to
+  // "all" (filterByTab's default case), never quietly resurrect a
+  // prospect-only bucket.
+  const records = [
+    makeRecord({ serveRelationshipStatus: "active_client" }),
+    makeRecord({ serveRelationshipStatus: "prospect" }),
+  ];
+  const result = filterByTab(records, "serve_prospects" as unknown as Parameters<typeof filterByTab>[1]);
+  assert.equal(result.length, 2);
 });
 
 // ─── buildBlendedGroups ──────────────────────────────────────────────
@@ -181,8 +211,21 @@ test("9. filterByTab 'all' returns every record unchanged", () => {
 test("10. buildBlendedGroups keeps every group (even empty) when there is no query", () => {
   const records = [makeRecord({ serveRelationshipStatus: "active_client" })];
   const groups = buildBlendedGroups(records, "");
-  assert.equal(groups.length, 3);
-  assert.equal(groups.find((g) => g.key === "prospects")?.records.length, 0);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map((g) => g.key), ["active", "others"]);
+});
+
+test("10b. REGRESSION: buildBlendedGroups never produces a 'prospects' group, even for a record whose raw status is still 'prospect'", () => {
+  // A raw 'prospect' value can still appear on a CommunityResidentRecord
+  // fixture (the type isn't narrowed), but the app's own derivation
+  // (collapseLegacyProspectStatus in lib/data/communityMetrics.ts) always
+  // resolves it to "none" before a record reaches this function — so a
+  // stray 'prospect' status here must fall into "others", not spawn its
+  // own section.
+  const records = [makeRecord({ serveRelationshipStatus: "prospect" })];
+  const groups = buildBlendedGroups(records, "");
+  assert.equal(groups.find((g) => g.key === "prospects"), undefined);
+  assert.equal(groups.find((g) => g.key === "others")?.records.length, 1);
 });
 
 test("11. buildBlendedGroups drops zero-match groups during an active search", () => {
@@ -192,7 +235,7 @@ test("11. buildBlendedGroups drops zero-match groups during an active search", (
       resident: { last_name: "Smith" },
     }),
     makeRecord({
-      serveRelationshipStatus: "prospect",
+      serveRelationshipStatus: "former_client",
       resident: { last_name: "Jones" },
     }),
     makeRecord({
@@ -214,7 +257,7 @@ test("12. buildBlendedGroups keeps every matching group when a search spans sect
       resident: { last_name: "Paulette" },
     }),
     makeRecord({
-      serveRelationshipStatus: "prospect",
+      serveRelationshipStatus: "hold",
       resident: { last_name: "Paulette" },
     }),
     makeRecord({
@@ -227,7 +270,7 @@ test("12. buildBlendedGroups keeps every matching group when a search spans sect
   assert.equal(groups.length, 2);
   assert.deepEqual(
     groups.map((g) => g.key),
-    ["active", "prospects"]
+    ["active", "others"]
   );
 });
 
@@ -241,7 +284,7 @@ test("13. buildBlendedGroups returns no groups when nothing matches", () => {
   assert.equal(buildBlendedGroups(records, "paulette").length, 0);
 });
 
-test("14. buildBlendedGroups preserves group order (active, prospects, others)", () => {
+test("14. buildBlendedGroups preserves group order (active, others)", () => {
   const records = [
     makeRecord({
       serveRelationshipStatus: "hold",
@@ -251,15 +294,11 @@ test("14. buildBlendedGroups preserves group order (active, prospects, others)",
       serveRelationshipStatus: "active_client",
       resident: { last_name: "Paulette" },
     }),
-    makeRecord({
-      serveRelationshipStatus: "prospect",
-      resident: { last_name: "Paulette" },
-    }),
   ];
   const groups = buildBlendedGroups(records, "paulette");
   assert.deepEqual(
     groups.map((g) => g.key),
-    ["active", "prospects", "others"]
+    ["active", "others"]
   );
 });
 
@@ -273,7 +312,7 @@ test("15. countGroupRecords sums records across groups", () => {
         resident: { last_name: "Paulette" },
       }),
       makeRecord({
-        serveRelationshipStatus: "prospect",
+        serveRelationshipStatus: "hold",
         resident: { last_name: "Paulette" },
       }),
     ],

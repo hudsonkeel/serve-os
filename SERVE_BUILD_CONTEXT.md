@@ -1074,9 +1074,14 @@ Care Inquiry
 
 An inbound request for care regardless of acquisition channel.
 
-Serve Prospect
+Resident Prospect (Relationship)
 
-A resident within a community who has not yet become an active Serve client.
+A sales/service opportunity Serve is actively pursuing for an existing
+resident of a community — not a resident-level classification. Every
+resident is a *possible* future client simply by living in a community
+Serve operates within; that alone creates no meaningful distinction, so
+"prospect" status lives exclusively on the Relationship, never on the
+Resident record. See docs/design/RELATIONSHIPS.md.
 
 These concepts are intentionally separate.
 

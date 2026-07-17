@@ -22,6 +22,7 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Badge } from "@/components/ui/Badge";
 import { AddExternalProspectForm } from "./AddExternalProspectForm";
+import { AddResidentProspectForm } from "./AddResidentProspectForm";
 
 export interface RelationshipTableRow extends RelationshipWorkspaceRow {
   nearestActionTitle: string | null;
@@ -46,7 +47,7 @@ export function RelationshipsWorkspace({ rows }: RelationshipsWorkspaceProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<RelationshipFilterValue>("all");
   const [attentionFilter, setAttentionFilter] = useState<RelationshipAttentionStatus | null>(null);
-  const [isAdding, setIsAdding] = useState(false);
+  const [addingType, setAddingType] = useState<"resident" | "external" | null>(null);
 
   const trimmedQuery = normalizeSearchQuery(search);
   const hasActiveSearch = trimmedQuery.length > 0;
@@ -115,16 +116,26 @@ export function RelationshipsWorkspace({ rows }: RelationshipsWorkspaceProps) {
             className="h-12 w-full rounded-lg border border-ivory-border bg-surface px-4 font-sans text-base text-body outline-none transition-colors placeholder:text-subtle focus:border-gold/60 focus:ring-2 focus:ring-gold/20"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setIsAdding((v) => !v)}
-          className="inline-flex h-11 items-center justify-center rounded-md bg-navy px-5 font-sans text-button font-semibold text-white transition-colors hover:bg-navy/90"
-        >
-          {isAdding ? "Close" : "+ Add External Prospect"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAddingType(addingType === "resident" ? null : "resident")}
+            className="inline-flex h-11 items-center justify-center rounded-md bg-navy px-5 font-sans text-button font-semibold text-white transition-colors hover:bg-navy/90"
+          >
+            {addingType === "resident" ? "Close" : "+ Add Resident Prospect"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setAddingType(addingType === "external" ? null : "external")}
+            className="inline-flex h-11 items-center justify-center rounded-md border border-ivory-border bg-surface px-5 font-sans text-button font-semibold text-body transition-colors hover:border-navy/20 hover:bg-ivory-warm"
+          >
+            {addingType === "external" ? "Close" : "+ Add External Prospect"}
+          </button>
+        </div>
       </div>
 
-      {isAdding && <AddExternalProspectForm onDone={() => setIsAdding(false)} />}
+      {addingType === "resident" && <AddResidentProspectForm onDone={() => setAddingType(null)} />}
+      {addingType === "external" && <AddExternalProspectForm onDone={() => setAddingType(null)} />}
 
       {/* Type/status tabs */}
       <div className="flex flex-wrap items-center gap-1 border-b border-ivory-border">

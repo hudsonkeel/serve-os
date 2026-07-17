@@ -9,6 +9,7 @@ import {
   RELATIONSHIP_STAGES,
   RELATIONSHIP_TYPE_LABELS,
 } from "@/lib/relationships/constants";
+import { findActiveResidentProspect } from "@/lib/relationships/duplicateDetection";
 import { PipelineStage, Relationship } from "@/lib/supabase/types";
 
 interface StartRelationshipCardProps {
@@ -45,6 +46,27 @@ export function StartRelationshipCard({
   const [ownerLabel, setOwnerLabel] = useState("");
   const [firstActionTitle, setFirstActionTitle] = useState("");
   const [firstActionDueAt, setFirstActionDueAt] = useState("");
+
+  // Part 7/13: never silently create a second active Resident Prospect
+  // Relationship for the same resident — offer to open the existing one
+  // instead. existingRelationships is already fetched server-side
+  // (getRelationshipsByResident), so this is a synchronous, local check —
+  // no extra round trip needed the way the Relationships-module "Add
+  // Resident Prospect" flow requires (it doesn't know the resident, or
+  // have their relationships, until one is searched and selected).
+  const activeProspect = findActiveResidentProspect(
+    existingRelationships.map((r) => ({
+      id: r.id,
+      relationshipType: r.relationship_type,
+      residentId: r.resident_id,
+      status: r.status,
+      updatedAt: r.updated_at,
+    })),
+    residentId
+  );
+  const existingProspectRelationship = activeProspect
+    ? existingRelationships.find((r) => r.id === activeProspect.id) ?? null
+    : null;
 
   function handleSubmit() {
     setError(null);
@@ -104,7 +126,14 @@ export function StartRelationshipCard({
         </p>
       )}
 
-      {!isOpen ? (
+      {existingProspectRelationship ? (
+        <Link
+          href={`/relationships/${existingProspectRelationship.id}`}
+          className="inline-flex h-10 items-center justify-center rounded-md bg-navy px-4 font-sans text-sm font-semibold text-white transition-colors hover:bg-navy/90"
+        >
+          Open Relationship
+        </Link>
+      ) : !isOpen ? (
         <button
           type="button"
           onClick={() => setIsOpen(true)}

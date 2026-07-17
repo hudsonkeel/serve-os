@@ -3,6 +3,7 @@ import { DashboardCard } from "@/components/DashboardCard";
 import { WellnessFollowUpsCard } from "@/components/WellnessFollowUpsCard";
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { getRecruitingLeads } from "@/lib/data/recruitingLeads";
+import { getActiveProspectRelationshipCount } from "@/lib/data/relationships";
 import {
   formatCentralDashboardDate,
   getCentralTimeGreeting,
@@ -14,10 +15,11 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function DashboardPage() {
-  const [profile, community, recruiting] = await Promise.all([
+  const [profile, community, recruiting, activeProspectRelationships] = await Promise.all([
     getCurrentAuthorizedUser(),
     getCommunityMetrics(),
     getRecruitingLeads(),
+    getActiveProspectRelationshipCount(),
   ]);
   const currentUser = buildCurrentUserDisplay(profile);
   const { metrics } = community;
@@ -32,7 +34,7 @@ export default async function DashboardPage() {
   const communitySnapshot = [
     { label: "Residents",        value: String(metrics.totalResidents),   description: community.communityName, accent: true, href: "/residents" },
     { label: "Serve Clients",    value: String(metrics.serveClients),     description: "Active Serve relationships",         href: "/residents?tab=active_clients" },
-    { label: "Active Prospects", value: String(metrics.activeProspects),  description: "In intake or follow-up",             href: "/residents?tab=serve_prospects" },
+    { label: "Active Prospects", value: String(activeProspectRelationships), description: "Resident & external prospect Relationships", href: "/relationships" },
     { label: "Needs Follow-up",  value: String(metrics.requiresFollowUp), description: "Family outreach overdue",            href: "/prospects" },
   ];
 
@@ -53,7 +55,7 @@ export default async function DashboardPage() {
           {greeting}, {currentUser.shortName}.
         </h1>
         <p className="mt-2 font-sans text-base text-body">
-          {community.communityName} - {metrics.activeProspects} active prospects,{" "}
+          {community.communityName} - {activeProspectRelationships} active prospects,{" "}
           {metrics.requiresFollowUp} residents due for follow-up, and{" "}
           {metrics.pendingAssessments} assessments pending.
         </p>

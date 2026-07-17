@@ -6,6 +6,7 @@ import {
   RelationshipActionType,
   RelationshipPriority,
   RelationshipServiceOpportunity,
+  RelationshipStatus,
   RelationshipTimelineEvent,
   RelationshipTouch,
   RelationshipTouchType,
@@ -27,6 +28,30 @@ function residentDisplayName(row: {
 }
 
 // ─── Reads ─────────────────────────────────────────────────────────────
+
+// Dashboard-level count: every non-closed Resident Prospect or External
+// Prospect Relationship. Prospect status belongs exclusively to
+// Relationships (see docs/design/RELATIONSHIPS.md) — this is the one
+// authoritative "active prospects" count in the app; nothing derives it
+// from a resident-level classification anymore.
+export async function getActiveProspectRelationshipCount(): Promise<number> {
+  const supabase = createServerClient();
+  const { count, error } = await supabase
+    .from("relationships")
+    .select("*", { count: "exact", head: true })
+    .in("relationship_type", ["resident_prospect", "external_prospect"])
+    .neq("status", "closed");
+
+  if (error) {
+    console.error("[relationships:getActiveProspectRelationshipCount:error]", {
+      message: error.message,
+      code: error.code,
+    });
+    return 0;
+  }
+
+  return count ?? 0;
+}
 
 export async function getResidentDisplayNameById(residentId: string): Promise<string | null> {
   const supabase = createServerClient();
@@ -467,6 +492,66 @@ export async function getRelationshipsByResident(
   }
 
   return (data as Relationship[] | null) ?? [];
+}
+
+// Bulk equivalent of getRelationshipsByResident(), for the Residents
+// directory (Part 14 of the prospect-consolidation scope): every
+// non-closed, resident-linked Relationship, grouped by resident_id, plus
+// each one's nearest open action — two bulk queries total, never one per
+// resident. Rows arrive from Postgres already ordered by updated_at desc,
+// so each resident's array is already "most recently updated first" —
+// callers that want just the single most operationally relevant
+// Relationship for a resident can take index 0 without an extra sort.
+export interface ResidentRelationshipSummary {
+  id: string;
+  displayName: string;
+  relationshipType: RelationshipType;
+  stage: PipelineStage;
+  status: RelationshipStatus;
+  updatedAt: string;
+  nearestActionTitle: string | null;
+  nearestActionDueAt: string | null;
+}
+
+export async function getActiveRelationshipSummariesByResident(): Promise<
+  Map<string, ResidentRelationshipSummary[]>
+> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("relationships")
+    .select("id, resident_id, display_name, relationship_type, stage, status, updated_at")
+    .not("resident_id", "is", null)
+    .neq("status", "closed")
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.error("[relationships:getActiveRelationshipSummariesByResident:error]", {
+      message: error.message,
+      code: error.code,
+    });
+    return new Map();
+  }
+
+  const nearestActions = await getNearestOpenActionByRelationship();
+
+  const result = new Map<string, ResidentRelationshipSummary[]>();
+  for (const row of data ?? []) {
+    if (!row.resident_id) continue;
+    const nearest = nearestActions.get(row.id);
+    const list = result.get(row.resident_id) ?? [];
+    list.push({
+      id: row.id,
+      displayName: row.display_name,
+      relationshipType: row.relationship_type,
+      stage: row.stage,
+      status: row.status,
+      updatedAt: row.updated_at,
+      nearestActionTitle: nearest?.title ?? null,
+      nearestActionDueAt: nearest?.dueAt ?? null,
+    });
+    result.set(row.resident_id, list);
+  }
+  return result;
 }
 
 // Thin resident-picker search for "Link Existing Resident" — deliberately

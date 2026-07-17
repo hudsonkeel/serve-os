@@ -13,6 +13,11 @@ import {
 } from "@/lib/data/wellnessFollowUps";
 import { getLastObservedAtByResident } from "@/lib/data/wellnessNotes";
 import {
+  getActiveRelationshipSummariesByResident,
+  ResidentRelationshipSummary,
+} from "@/lib/data/relationships";
+import { collapseLegacyProspectStatus } from "@/lib/residents/search";
+import {
   Prospect,
   Resident,
   ResidentContactImport,
@@ -22,7 +27,6 @@ import {
 
 export type ResidentTabValue =
   | "all"
-  | "serve_prospects"
   | "active_clients"
   | "hold"
   | "former_clients"
@@ -30,7 +34,6 @@ export type ResidentTabValue =
 
 export type ServeRelationshipLabel =
   | "No Serve Relationship"
-  | "Serve Prospect"
   | "Active Client"
   | "On Hold"
   | "Former Client"
@@ -38,7 +41,6 @@ export type ServeRelationshipLabel =
 
 export interface CommunityMetricCounts {
   totalResidents: number;
-  activeProspects: number;
   serveClients: number;
   onHold: number;
   // Deterministically derived from active (open/in_progress)
@@ -95,6 +97,15 @@ export interface CommunityResidentRecord {
   // since that page already fetches full wellness data directly.
   wellnessWatch: WellnessWatchSummary | null;
   lastWellnessObservedAt: string | null;
+  // Derived, not persisted — every active (non-closed) Relationship linked
+  // to this resident, most recently updated first (see
+  // getActiveRelationshipSummariesByResident()). Prospect status lives
+  // exclusively in Relationships now — this is how the Residents directory
+  // surfaces it, as read-only context, never as a resident-level field.
+  // Only populated in the directory list path (getCommunityMetrics); left
+  // empty on the single-resident detail path, which fetches full
+  // Relationship data directly via getRelationshipsByResident().
+  activeRelationships: ResidentRelationshipSummary[];
 }
 
 export interface CommunityMetricsData {
@@ -160,8 +171,6 @@ export function serveRelationshipLabel(
   status: ServeRelationshipStatus
 ): ServeRelationshipLabel {
   switch (status) {
-    case "prospect":
-      return "Serve Prospect";
     case "active_client":
       return "Active Client";
     case "hold":
@@ -171,6 +180,8 @@ export function serveRelationshipLabel(
     case "wellness_watch":
       return "Wellness Watch";
     default:
+      // Includes the legacy 'prospect' value, if it ever reaches this
+      // function directly — see collapseLegacyProspectStatus() above.
       return "No Serve Relationship";
   }
 }
@@ -480,12 +491,15 @@ export function mapResidentToRecord(
   importReviewNotes: string[] = [],
   preferredNickname: string | null = null,
   wellnessWatch: WellnessWatchSummary | null = null,
-  lastWellnessObservedAt: string | null = null
+  lastWellnessObservedAt: string | null = null,
+  activeRelationships: ResidentRelationshipSummary[] = []
 ): CommunityResidentRecord {
   const importedContacts = sortNewestFirst(contactImports);
   const importedRelationships = sortNewestFirst(relationshipImports);
   const stagedStatus = stagedServeRelationshipStatus(importedRelationships);
-  const status = stagedStatus ?? serveRelationshipStatus(resident);
+  const status = collapseLegacyProspectStatus(
+    stagedStatus ?? serveRelationshipStatus(resident)
+  );
   const primaryImportedContact =
     importedContacts.find((contact) => contact.is_primary) ?? importedContacts[0];
   const importedContactName = primaryImportedContact
@@ -556,6 +570,7 @@ export function mapResidentToRecord(
     source: "Supabase Resident",
     wellnessWatch,
     lastWellnessObservedAt,
+    activeRelationships,
   };
 }
 
@@ -566,9 +581,6 @@ function buildMetrics(
 ): CommunityMetricCounts {
   return {
     totalResidents: records.length,
-    activeProspects: records.filter(
-      (record) => record.serveRelationshipStatus === "prospect"
-    ).length,
     serveClients: records.filter(
       (record) => record.serveRelationshipStatus === "active_client"
     ).length,
@@ -597,9 +609,6 @@ function buildResidentTabCounts(
 ): Record<ResidentTabValue, number> {
   return {
     all: records.length,
-    serve_prospects: records.filter(
-      (record) => record.serveRelationshipStatus === "prospect"
-    ).length,
     active_clients: records.filter(
       (record) => record.serveRelationshipStatus === "active_client"
     ).length,
@@ -719,6 +728,7 @@ export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
     wellnessWatchByResident,
     lastObservedAtByResident,
     wellnessDashboardCounts,
+    activeRelationshipsByResident,
   ] = await Promise.all([
     fetchSupabaseProspects(),
     fetchRelationshipImports(),
@@ -727,6 +737,7 @@ export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
     getWellnessWatchSummaryByResident(),
     getLastObservedAtByResident(),
     getWellnessFollowUpDashboardCounts(),
+    getActiveRelationshipSummariesByResident(),
   ]);
   const relationshipImportMatches = mapImportsToResidents(
     residents,
@@ -754,7 +765,8 @@ export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
       ],
       preferredNamesByResident.get(resident.id) ?? null,
       wellnessWatchByResident.get(resident.id) ?? null,
-      lastObservedAtByResident.get(resident.id) ?? null
+      lastObservedAtByResident.get(resident.id) ?? null,
+      activeRelationshipsByResident.get(resident.id) ?? []
     )
   );
   const metrics = buildMetrics(residentRecords, prospects, wellnessDashboardCounts);

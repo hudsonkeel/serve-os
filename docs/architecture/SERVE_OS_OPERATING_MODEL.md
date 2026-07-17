@@ -35,11 +35,13 @@ community.
 interactive.
 
 **Interaction model:** a Dashboard metric card may link to a filtered
-management view for investigation (e.g. "Active Prospects" → Residents
-filtered to the Serve Prospects tab). It must never link to a creation
-workflow or a launch card grid — that is Workspace's job. If a Dashboard card
-opens something other than an investigative, read-oriented view, it has
-drifted out of the Know mode.
+management view for investigation (e.g. "Active Prospects" → Relationships,
+the authoritative surface for prospect status — see
+[`docs/design/RELATIONSHIPS.md`](../design/RELATIONSHIPS.md), "A prospect
+is a Relationship type, not a Resident classification"). It must never link
+to a creation workflow or a launch card grid — that is Workspace's job. If
+a Dashboard card opens something other than an investigative, read-oriented
+view, it has drifted out of the Know mode.
 
 **Belongs here:** Community Snapshot (Residents, Serve Clients, Active
 Prospects, Needs Follow-up), Relationship Pipeline (Pending Assessments,

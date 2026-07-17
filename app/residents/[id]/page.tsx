@@ -140,7 +140,9 @@ export default async function ResidentDetailPage({
             {record.residentDisplayName}
           </h1>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <Badge tone="gold">{record.serveRelationshipLabel}</Badge>
+            {record.serveRelationshipStatus !== "none" && (
+              <Badge tone="gold">{record.serveRelationshipLabel}</Badge>
+            )}
             {resident.status && (
               <Badge>Resident {titleCase(resident.status)}</Badge>
             )}
@@ -413,9 +415,11 @@ export default async function ResidentDetailPage({
 
         <div className="space-y-6">
           <Section title="Next Recommended Action">
-            <div className="mb-4">
-              <Badge tone="gold">{record.serveRelationshipLabel}</Badge>
-            </div>
+            {record.serveRelationshipStatus !== "none" && (
+              <div className="mb-4">
+                <Badge tone="gold">{record.serveRelationshipLabel}</Badge>
+              </div>
+            )}
             <p className="font-sans text-base leading-relaxed text-body">
               {record.serveRelationshipStatus === "wellness_watch"
                 ? "Resident is currently flagged for wellness watch."

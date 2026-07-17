@@ -20,7 +20,6 @@ import { ResidentRow } from "./ResidentRow";
 
 const TABS: { value: ResidentTabValue; label: string }[] = [
   { value: "all",             label: "All Residents" },
-  { value: "serve_prospects", label: "Serve Prospects" },
   { value: "active_clients",  label: "Active Clients" },
   { value: "hold",            label: "On Hold" },
   { value: "former_clients",  label: "Former Clients" },
@@ -87,12 +86,12 @@ export function ResidentsInbox({
     return wellnessDueFiltered.filter((record) => matchesSearch(record, trimmedQuery));
   }, [wellnessDueFiltered, trimmedQuery]);
 
-  // Blended default view: active clients, then prospects, then everyone
-  // else. Each resident appears in exactly one bucket since
-  // serveRelationshipStatus is already a single mutually-exclusive value —
-  // no separate precedence logic is needed. Reuses the same `records` array
-  // (and search filtering) rather than issuing new queries. Groups with
-  // zero matches are dropped entirely while a search is active — see
+  // Blended default view: active clients, then everyone else. Each
+  // resident appears in exactly one bucket since serveRelationshipStatus
+  // is already a single mutually-exclusive value — no separate precedence
+  // logic is needed. Reuses the same `records` array (and search
+  // filtering) rather than issuing new queries. Groups with zero matches
+  // are dropped entirely while a search is active — see
   // buildBlendedGroups() in lib/residents/search.ts.
   const blendedSections = useMemo(() => {
     if (activeTab !== "all") return null;

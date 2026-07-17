@@ -2,10 +2,27 @@ import type {
   CommunityResidentRecord,
   ResidentTabValue,
 } from "@/lib/data/communityMetrics";
+import type { ServeRelationshipStatus } from "@/lib/supabase/types";
 
 // Pure resident search/grouping logic for the Residents directory
 // (components/residents/ResidentsInbox.tsx) — kept separate from the
 // client component so it can be unit tested without React or a DOM.
+
+// Prospect status belongs exclusively to Relationships now (see
+// docs/design/RELATIONSHIPS.md, "A prospect is a Relationship type, not a
+// Resident classification"). A Resident record must never carry an active
+// CRM prospect classification, regardless of where the underlying
+// 'prospect' value originated (a persisted resident field, or — the
+// actual live source today — staged resident_relationship_imports data
+// read through stagedServeRelationshipStatus() in communityMetrics.ts).
+// Both paths are combined by the caller before this collapse runs, so
+// this is the one place in the app that guarantees 'prospect' can never
+// reach the UI, no matter which source produced it.
+export function collapseLegacyProspectStatus(
+  status: ServeRelationshipStatus
+): ServeRelationshipStatus {
+  return status === "prospect" ? "none" : status;
+}
 
 export function normalizeSearchQuery(raw: string): string {
   return raw.trim().toLowerCase();
@@ -38,10 +55,6 @@ export function filterByTab(
   tab: ResidentTabValue
 ): CommunityResidentRecord[] {
   switch (tab) {
-    case "serve_prospects":
-      return records.filter(
-        (record) => record.serveRelationshipStatus === "prospect"
-      );
     case "active_clients":
       return records.filter(
         (record) => record.serveRelationshipStatus === "active_client"
@@ -70,13 +83,16 @@ export interface ResidentSearchGroup {
   records: CommunityResidentRecord[];
 }
 
-// Blended "All Residents" view: active clients, then prospects, then
-// everyone else. When a search query is active, groups with zero matches
-// are dropped entirely rather than rendered as empty cards — otherwise a
-// match several sections down reads as "no results" until the user
-// scrolls past large empty placeholders. Groups are never dropped when
-// there's no active query, so the normal directory view (including each
-// section's own "nothing here yet" empty state) is unchanged.
+// Blended "All Residents" view: active clients, then everyone else.
+// Prospect status is no longer a resident-level bucket here — see
+// docs/design/RELATIONSHIPS.md ("A prospect is a Relationship type, not a
+// Resident classification"); prospect opportunities live in
+// /relationships now. When a search query is active, groups with zero
+// matches are dropped entirely rather than rendered as empty cards —
+// otherwise a match several sections down reads as "no results" until the
+// user scrolls past large empty placeholders. Groups are never dropped
+// when there's no active query, so the normal directory view (including
+// each section's own "nothing here yet" empty state) is unchanged.
 export function buildBlendedGroups(
   records: CommunityResidentRecord[],
   normalizedQuery: string
@@ -84,13 +100,8 @@ export function buildBlendedGroups(
   const activeClients = records.filter(
     (record) => record.serveRelationshipStatus === "active_client"
   );
-  const prospects = records.filter(
-    (record) => record.serveRelationshipStatus === "prospect"
-  );
   const others = records.filter(
-    (record) =>
-      record.serveRelationshipStatus !== "active_client" &&
-      record.serveRelationshipStatus !== "prospect"
+    (record) => record.serveRelationshipStatus !== "active_client"
   );
 
   const applySearch = (bucket: CommunityResidentRecord[]) =>
@@ -100,7 +111,6 @@ export function buildBlendedGroups(
 
   const groups: ResidentSearchGroup[] = [
     { key: "active", heading: "Active Serve Clients", records: applySearch(activeClients) },
-    { key: "prospects", heading: "Serve Prospects", records: applySearch(prospects) },
     { key: "others", heading: "All Other Watermere Residents", records: applySearch(others) },
   ];
 

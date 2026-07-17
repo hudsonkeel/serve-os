@@ -10,7 +10,6 @@ export const revalidate = 0;
 
 const VALID_TABS: ResidentTabValue[] = [
   "all",
-  "serve_prospects",
   "active_clients",
   "hold",
   "former_clients",
@@ -38,7 +37,7 @@ export default async function ResidentsPage({
         <div>
           <h1 className="font-serif text-page-title font-light text-body">Residents</h1>
           <p className="mt-1 font-sans text-base text-muted">
-            Manage every resident, every relationship stage, and every operational detail.
+            Manage resident records, service status, wellness needs, and operational details.
           </p>
         </div>
         <span className="font-sans text-base font-medium text-muted">
