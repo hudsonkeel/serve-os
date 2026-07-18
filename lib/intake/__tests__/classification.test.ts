@@ -55,54 +55,55 @@ function makeEnvelope(overrides: Partial<IntakeEnvelope> = {}): IntakeEnvelope {
 
 const EXACT_MATCH: ResidentMatchResult = { residentId: "res-1", reasonCode: "RESIDENT_EXACT_MATCH" };
 const NO_MATCH: ResidentMatchResult = { residentId: null, reasonCode: "RESIDENT_MATCH_REQUIRED" };
+const MULTIPLE_MATCH: ResidentMatchResult = { residentId: null, reasonCode: "MULTIPLE_RESIDENT_MATCHES" };
 
-// ─── Resident Prospect ────────────────────────────────────────────────
+// ─── Contact Ready — Resident Prospect ──────────────────────────────────
 
-test("1. community context + exact resident match -> resident_prospect, automatic-tier confidence", () => {
+test("1. community context + exact resident match -> resident_prospect, contact_ready", () => {
   const envelope = makeEnvelope({
     serviceLocation: { ...makeEnvelope().serviceLocation, communityOrLocationLabel: "Assisted or independent living community" },
     careContext: { careFor: "A parent or family member", message: "Needs help" },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: EXACT_MATCH, hasPossibleDuplicateRelationship: false });
   assert.equal(result.classification, "resident_prospect");
-  assert.ok(result.confidenceScore >= 90);
+  assert.equal(result.operationalReadiness, "contact_ready");
 });
 
-test("2. community context + no resident match -> needs_review with RESIDENT_MATCH_REQUIRED", () => {
+test("2. community context + no resident match -> resident_prospect, unlinked, still contact_ready (Part 5)", () => {
   const envelope = makeEnvelope({
     serviceLocation: { ...makeEnvelope().serviceLocation, communityOrLocationLabel: "Assisted or independent living community" },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: NO_MATCH, hasPossibleDuplicateRelationship: false });
-  assert.equal(result.classification, "needs_review");
-  assert.ok(result.reasonCodes.includes("RESIDENT_MATCH_REQUIRED"));
-  assert.ok(result.requiredReviewActions.includes("Link Existing Resident"));
+  assert.equal(result.classification, "resident_prospect");
+  assert.equal(result.operationalReadiness, "contact_ready");
+  assert.ok(result.reasonCodes.includes("RESIDENT_LINK_UNRESOLVED"));
 });
 
-test("3. community context + multiple resident matches -> needs_review, distinct action set", () => {
+// ─── Needs Resolution — genuine ambiguity ───────────────────────────────
+
+test("16. community context + multiple resident matches -> needs_review, needs_resolution (ambiguity, not incompleteness)", () => {
   const envelope = makeEnvelope({
     serviceLocation: { ...makeEnvelope().serviceLocation, communityOrLocationLabel: "Independent Living" },
   });
-  const result = classifyIntakeSubmission({
-    envelope,
-    residentMatch: { residentId: null, reasonCode: "MULTIPLE_RESIDENT_MATCHES" },
-    hasPossibleDuplicateRelationship: false,
-  });
+  const result = classifyIntakeSubmission({ envelope, residentMatch: MULTIPLE_MATCH, hasPossibleDuplicateRelationship: false });
   assert.equal(result.classification, "needs_review");
+  assert.equal(result.operationalReadiness, "needs_resolution");
   assert.deepEqual(result.requiredReviewActions, ["Select the correct Resident from multiple matches"]);
 });
 
-test("4. resident match found but a possible duplicate Relationship exists -> needs_review, never silently reused", () => {
+test("17. duplicate ambiguity — resident match found but a possible duplicate Relationship exists -> needs_resolution, never silently reused", () => {
   const envelope = makeEnvelope({
     serviceLocation: { ...makeEnvelope().serviceLocation, communityOrLocationLabel: "Assisted living" },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: EXACT_MATCH, hasPossibleDuplicateRelationship: true });
   assert.equal(result.classification, "needs_review");
+  assert.equal(result.operationalReadiness, "needs_resolution");
   assert.ok(result.reasonCodes.includes("POSSIBLE_DUPLICATE_RELATIONSHIP"));
 });
 
-// ─── External Prospect ──────────────────────────────────────────────────
+// ─── Contact Ready — External Prospect ──────────────────────────────────
 
-test("5. external location + complete identity/address -> external_prospect", () => {
+test("3. external location + complete identity/address -> external_prospect, contact_ready", () => {
   const envelope = makeEnvelope({
     prospectiveClient: { firstName: "Margaret", lastName: "Smith", fullName: "Margaret Smith", phone: "5551234567", email: null },
     serviceLocation: {
@@ -116,122 +117,196 @@ test("5. external location + complete identity/address -> external_prospect", ()
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
   assert.equal(result.classification, "external_prospect");
+  assert.equal(result.operationalReadiness, "contact_ready");
 });
 
-test("6. external location but only a ZIP (current website form's real limitation) -> needs_review, Complete Expected Service Location", () => {
+test("6. external location, ZIP-only service location -> still external_prospect, contact_ready (Part 4: no longer blocks)", () => {
   const envelope = makeEnvelope({
     prospectiveClient: { firstName: "Jennifer", lastName: "Smith", fullName: "Jennifer Smith", phone: "5551234567", email: null },
     serviceLocation: { ...makeEnvelope().serviceLocation, zip: "78735", communityOrLocationLabel: "Private home in Frisco or surrounding area" },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
-  assert.equal(result.classification, "needs_review");
-  assert.ok(result.requiredReviewActions.includes("Complete Expected Service Location"));
+  assert.equal(result.classification, "external_prospect");
+  assert.equal(result.operationalReadiness, "contact_ready");
+  assert.ok(result.reasonCodes.includes("INCOMPLETE_SERVICE_LOCATION"));
+  assert.ok(result.missingFields.includes("Where care would be provided"));
 });
 
-test("7. external location, care-for someone else, no separate name field -> needs_review, PROSPECTIVE_CLIENT_NAME_NOT_COLLECTED", () => {
+test("7. external location, care-for someone else with no separate name field -> still external_prospect, contact_ready", () => {
   const envelope = makeEnvelope({
     careContext: { careFor: "A parent or family member", message: null },
     serviceLocation: { ...makeEnvelope().serviceLocation, communityOrLocationLabel: "Private home in Frisco or surrounding area" },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
-  assert.equal(result.classification, "needs_review");
-  assert.ok(result.reasonCodes.includes("PROSPECTIVE_CLIENT_NAME_NOT_COLLECTED"));
+  assert.equal(result.classification, "external_prospect");
+  assert.equal(result.operationalReadiness, "contact_ready");
+  assert.ok(result.reasonCodes.includes("INCOMPLETE_PROSPECTIVE_CLIENT"));
+  assert.ok(result.missingFields.includes("Who needs care"));
 });
 
-// ─── Professional Relationship ───────────────────────────────────────────
+test("9. unknown/unrecognized location label -> defaults to external_prospect, contact_ready (Part 7: learn during follow-up)", () => {
+  const envelope = makeEnvelope({
+    serviceLocation: { ...makeEnvelope().serviceLocation, communityOrLocationLabel: "Not sure yet" },
+  });
+  const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
+  assert.equal(result.classification, "external_prospect");
+  assert.equal(result.operationalReadiness, "contact_ready");
+});
 
-test("8. professional referral with full identity -> professional_relationship", () => {
+test("18. duplicate ambiguity on an external inquiry -> needs_resolution", () => {
+  const envelope = makeEnvelope({
+    serviceLocation: { ...makeEnvelope().serviceLocation, communityOrLocationLabel: "Private home" },
+  });
+  const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: true });
+  assert.equal(result.classification, "needs_review");
+  assert.equal(result.operationalReadiness, "needs_resolution");
+});
+
+test("19. conflicting community/location signals -> needs_review, needs_resolution", () => {
+  const envelope = makeEnvelope({
+    serviceLocation: {
+      ...makeEnvelope().serviceLocation,
+      communityOrLocationLabel: "Assisted living community",
+      outsideServiceArea: true,
+    },
+  });
+  const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
+  assert.equal(result.classification, "needs_review");
+  assert.equal(result.operationalReadiness, "needs_resolution");
+  assert.ok(result.reasonCodes.includes("CONFLICTING_LOCATION_SIGNALS"));
+});
+
+// ─── Contact Ready — Professional Relationship ──────────────────────────
+
+test("8. professional referral with full identity -> professional_relationship, contact_ready", () => {
   const envelope = makeEnvelope({
     intakeType: "professional_referral",
     referralContext: { organization: "Test SNF", title: "Discharge Planner", reason: "Patient / client referral", referralDetails: "John needs help" },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
   assert.equal(result.classification, "professional_relationship");
+  assert.equal(result.operationalReadiness, "contact_ready");
 });
 
-test("9. professional referral missing referrer identity -> needs_review", () => {
+test("12. professional referral with usable contact but no organization -> still professional_relationship, contact_ready", () => {
   const envelope = makeEnvelope({
     intakeType: "professional_referral",
-    primaryContact: { firstName: null, lastName: null, fullName: null, phone: "5551234567", email: null, relationshipToProspectiveClient: null, isProspectiveClient: false },
+    referralContext: { organization: null, title: null, reason: null, referralDetails: "Referring a resident's family." },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
-  assert.equal(result.classification, "needs_review");
+  assert.equal(result.classification, "professional_relationship");
+  assert.equal(result.operationalReadiness, "contact_ready");
 });
 
-test("10. professional referral, possible duplicate referral source -> needs_review", () => {
+test("20. professional referral, possible duplicate referral source -> needs_resolution", () => {
   const envelope = makeEnvelope({
     intakeType: "professional_referral",
     referralContext: { organization: "Test SNF", title: null, reason: null, referralDetails: null },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: true });
   assert.equal(result.classification, "needs_review");
+  assert.equal(result.operationalReadiness, "needs_resolution");
 });
 
-// ─── Recruiting ───────────────────────────────────────────────────────
+// ─── Contact Ready — Recruiting ──────────────────────────────────────────
 
-test("11. employment interest with role and identity -> recruiting", () => {
+test("11. employment interest with role and identity -> recruiting, contact_ready", () => {
   const envelope = makeEnvelope({
     intakeType: "employment_interest",
     employmentContext: { roleInterest: "managing_director", linkedin: null, cityState: null, resumeFilename: "resume.pdf", leadershipInterest: null },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
   assert.equal(result.classification, "recruiting");
+  assert.equal(result.operationalReadiness, "contact_ready");
 });
 
-test("12. employment interest never becomes not_qualified even with an unidentified role", () => {
+test("10. employment interest never becomes not_qualified even with an unidentified role", () => {
   const envelope = makeEnvelope({ intakeType: "employment_interest" });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
   assert.notEqual(result.classification, "not_qualified");
+  assert.equal(result.classification, "recruiting");
 });
 
-test("13. employment interest missing applicant name -> needs_review", () => {
+// ─── Needs Resolution — missing name or contact method ──────────────────
+
+test("13. phone but no contact name -> needs_review, needs_resolution, MISSING_CONTACT_NAME", () => {
   const envelope = makeEnvelope({
-    intakeType: "employment_interest",
+    primaryContact: { firstName: null, lastName: null, fullName: null, phone: "5551234567", email: null, relationshipToProspectiveClient: null, isProspectiveClient: false },
+  });
+  const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
+  assert.equal(result.classification, "needs_review");
+  assert.equal(result.operationalReadiness, "needs_resolution");
+  assert.ok(result.reasonCodes.includes("MISSING_CONTACT_NAME"));
+});
+
+test("14. email but no contact name -> needs_review, needs_resolution, MISSING_CONTACT_NAME", () => {
+  const envelope = makeEnvelope({
     primaryContact: { firstName: null, lastName: null, fullName: null, phone: null, email: "test@example.com", relationshipToProspectiveClient: null, isProspectiveClient: false },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
   assert.equal(result.classification, "needs_review");
+  assert.equal(result.operationalReadiness, "needs_resolution");
+  assert.ok(result.reasonCodes.includes("MISSING_CONTACT_NAME"));
 });
 
-// ─── Not Qualified ────────────────────────────────────────────────────
-
-test("14. honeypot triggered -> not_qualified, regardless of everything else", () => {
-  const envelope = makeEnvelope({ metadata: { formPayloadKeys: [], honeypotTriggered: true } });
-  const result = classifyIntakeSubmission({ envelope, residentMatch: EXACT_MATCH, hasPossibleDuplicateRelationship: false });
-  assert.equal(result.classification, "not_qualified");
-  assert.deepEqual(result.reasonCodes, ["HONEYPOT_TRIGGERED"]);
-});
-
-test("15. no phone and no email at all -> not_qualified (cannot be followed up on)", () => {
+test("15. name with no phone or email -> needs_review, needs_resolution, MISSING_CONTACT_METHOD (not not_qualified)", () => {
   const envelope = makeEnvelope({
     primaryContact: { firstName: "A", lastName: "B", fullName: "A B", phone: null, email: null, relationshipToProspectiveClient: null, isProspectiveClient: false },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
+  assert.equal(result.classification, "needs_review");
+  assert.equal(result.operationalReadiness, "needs_resolution");
+  assert.ok(result.reasonCodes.includes("MISSING_CONTACT_METHOD"));
+});
+
+// ─── Not Qualified ────────────────────────────────────────────────────
+
+test("21. honeypot triggered -> not_qualified, regardless of everything else", () => {
+  const envelope = makeEnvelope({ metadata: { formPayloadKeys: [], honeypotTriggered: true } });
+  const result = classifyIntakeSubmission({ envelope, residentMatch: EXACT_MATCH, hasPossibleDuplicateRelationship: false });
   assert.equal(result.classification, "not_qualified");
+  assert.equal(result.operationalReadiness, "not_actionable");
+  assert.deepEqual(result.reasonCodes, ["HONEYPOT_TRIGGERED"]);
+});
+
+test("23. total absence of usable contact data (no name, no phone, no email) -> not_qualified", () => {
+  const envelope = makeEnvelope({
+    primaryContact: { firstName: null, lastName: null, fullName: null, phone: null, email: null, relationshipToProspectiveClient: null, isProspectiveClient: false },
+  });
+  const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
+  assert.equal(result.classification, "not_qualified");
+  assert.equal(result.operationalReadiness, "not_actionable");
   assert.ok(result.reasonCodes.includes("NO_CONTACT_INFORMATION"));
 });
 
 // ─── Ambiguity / unsupported schema ───────────────────────────────────
 
-test("16. unsupported intake type -> needs_review, never silently dropped or guessed", () => {
+test("4. unsupported intake type -> needs_review, needs_resolution, never silently dropped or guessed", () => {
   const envelope = makeEnvelope({ intakeType: "some_future_intake_type" });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
   assert.equal(result.classification, "needs_review");
+  assert.equal(result.operationalReadiness, "needs_resolution");
   assert.ok(result.reasonCodes.includes("UNSUPPORTED_INTAKE_TYPE"));
 });
 
-test("17. family_care_inquiry with an unrecognized/ambiguous location label -> needs_review, offers both reclassification actions", () => {
+// ─── Confidence is informational only (Part 13) ──────────────────────────
+
+test("5. a low completeness score never demotes a contact-ready classification", () => {
+  // Minimal external inquiry: contact-ready, but almost every completeness signal is
+  // absent (no address, no prospective-client identity, no message, no timing) — the old
+  // "score below 70 -> needs_review" safety net would have wrongly demoted this.
   const envelope = makeEnvelope({
-    serviceLocation: { ...makeEnvelope().serviceLocation, communityOrLocationLabel: "Not sure yet" },
+    serviceLocation: { ...makeEnvelope().serviceLocation, communityOrLocationLabel: "Private home" },
   });
   const result = classifyIntakeSubmission({ envelope, residentMatch: null, hasPossibleDuplicateRelationship: false });
-  assert.equal(result.classification, "needs_review");
-  assert.deepEqual(result.requiredReviewActions, ["Reclassify as Resident Prospect", "Reclassify as External Prospect"]);
+  assert.ok(result.confidenceScore < 70, "expected a low completeness score for this test to be meaningful");
+  assert.equal(result.classification, "external_prospect");
+  assert.equal(result.operationalReadiness, "contact_ready");
 });
 
 // ─── Determinism ────────────────────────────────────────────────────────
 
-test("18. identical inputs always produce an identical result", () => {
+test("22. identical inputs always produce an identical result", () => {
   const envelope = makeEnvelope({
     serviceLocation: { ...makeEnvelope().serviceLocation, communityOrLocationLabel: "Assisted living community" },
   });

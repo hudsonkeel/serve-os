@@ -2,7 +2,10 @@
 
 Status: Phase 1 (website foundation) implemented — canonical envelope,
 deterministic classification/confidence, Resident matching, transactional
-processing, idempotency, Intake Queue, Dashboard indicators. No
+processing, idempotency, Intake Queue, Dashboard indicators. Scope H
+(Contact-Ready Intake Workflow) implemented on top of Phase 1 — separates
+operational readiness from classification precision so an incomplete but
+contactable inquiry is never blocked on data completeness. No
 geocoding, mapping, mileage, scheduling, billing, or AI/LLM
 classification. See "Non-goals" below.
 
@@ -36,6 +39,54 @@ translation confidently and deterministically, it never guesses: the
 submission goes to the Intake Queue's Needs Review view, with every known
 field prepopulated, and staff resolve it with a few clicks rather than a
 blank form.
+
+## Contact-Ready Principle
+
+> The objective of intake is not to create a complete client record. The
+> objective of intake is to create a Contact-Ready opportunity that
+> enables the Serve team to begin a meaningful relationship immediately.
+
+**Contact Ready** — Serve can answer "who do I need to contact?" and "how
+do I contact them?" Minimum deterministic rule (`lib/intake/contactReadiness.ts`):
+a usable contact name **and** at least one usable contact method (phone or
+email). Everything else — care recipient identity, relationship to the
+care recipient, exact care need, timing, full service address, community,
+unit, resident linkage — is helpful context collected during the first
+call, never a prerequisite for creating a Relationship and a Next Action.
+
+**Needs Resolution** — Serve cannot safely determine what operational
+action to take: no contact name, no contact method, multiple possible
+Resident matches, conflicting community/location signals, or duplicate
+ambiguity. These are the only triggers; missing profile detail alone never
+routes here (renamed from "Needs Review" — see "Intake Queue" below).
+
+**Classification vs. operational readiness** — deliberately separate axes.
+A submission can be classified `external_prospect` or `resident_prospect`
+while still being incomplete, as long as it's Contact Ready
+(`IntakeClassificationResult.operationalReadiness`, computed alongside but
+independently of `classification`). `needs_review` is reserved for the
+Needs Resolution triggers above — it is never used as a substitute for
+"incomplete profile."
+
+**Confidence vs. readiness** — `confidenceScore`/`confidenceBand`
+(`lib/intake/confidence.ts`) remain a documented completeness/rule-
+certainty score, shown to staff for context, but no longer gate
+classification. A genuinely Contact-Ready inquiry with a low completeness
+score (e.g. a ZIP-only External Prospect with no message or timing) still
+gets a Relationship and a Next Action — the old "score below 70 always
+demotes to needs_review" safety net was removed because it could erase a
+real, contactable inquiry purely for being incomplete.
+
+**Relationship creation threshold** — a usable contact name plus a phone
+or email, nothing more. A full postal address is never required to create
+an External Prospect Relationship; Resident linkage is never required to
+create a Resident Prospect Relationship (see "External Prospect
+processing" and "Resident matching" below for the exact unlinked-Relationship
+behavior). No identity, address, or care detail is ever invented to fill a
+gap — missing fields stay missing, surfaced as a "Learn during follow-up"
+list (`lib/intake/contactReadiness.ts#reasonCodesToMissingFieldLabels()`)
+derived from the same `reason_codes` already persisted on the processing
+record, not a second mutable field.
 
 ## Canonical responsibility
 
@@ -196,62 +247,103 @@ database access. Always returns exactly one classification, plus
 `confidenceScore`, `confidenceBand`, `reasonCodes`, `explanation`, and
 `requiredReviewActions`.
 
-1. Honeypot triggered → `not_qualified`.
-2. Unsupported `intakeType` → `needs_review` (never silently dropped).
-3. No phone and no email at all → `not_qualified` (cannot be followed up
-   on).
-4. `employment_interest` → `recruiting` (never `not_qualified` — Part 9).
-5. `professional_referral` → `professional_relationship` when the
-   referrer's identity is complete.
+1. Honeypot triggered → `not_qualified` (`not_actionable`).
+2. Unsupported `intakeType` → `needs_review` (`needs_resolution` — never
+   silently dropped).
+3. Contact readiness gate (`lib/intake/contactReadiness.ts`), evaluated
+   before any type-specific routing: no contact name **and** no phone/email
+   at all → `not_qualified` (`not_actionable` — the one case that keeps
+   today's narrow Not Qualified trigger); a name with no contact method, or
+   a contact method with no name → `needs_review` (`needs_resolution`,
+   `MISSING_CONTACT_METHOD` / `MISSING_CONTACT_NAME`). Otherwise: Contact
+   Ready, and every check below becomes soft (adds a reason code, never
+   blocks) except genuine ambiguity.
+4. `employment_interest` → `recruiting` (never `not_qualified` — Part 9;
+   identity already confirmed Contact Ready by the gate above, so a missing
+   role is soft context only).
+5. `professional_referral` → `professional_relationship` (identity already
+   confirmed Contact Ready; a missing organization is soft context only).
+   Possible duplicate referral source → `needs_resolution`.
 6. `family_care_inquiry` / `outside_service_area`, routed by the
    `communityOrLocationLabel` keyword match:
-   - Community/facility language → attempt Resident matching (below);
-     `resident_prospect` only on an unambiguous match.
-   - Private-home/residence language → `external_prospect`, only when
-     the prospective client's name **and** a complete postal address are
-     both present.
-   - Neither → `needs_review` with both reclassification actions offered.
-
-A confidence-driven safety net (see below) can additionally demote any of
-the above to `needs_review` even when every individual check passed, if
-the combined picture still isn't confident enough to act on
-automatically.
+   - Community/facility language **and** `outsideServiceArea` both set
+     (contradictory routing signal) → `needs_resolution`
+     (`CONFLICTING_LOCATION_SIGNALS`) — the one location case that still
+     blocks.
+   - Community/facility language → attempt Resident matching (below).
+     Unambiguous match → `resident_prospect`, linked. No match at all →
+     `resident_prospect`, **unlinked** (`RESIDENT_LINK_UNRESOLVED`, still
+     Contact Ready — Part 5). Multiple matches → `needs_resolution`
+     (genuine ambiguity, never guessed).
+   - Private-home/residence language, or an unrecognized/unknown label →
+     `external_prospect`, Contact Ready regardless of prospective-client
+     identity or address completeness (`INCOMPLETE_PROSPECTIVE_CLIENT` /
+     `INCOMPLETE_SERVICE_LOCATION` reason codes only — an unrecognized
+     location label is now "confirm Watermere or external during the
+     call," not a blocker).
+   - A possible duplicate Relationship at any point in this branch →
+     `needs_resolution` (Part 11 — never silently reused, never guessed).
 
 ## Confidence model
 
 `lib/intake/confidence.ts` — a documented completeness/rule-certainty
 score, **not** machine-learning probability. Base score 50; fixed
 additions (e.g. `RESIDENT_EXACT_MATCH` +40, `SERVICE_LOCATION_COMPLETE`
-+15, `CONTACT_METHOD_PRESENT` +10) and deductions (e.g.
-`CONTACT_METHOD_MISSING` −50, `UNSUPPORTED_INTAKE_TYPE` −60,
-`MULTIPLE_RESIDENT_MATCHES` −30), clamped to [0, 100]. Bands: 100 →
-Automatically Processed; 90-99 → High Confidence; 70-89 → Review
-Recommended; below 70 → Needs Review. The same reason codes always
-produce the same score — no randomness, no model inference.
++15, `CONTACT_READY` +10) and deductions (e.g. `MISSING_CONTACT_METHOD`
+−50, `UNSUPPORTED_INTAKE_TYPE` −60, `MULTIPLE_RESIDENT_MATCHES` −30),
+clamped to [0, 100]. Bands: 100 → Automatically Processed; 90-99 → High
+Confidence; 70-89 → Review Recommended; below 70 → Needs Review. The same
+reason codes always produce the same score — no randomness, no model
+inference.
+
+**Informational only (Scope H):** the score and band are computed and
+persisted for staff visibility, but never override the classification
+rules above. A Contact-Ready inquiry with a low completeness score (most
+real-world submissions, given the current form's field set) still gets a
+Relationship and a Next Action — confidence describes how much is known,
+not whether Serve can act.
 
 ## Resident matching
 
 `lib/intake/residentMatching.ts#matchResident()` — pure, never fuzzy.
 Hierarchy: exact external source key → exact resident ID → name + unit →
-name + community → unique name alone → Needs Review
-(`RESIDENT_MATCH_REQUIRED` / `MULTIPLE_RESIDENT_MATCHES` /
-`INSUFFICIENT_RESIDENT_IDENTITY`). `lib/data/intakeEngine.ts#findResidentMatchCandidates()`
+name + community → unique name alone → no match
+(`RESIDENT_MATCH_REQUIRED` / `INSUFFICIENT_RESIDENT_IDENTITY`) or
+`MULTIPLE_RESIDENT_MATCHES`. `lib/data/intakeEngine.ts#findResidentMatchCandidates()`
 supplies a bounded, last-name-containment candidate set (never a fuzzy
 ranked search) — the pure function above is what actually decides among
-them. Never auto-creates a Resident on a failed match.
+them. Never auto-creates a Resident on a failed match, and never guesses
+among multiple candidates.
+
+**(Scope H) No match ≠ Needs Resolution.** `RESIDENT_MATCH_REQUIRED` /
+`INSUFFICIENT_RESIDENT_IDENTITY` (simply "no confident match found," not
+ambiguity) now still classify as `resident_prospect`, Contact Ready — an
+**unlinked** Relationship is created (`resident_id: null`,
+`RESIDENT_LINK_UNRESOLVED` reason code), with resident identity confirmed
+during the first call rather than blocking it. Only `MULTIPLE_RESIDENT_MATCHES`
+— genuine ambiguity where creating an unlinked Relationship risks
+operational confusion (e.g. attaching to the wrong Resident later) — still
+routes to `needs_review` / Needs Resolution, with the existing "Link
+Existing Resident" resolution action.
 
 ## External Prospect processing
 
-Uses the corrected External Prospect domain model
-(`docs/design/RELATIONSHIPS.md`, "External Prospect domain model"): a
-complete postal address (not just a ZIP) is required, and the
-prospective client's structured identity is required. Both being absent
-today for most real family-consultation submissions (see the
-field-mapping table above) is an honest reflection of the current form's
-fields, not a gap in this engine's logic — `SERVICE_LOCATION_INCOMPLETE`
-and `PROSPECTIVE_CLIENT_NAME_NOT_COLLECTED` exist specifically to make
-that limitation visible and actionable rather than silently guessed
-around.
+(Scope H) A complete postal address and the prospective client's
+structured identity are **helpful context, not prerequisites** — a
+Contact-Ready external care inquiry always creates an External Prospect
+Relationship, since `create_relationship()`'s only hard requirements are a
+non-null actor and a non-blank `display_name`
+(`20260717000000_create_relationships_core.sql`); every contact/address
+field on `relationships` is nullable. Both being absent today for most
+real family-consultation submissions (see the field-mapping table above,
+and the corrected External Prospect domain model in
+`docs/design/RELATIONSHIPS.md`) is an honest reflection of the current
+form's fields — `INCOMPLETE_SERVICE_LOCATION` and
+`INCOMPLETE_PROSPECTIVE_CLIENT` exist to make that limitation visible in
+the "Learn during follow-up" summary, not to block Relationship creation.
+No street address, unit, or client name is ever invented to satisfy a
+complete-record expectation; the Relationship is created with exactly the
+fields the submission actually provided.
 
 ## Professional Referral processing
 
@@ -278,8 +370,14 @@ recruiting concept.
 ## Not Qualified behavior
 
 Only two deterministic triggers: the Netlify honeypot field, and the
-complete absence of any contact method. Ambiguity is never routed here —
-it goes to Needs Review, per Core Principle 5.
+complete absence of *any* usable contact channel — no name, no phone, no
+email (`NO_CONTACT_INFORMATION` / `not_actionable`). (Scope H) A name with
+no contact method, or a contact method with no name, is **not** Not
+Qualified — Serve knows something usable about the person and that case
+now routes to Needs Resolution instead, so a human can decide (e.g. call
+back to ask for an email, or vice versa) rather than the lead being
+silently discarded. Ambiguity is never routed to Not Qualified — it goes
+to Needs Resolution, per Core Principle 5.
 
 ## Processing record design
 
@@ -376,6 +474,16 @@ the generic "Review Website Inquiry" when a more specific title is
 available. Never duplicated onto a reused Relationship that already has
 an open action.
 
+**(Scope H) Follow-up agenda.** Care-inquiry actions (`resident_prospect`
+/ `external_prospect`) carry a deterministic detail/description built by
+`lib/intake/contactReadiness.ts#buildFollowUpAgenda()` from
+`reasonCodesToMissingFieldLabels()` — "Contact {name}." followed by a
+"Learn during follow-up:" list when fields are missing, e.g. who needs
+care, where, what support, when. Never phrased as "validation errors" or
+"required fields missing" — this is a conversation agenda, not a rejection
+notice. Missing service details never reduce priority or push out the due
+date; the existing business-hours/urgency rules (below) are unchanged.
+
 ## Owner assignment
 
 `SERVE_INTAKE_OWNER_LABEL` environment variable (unset by default →
@@ -402,28 +510,39 @@ simply re-invokes normal processing (idempotent by construction).
 `/relationships/intake` (added to the existing `RelationshipViewTabs`
 switcher shared with Action Board/Whiteboard/All Relationships — no new
 top-level sidebar item). Five views: New (submissions with no processing
-record yet), Needs Review, Processed, Failed, Not Qualified. Needs Review
-rows offer context-specific resolution actions derived from the record's
-own `reason_codes` (Link Existing Resident, Complete Expected Service
-Location, Dismiss) — every known field is already on the record, staff
-never re-enter it.
+record yet), **Contact Ready** (renamed from "Processed" — `processing_status
+= 'processed'`; contact name and phone/email prominent with `tel:`/`mailto:`
+links, "Open Relationship," and a "Learn during follow-up" summary — never
+styled as an error/failure state, since incomplete-but-actionable is the
+normal case here), **Needs Resolution** (renamed from "Needs Review" —
+`processing_status = 'needs_review'`, now honestly representing only true
+blockers per the Contact-Ready Principle above; each row states the actual
+blocker in plain language instead of a raw reason-code dump), Failed, Not
+Qualified. Needs Resolution rows offer context-specific resolution actions
+(Link Existing Resident for `MULTIPLE_RESIDENT_MATCHES`, Dismiss) — every
+known field is already on the record, staff never re-enter it. The
+"Complete Expected Service Location" resolution flow from Phase 1 was
+removed: External Prospects are now created immediately regardless of
+address completeness, so that flow no longer has a reachable trigger.
 
 **Deferred resolution flows** (documented, not built this phase): "Open
 Existing Relationship" / "Confirm New Relationship" / "Attach Submission
-to Existing Relationship" for the possible-duplicate case, and explicit
-reclassify-to-any-type buttons for the ambiguous-schema case. These are
-lower-frequency paths given today's submission volume (5 total, all
-synthetic) — a future phase can add them once real submission volume
-reveals which are actually needed.
+to Existing Relationship" for the possible-duplicate case. Lower-frequency
+given today's submission volume (5 total, all synthetic) — a future phase
+can add it once real submission volume reveals it's actually needed.
 
 ## Dashboard integration
 
-Three cards under a new "Website Intake" section (New Website Inquiries,
-Needs Review, Failed Intake Processing), each linking to the relevant
-Intake Queue tab. No "Overdue First Responses" card was added separately
-— intake-created actions are ordinary `relationship_actions` rows, so
-they already appear in the existing Action Board's Overdue bucket without
-any new code (Part 25: "Do not duplicate the Action Board").
+Four cards under the "Website Intake" section (New Website Inquiries,
+**Contact Ready** — `processing_status = 'processed'` excluding `recruiting`,
+**Needs Resolution** — renamed, Failed Intake Processing), each linking to
+the relevant Intake Queue tab. `getIntakeQueueCounts()`
+(`lib/data/intakeEngine.ts`) derives all four counts at read time from
+`intake_processing_records.processing_status`/`classification` — no new
+column. No "Overdue First Responses" card was added separately —
+intake-created actions are ordinary `relationship_actions` rows, so they
+already appear in the existing Action Board's Overdue bucket without any
+new code (Part 25: "Do not duplicate the Action Board").
 
 ## Security / privacy
 
@@ -444,22 +563,37 @@ existing submissions are all synthetic test data (see
 `docs/maintenance/WEBSITE_INTAKE_BACKFILL_REVIEW.md`), so there is
 nothing real to reprocess yet.
 
+**(Scope H) Backfill policy.** Existing `needs_review` records are not
+automatically reprocessed under the new rules, even though some would now
+qualify as Contact Ready — reprocessing is an explicit, reviewed action
+(`processIntakeSubmission()`/`retryFailedIntakeSubmission()` with
+`p_force`), never an automatic side effect of shipping this scope. Since
+the only pre-existing rows are synthetic test data, there is no real
+backlog to backfill; if real `needs_review` history exists in the future,
+a dry-run audit (which records would newly qualify, and why) must be
+produced and reviewed before any bulk reprocessing.
+
 ## Files
 
-**Migration**: `20260721000000_create_intake_intelligence_engine.sql` —
+**Migrations**: `20260721000000_create_intake_intelligence_engine.sql` —
 `intake_processing_records`; `process_website_intake_submission()`
 (the atomic processor); `record_intake_processing_failure()`;
 `intake_find_settled_record()`; the `website_inquiry_received` Relationship
-Timeline event type.
+Timeline event type. `20260722000000_add_contact_ready_intake_workflow.sql`
+(Scope H) — additive only: `process_website_intake_submission()` gains a
+trailing `p_action_detail` parameter for the follow-up agenda; no table,
+column, or constraint changes.
 
 **Pure logic** (`lib/intake/`, all independently unit tested —
-`lib/intake/__tests__/*.test.ts`, 64 tests total): `types.ts`,
-`nameUtils.ts`, `envelope.ts` (website adapter), `classification.ts`,
-`confidence.ts`, `residentMatching.ts`, `priority.ts`,
-`serviceOpportunityMapping.ts`.
+`lib/intake/__tests__/*.test.ts`): `types.ts`, `nameUtils.ts`,
+`envelope.ts` (website adapter), `classification.ts`, `confidence.ts`,
+`residentMatching.ts`, `priority.ts`, `serviceOpportunityMapping.ts`,
+`contactReadiness.ts` (Scope H — operational readiness and the
+missing-field-label/follow-up-agenda helpers).
 
 **Data/actions**: `lib/data/intakeEngine.ts` (reads + the two RPC
-wrappers), `lib/actions/intakeEngine.ts` (`processIntakeSubmission()` —
+wrappers; `getIntakeQueueCounts()` derives Contact Ready/Needs Resolution
+counts), `lib/actions/intakeEngine.ts` (`processIntakeSubmission()` —
 the one automatic-processing entry point; resolution actions).
 
 **UI**: `app/relationships/intake/page.tsx` +

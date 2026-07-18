@@ -12,6 +12,7 @@ import {
 } from "@/lib/data/intakeEngine";
 import { normalizeWebsiteIntakeSubmission } from "@/lib/intake/envelope";
 import { classifyIntakeSubmission } from "@/lib/intake/classification";
+import { buildFollowUpAgenda, reasonCodesToMissingFieldLabels } from "@/lib/intake/contactReadiness";
 import { matchResident } from "@/lib/intake/residentMatching";
 import { categorizeTiming, determinePriorityRule } from "@/lib/intake/priority";
 import { mapSupportTypeToServiceOpportunity } from "@/lib/intake/serviceOpportunityMapping";
@@ -59,11 +60,6 @@ async function buildDecidedInput(
   classificationOverride?: {
     classification: ProcessWebsiteIntakeInput["classification"];
     residentId?: string | null;
-    serviceAddressLine1?: string;
-    serviceAddressLine2?: string | null;
-    serviceCity?: string;
-    serviceState?: string;
-    servicePostalCode?: string;
     extraReasonCodes?: string[];
   }
 ): Promise<ProcessWebsiteIntakeInput> {
@@ -110,13 +106,33 @@ async function buildDecidedInput(
           ? "referral_source"
           : null;
 
+  // A Contact-Ready care inquiry frequently has no confirmed prospective-client identity
+  // yet (Part 4) — the display name must stay truthful rather than inventing one. When the
+  // care recipient's identity IS known, the existing last-name-based "Family Inquiry" label
+  // is kept (better search/scan behavior on the board); otherwise a plain contact-based
+  // label is used instead of ever falling back to a placeholder.
+  const hasProspectiveClientIdentity = !!(envelope.prospectiveClient.firstName || envelope.prospectiveClient.lastName);
   const displayName = isOperational
     ? classification === "professional_relationship"
       ? `${envelope.referralContext.organization ?? envelope.primaryContact.fullName ?? "Professional"} Referral`
-      : `${envelope.primaryContact.lastName ?? envelope.primaryContact.fullName ?? "Website"} Family Inquiry`
+      : hasProspectiveClientIdentity
+        ? `${envelope.primaryContact.lastName ?? envelope.primaryContact.fullName} Family Inquiry`
+        : `${envelope.primaryContact.fullName} — Care Inquiry`
     : null;
 
   const actionTitle = isOperational ? nextActionTitleFor(envelope, classification) : null;
+
+  // Deterministic follow-up agenda (Part 7/8) — built only for care inquiries, derived from
+  // the same reason codes persisted on the processing record (no separate mutable field).
+  const isCareInquiryClassification = classification === "resident_prospect" || classification === "external_prospect";
+  const actionDetail =
+    isOperational && isCareInquiryClassification && envelope.primaryContact.fullName
+      ? buildFollowUpAgenda(
+          envelope.primaryContact.fullName,
+          reasonCodesToMissingFieldLabels(classificationResult.reasonCodes)
+        )
+      : null;
+
   const intakeContextParts = [
     envelope.careContext.message ? `Submitted message:\n${envelope.careContext.message}` : null,
     envelope.referralContext.referralDetails ? `Referral details:\n${envelope.referralContext.referralDetails}` : null,
@@ -127,26 +143,11 @@ async function buildDecidedInput(
       ? classificationOverride?.residentId ?? residentMatch?.residentId ?? null
       : null;
 
-  const serviceAddressLine1 =
-    classification === "external_prospect"
-      ? classificationOverride?.serviceAddressLine1 ?? envelope.serviceLocation.addressLine1
-      : null;
-  const serviceAddressLine2 =
-    classification === "external_prospect"
-      ? classificationOverride?.serviceAddressLine2 ?? null
-      : null;
-  const serviceCity =
-    classification === "external_prospect"
-      ? classificationOverride?.serviceCity ?? envelope.serviceLocation.city
-      : null;
-  const serviceState =
-    classification === "external_prospect"
-      ? classificationOverride?.serviceState ?? envelope.serviceLocation.state
-      : null;
-  const servicePostalCode =
-    classification === "external_prospect"
-      ? classificationOverride?.servicePostalCode ?? envelope.serviceLocation.zip
-      : null;
+  const serviceAddressLine1 = classification === "external_prospect" ? envelope.serviceLocation.addressLine1 : null;
+  const serviceAddressLine2: string | null = null;
+  const serviceCity = classification === "external_prospect" ? envelope.serviceLocation.city : null;
+  const serviceState = classification === "external_prospect" ? envelope.serviceLocation.state : null;
+  const servicePostalCode = classification === "external_prospect" ? envelope.serviceLocation.zip : null;
 
   return {
     submissionId: envelope.sourceSubmissionId,
@@ -182,6 +183,7 @@ async function buildDecidedInput(
     serviceSummary: isCareInquiry ? serviceOpportunity.serviceSummary : null,
     intakeContextNote: intakeContextParts.length > 0 ? intakeContextParts.join("\n\n") : null,
     actionTitle,
+    actionDetail,
     actionType: "follow_up",
     actionDueAt: isOperational ? `${priorityRule.dueDateCentral}T00:00:00.000Z` : null,
     recruitingRole: envelope.employmentContext.roleInterest,
@@ -245,7 +247,13 @@ export async function retryFailedIntakeSubmission(
   return processIntakeSubmission(submissionId);
 }
 
-// ─── Needs Review resolution actions (Part 24) ──────────────────────────
+// ─── Needs Resolution resolution actions ────────────────────────────────
+// Every remaining Needs Resolution trigger (missing name, missing contact method,
+// multiple resident matches, conflicting location signals, unsupported submission type,
+// possible duplicate) is a genuine blocker per lib/intake/classification.ts — completing an
+// External Prospect's service location is no longer one of them (Contact-Ready external
+// inquiries are created immediately regardless of address completeness), so that resolution
+// action was removed rather than left unreachable.
 
 export async function linkExistingResidentForReview(
   processingRecordId: string,
@@ -261,29 +269,6 @@ export async function linkExistingResidentForReview(
     classification: "resident_prospect",
     residentId,
     extraReasonCodes: ["STAFF_CONFIRMED_RESIDENT_MATCH"],
-  });
-  const result = await processWebsiteIntakeSubmission(decided);
-  return { error: result.error };
-}
-
-export async function completeExternalServiceLocationForReview(
-  processingRecordId: string,
-  address: { line1: string; line2?: string; city: string; state: string; postalCode: string }
-): Promise<{ error?: string }> {
-  const record = await getIntakeProcessingRecordById(processingRecordId);
-  if (!record) return { error: "Processing record not found." };
-  const submission = await getWebsiteIntakeSubmissionById(record.source_submission_id);
-  if (!submission) return { error: "Original submission not found." };
-
-  const envelope = normalizeWebsiteIntakeSubmission(submission);
-  const decided = await buildDecidedInput(envelope, true, {
-    classification: "external_prospect",
-    serviceAddressLine1: address.line1,
-    serviceAddressLine2: address.line2 ?? null,
-    serviceCity: address.city,
-    serviceState: address.state,
-    servicePostalCode: address.postalCode,
-    extraReasonCodes: ["STAFF_COMPLETED_SERVICE_LOCATION"],
   });
   const result = await processWebsiteIntakeSubmission(decided);
   return { error: result.error };

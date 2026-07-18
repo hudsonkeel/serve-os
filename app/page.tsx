@@ -124,10 +124,17 @@ export default async function DashboardPage() {
               href="/relationships/intake?tab=new"
             />
             <DashboardCard
-              label="Needs Review"
-              value={String(intakeQueueCounts.needsReview)}
-              description="Identity or location unclear"
-              href="/relationships/intake?tab=needs_review"
+              label="Contact Ready"
+              value={String(intakeQueueCounts.contactReady)}
+              description="Relationship & follow-up ready"
+              accent
+              href="/relationships/intake?tab=processed"
+            />
+            <DashboardCard
+              label="Needs Resolution"
+              value={String(intakeQueueCounts.needsResolution)}
+              description="Blocked — human decision required"
+              href="/relationships/intake?tab=needs_resolution"
             />
             <DashboardCard
               label="Failed Intake Processing"

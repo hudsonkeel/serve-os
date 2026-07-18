@@ -113,14 +113,25 @@ export type IntakeReasonCode =
   | "RESIDENT_MATCH_REQUIRED"
   | "MULTIPLE_RESIDENT_MATCHES"
   | "INSUFFICIENT_RESIDENT_IDENTITY"
+  | "RESIDENT_LINK_UNRESOLVED"
   | "PROSPECTIVE_CLIENT_NAME_NOT_COLLECTED"
   | "PROSPECTIVE_CLIENT_IDENTITY_COMPLETE"
+  | "INCOMPLETE_PROSPECTIVE_CLIENT"
   | "PRIMARY_CONTACT_IDENTITY_COMPLETE"
   | "PRIMARY_CONTACT_IDENTITY_INCOMPLETE"
   | "SERVICE_LOCATION_COMPLETE"
   | "SERVICE_LOCATION_INCOMPLETE"
+  | "INCOMPLETE_SERVICE_LOCATION"
+  | "CONFLICTING_LOCATION_SIGNALS"
   | "CONTACT_METHOD_PRESENT"
   | "CONTACT_METHOD_MISSING"
+  | "CONTACT_NAME_PRESENT"
+  | "PHONE_PRESENT"
+  | "EMAIL_PRESENT"
+  | "CONTACT_READY"
+  | "MISSING_CONTACT_NAME"
+  | "MISSING_CONTACT_METHOD"
+  | "INCOMPLETE_CARE_CONTEXT"
   | "SERVICE_NEED_PRESENT"
   | "TIMING_PRESENT"
   | "POSSIBLE_DUPLICATE_RELATIONSHIP"
@@ -132,15 +143,28 @@ export type IntakeReasonCode =
   | "NO_CONTACT_INFORMATION"
   | "DUPLICATE_SUBMISSION_NO_NEW_INFO"
   | "UNSUPPORTED_INTAKE_TYPE"
-  | "UNKNOWN_SCHEMA";
+  | "UNKNOWN_SCHEMA"
+  | "STAFF_CONFIRMED_RESIDENT_MATCH"
+  | "STAFF_COMPLETED_SERVICE_LOCATION"
+  | "STAFF_DISMISSED";
+
+// Operational readiness — orthogonal to `classification` (Part 2 of the Contact-Ready
+// scope): "do we know who to contact and how," independent of how precisely the submission
+// could be classified. See lib/intake/contactReadiness.ts.
+export type OperationalReadiness = "contact_ready" | "needs_resolution" | "not_actionable";
 
 export interface IntakeClassificationResult {
   classification: IntakeClassification;
+  operationalReadiness: OperationalReadiness;
   confidenceScore: number;
   confidenceBand: IntakeConfidenceBand;
   reasonCodes: IntakeReasonCode[];
   explanation: string;
   requiredReviewActions: string[];
+  // Deterministic "Learn during follow-up" labels (Part 8) — populated only for
+  // contact_ready results; empty for needs_resolution/not_qualified, where the blocking
+  // reason itself is the point, not a follow-up agenda.
+  missingFields: string[];
 }
 
 // Deterministic candidate resident, as returned by the (impure) resident

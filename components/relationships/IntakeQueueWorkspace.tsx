@@ -1,10 +1,9 @@
 "use client";
 
-import { FormEvent, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  completeExternalServiceLocationForReview,
   dismissIntakeAsNotQualified,
   linkExistingResidentForReview,
   processAllUnprocessedIntakeSubmissions,
@@ -12,20 +11,46 @@ import {
   retryFailedIntakeSubmission,
 } from "@/lib/actions/intakeEngine";
 import { searchResidentsForLinking } from "@/lib/actions/relationships";
+import { reasonCodesToMissingFieldLabels } from "@/lib/intake/contactReadiness";
 import type { ResidentSearchResult } from "@/lib/data/relationships";
 import type { IntakeProcessingRecord, WebsiteIntakeSubmission } from "@/lib/supabase/types";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Badge } from "@/components/ui/Badge";
 
-type QueueTab = "new" | "needs_review" | "processed" | "failed" | "not_qualified";
+type QueueTab = "new" | "needs_resolution" | "processed" | "failed" | "not_qualified";
 
 const TABS: { value: QueueTab; label: string }[] = [
   { value: "new", label: "New" },
-  { value: "needs_review", label: "Needs Review" },
-  { value: "processed", label: "Processed" },
+  { value: "processed", label: "Contact Ready" },
+  { value: "needs_resolution", label: "Needs Resolution" },
   { value: "failed", label: "Failed" },
   { value: "not_qualified", label: "Not Qualified" },
 ];
+
+// A submission's contact identity always lives in the persisted envelope, whichever tab
+// it's rendered in — one accessor, reused across Processed and Needs Resolution rows.
+function envelopeOf(record: IntakeProcessingRecord) {
+  const envelope = (record.normalized_envelope ?? {}) as Record<string, unknown>;
+  const primaryContact = (envelope.primaryContact ?? {}) as Record<string, unknown>;
+  return {
+    name: (primaryContact.fullName as string | null) ?? null,
+    phone: (primaryContact.phone as string | null) ?? null,
+    email: (primaryContact.email as string | null) ?? null,
+  };
+}
+
+// Human sentence naming the actual blocker, derived from the same reason codes persisted
+// on the record — replaces a raw reason-code dump so staff know at a glance what to do.
+function explainBlocker(reasonCodes: readonly string[]): string {
+  if (reasonCodes.includes("MISSING_CONTACT_NAME")) return "Missing contact name.";
+  if (reasonCodes.includes("MISSING_CONTACT_METHOD")) return "Missing phone number or email address.";
+  if (reasonCodes.includes("MULTIPLE_RESIDENT_MATCHES")) return "Multiple possible resident matches — selection required.";
+  if (reasonCodes.includes("CONFLICTING_LOCATION_SIGNALS")) return "Conflicting community/location signals.";
+  if (reasonCodes.includes("POSSIBLE_DUPLICATE_RELATIONSHIP")) return "Possible duplicate of an existing Relationship.";
+  if (reasonCodes.includes("UNSUPPORTED_INTAKE_TYPE")) return "Unsupported submission type.";
+  if (reasonCodes.includes("UNKNOWN_SCHEMA")) return "Could not determine submission type.";
+  return "Needs manual resolution.";
+}
 
 function compactDateTime(iso: string | null) {
   if (!iso) return "-";
@@ -101,63 +126,15 @@ function ResidentLinkForm({ recordId, onDone }: { recordId: string; onDone: () =
   );
 }
 
-function ServiceLocationForm({ recordId, onDone }: { recordId: string; onDone: () => void }) {
+function NeedsResolutionRow({ record }: { record: IntakeProcessingRecord }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [line1, setLine1] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [postalCode, setPostalCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    startTransition(async () => {
-      const result = await completeExternalServiceLocationForReview(recordId, { line1, city, state, postalCode });
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      onDone();
-      router.refresh();
-    });
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="mt-2 max-w-lg space-y-2 rounded-md border border-ivory-border bg-ivory p-3">
-      <div className="grid grid-cols-2 gap-2">
-        <input value={line1} onChange={(e) => setLine1(e.target.value)} placeholder="Street" className={`col-span-2 ${fieldClassName} placeholder:text-subtle`} />
-        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className={`${fieldClassName} placeholder:text-subtle`} />
-        <input value={state} onChange={(e) => setState(e.target.value)} placeholder="State" maxLength={2} className={`${fieldClassName} placeholder:text-subtle`} />
-        <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="ZIP" className={`${fieldClassName} placeholder:text-subtle`} />
-      </div>
-      {error && <p className="font-sans text-sm text-red-600">{error}</p>}
-      <button
-        type="submit"
-        disabled={isPending}
-        className="inline-flex h-9 items-center justify-center rounded-md bg-navy px-3 font-sans text-sm font-semibold text-white hover:bg-navy/90 disabled:cursor-not-allowed"
-      >
-        {isPending ? "Saving..." : "Complete & Create External Prospect"}
-      </button>
-    </form>
-  );
-}
-
-function NeedsReviewRow({ record }: { record: IntakeProcessingRecord }) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-  const [activeForm, setActiveForm] = useState<"resident" | "location" | "dismiss" | null>(null);
+  const [activeForm, setActiveForm] = useState<"resident" | "dismiss" | null>(null);
   const [dismissReason, setDismissReason] = useState("");
 
-  const envelope = (record.normalized_envelope ?? {}) as Record<string, unknown>;
-  const primaryContact = (envelope.primaryContact ?? {}) as Record<string, unknown>;
-  const displayName = (primaryContact.fullName as string) ?? "Unnamed submission";
-
-  const needsResident = record.reason_codes.some((c) =>
-    ["RESIDENT_MATCH_REQUIRED", "MULTIPLE_RESIDENT_MATCHES", "INSUFFICIENT_RESIDENT_IDENTITY"].includes(c)
-  );
-  const needsLocation = record.reason_codes.includes("SERVICE_LOCATION_INCOMPLETE");
+  const contact = envelopeOf(record);
+  const displayName = contact.name ?? "Unnamed submission";
+  const needsResident = record.reason_codes.includes("MULTIPLE_RESIDENT_MATCHES");
 
   function handleDismiss() {
     startTransition(async () => {
@@ -175,8 +152,8 @@ function NeedsReviewRow({ record }: { record: IntakeProcessingRecord }) {
       <td className="px-4 py-3">
         <ConfidenceBadge band={record.confidence_band} />
       </td>
-      <td className="px-4 py-3 font-sans text-xs text-body">
-        {record.reason_codes.join(", ")}
+      <td className="px-4 py-3 font-sans text-sm text-body">
+        {explainBlocker(record.reason_codes)}
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -189,15 +166,6 @@ function NeedsReviewRow({ record }: { record: IntakeProcessingRecord }) {
               Link Existing Resident
             </button>
           )}
-          {needsLocation && (
-            <button
-              type="button"
-              onClick={() => setActiveForm(activeForm === "location" ? null : "location")}
-              className="rounded-md border border-ivory-border px-2 py-1 font-sans text-xs font-medium text-body hover:border-navy/20"
-            >
-              Complete Expected Service Location
-            </button>
-          )}
           <button
             type="button"
             onClick={() => setActiveForm(activeForm === "dismiss" ? null : "dismiss")}
@@ -207,7 +175,6 @@ function NeedsReviewRow({ record }: { record: IntakeProcessingRecord }) {
           </button>
         </div>
         {activeForm === "resident" && <ResidentLinkForm recordId={record.id} onDone={() => setActiveForm(null)} />}
-        {activeForm === "location" && <ServiceLocationForm recordId={record.id} onDone={() => setActiveForm(null)} />}
         {activeForm === "dismiss" && (
           <div className="mt-2 flex max-w-sm items-center gap-2">
             <input
@@ -268,7 +235,7 @@ function NewSubmissionRow({ submission }: { submission: WebsiteIntakeSubmission 
   );
 }
 
-const VALID_TABS: readonly QueueTab[] = ["new", "needs_review", "processed", "failed", "not_qualified"];
+const VALID_TABS: readonly QueueTab[] = ["new", "needs_resolution", "processed", "failed", "not_qualified"];
 
 function isQueueTab(value: string | undefined): value is QueueTab {
   return !!value && (VALID_TABS as readonly string[]).includes(value);
@@ -283,13 +250,13 @@ interface IntakeQueueWorkspaceProps {
 export function IntakeQueueWorkspace({ newSubmissions, records, initialTab }: IntakeQueueWorkspaceProps) {
   const router = useRouter();
   const [tab, setTab] = useState<QueueTab>(
-    isQueueTab(initialTab) ? initialTab : newSubmissions.length > 0 ? "new" : "needs_review"
+    isQueueTab(initialTab) ? initialTab : newSubmissions.length > 0 ? "new" : "processed"
   );
   const [isPending, startTransition] = useTransition();
 
   const grouped = useMemo(
     () => ({
-      needs_review: records.filter((r) => r.processing_status === "needs_review"),
+      needs_resolution: records.filter((r) => r.processing_status === "needs_review"),
       processed: records.filter((r) => r.processing_status === "processed"),
       failed: records.filter((r) => r.processing_status === "failed"),
       not_qualified: records.filter((r) => r.processing_status === "not_qualified"),
@@ -299,7 +266,7 @@ export function IntakeQueueWorkspace({ newSubmissions, records, initialTab }: In
 
   const counts: Record<QueueTab, number> = {
     new: newSubmissions.length,
-    needs_review: grouped.needs_review.length,
+    needs_resolution: grouped.needs_resolution.length,
     processed: grouped.processed.length,
     failed: grouped.failed.length,
     not_qualified: grouped.not_qualified.length,
@@ -378,14 +345,14 @@ export function IntakeQueueWorkspace({ newSubmissions, records, initialTab }: In
         </div>
       )}
 
-      {tab === "needs_review" &&
-        (grouped.needs_review.length === 0 ? (
-          <EmptyState description="Nothing needs review right now." />
+      {tab === "needs_resolution" &&
+        (grouped.needs_resolution.length === 0 ? (
+          <EmptyState description="Nothing needs resolution right now." />
         ) : (
           <table className="w-full min-w-[900px] rounded-xl border border-ivory-border bg-surface">
             <thead>
               <tr className="border-b border-ivory-border text-left">
-                {["Submission", "Confidence", "Reasons", "Resolve"].map((h) => (
+                {["Submission", "Confidence", "Blocked on", "Resolve"].map((h) => (
                   <th key={h} className="px-4 py-3 font-sans text-label font-semibold uppercase tracking-widest text-subtle">
                     {h}
                   </th>
@@ -393,8 +360,8 @@ export function IntakeQueueWorkspace({ newSubmissions, records, initialTab }: In
               </tr>
             </thead>
             <tbody>
-              {grouped.needs_review.map((r) => (
-                <NeedsReviewRow key={r.id} record={r} />
+              {grouped.needs_resolution.map((r) => (
+                <NeedsResolutionRow key={r.id} record={r} />
               ))}
             </tbody>
           </table>
@@ -402,12 +369,12 @@ export function IntakeQueueWorkspace({ newSubmissions, records, initialTab }: In
 
       {tab === "processed" &&
         (grouped.processed.length === 0 ? (
-          <EmptyState description="No submissions have been processed yet." />
+          <EmptyState description="No inquiries are Contact Ready yet." />
         ) : (
-          <table className="w-full min-w-[700px] rounded-xl border border-ivory-border bg-surface">
+          <table className="w-full min-w-[900px] rounded-xl border border-ivory-border bg-surface">
             <thead>
               <tr className="border-b border-ivory-border text-left">
-                {["Classification", "Confidence", "Processed", "Record"].map((h) => (
+                {["Contact", "Classification", "Learn during follow-up", "Received", "Action"].map((h) => (
                   <th key={h} className="px-4 py-3 font-sans text-label font-semibold uppercase tracking-widest text-subtle">
                     {h}
                   </th>
@@ -415,25 +382,38 @@ export function IntakeQueueWorkspace({ newSubmissions, records, initialTab }: In
               </tr>
             </thead>
             <tbody>
-              {grouped.processed.map((r) => (
-                <tr key={r.id} className="border-b border-ivory-border">
-                  <td className="px-4 py-3 font-sans text-sm text-body">{r.classification?.replace(/_/g, " ")}</td>
-                  <td className="px-4 py-3">
-                    <ConfidenceBadge band={r.confidence_band} />
-                  </td>
-                  <td className="px-4 py-3 font-sans text-sm text-body">{compactDateTime(r.processed_at)}</td>
-                  <td className="px-4 py-3">
-                    {r.relationship_id && (
-                      <Link href={`/relationships/${r.relationship_id}`} className="font-sans text-sm text-navy hover:text-navy-light">
-                        Open Relationship
-                      </Link>
-                    )}
-                    {!r.relationship_id && r.recruiting_lead_id && (
-                      <span className="font-sans text-sm text-subtle">Recruiting Lead</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {grouped.processed.map((r) => {
+                const contact = envelopeOf(r);
+                const missingFieldLabels = reasonCodesToMissingFieldLabels(r.reason_codes);
+                return (
+                  <tr key={r.id} className="border-b border-ivory-border align-top">
+                    <td className="px-4 py-3 font-sans text-sm text-body">
+                      <div className="font-medium">{contact.name ?? "Unnamed contact"}</div>
+                      <div className="mt-0.5 flex flex-col gap-0.5 font-sans text-xs text-navy">
+                        {contact.phone && <a href={`tel:${contact.phone}`} className="hover:text-navy-light">{contact.phone}</a>}
+                        {contact.email && <a href={`mailto:${contact.email}`} className="hover:text-navy-light">{contact.email}</a>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone="gold">{r.classification?.replace(/_/g, " ") ?? "-"}</Badge>
+                    </td>
+                    <td className="px-4 py-3 font-sans text-xs text-muted">
+                      {missingFieldLabels.length > 0 ? missingFieldLabels.join(" · ") : "Profile complete"}
+                    </td>
+                    <td className="px-4 py-3 font-sans text-sm text-body">{compactDateTime(r.processed_at)}</td>
+                    <td className="px-4 py-3">
+                      {r.relationship_id && (
+                        <Link href={`/relationships/${r.relationship_id}`} className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+                          Open Relationship
+                        </Link>
+                      )}
+                      {!r.relationship_id && r.recruiting_lead_id && (
+                        <span className="font-sans text-sm text-subtle">Recruiting Lead</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ))}

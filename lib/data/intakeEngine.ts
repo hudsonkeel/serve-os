@@ -103,7 +103,12 @@ export async function getIntakeProcessingRecordById(
 
 export interface IntakeQueueCounts {
   new: number;
-  needsReview: number;
+  // "Processed" AND operationally Contact Ready — a Relationship and Next Action already
+  // exist, awaiting a first human touch. Excludes Recruiting (not a family-care inquiry).
+  contactReady: number;
+  // Renamed from "needsReview": since classification.ts now only reaches `needs_review`
+  // for genuine blockers (Part 2/9), this status honestly represents Needs Resolution.
+  needsResolution: number;
   failed: number;
   notQualified: number;
 }
@@ -112,17 +117,20 @@ export async function getIntakeQueueCounts(): Promise<IntakeQueueCounts> {
   const supabase = createServerClient();
   const [{ count: totalSubmissions }, { data: statusRows }] = await Promise.all([
     supabase.from("website_intake_submissions").select("*", { count: "exact", head: true }),
-    supabase.from("intake_processing_records").select("processing_status").eq("intake_source", "website"),
+    supabase.from("intake_processing_records").select("processing_status, classification").eq("intake_source", "website"),
   ]);
 
-  const settledCount = (statusRows ?? []).length;
-  const needsReview = (statusRows ?? []).filter((r) => r.processing_status === "needs_review").length;
-  const failed = (statusRows ?? []).filter((r) => r.processing_status === "failed").length;
-  const notQualified = (statusRows ?? []).filter((r) => r.processing_status === "not_qualified").length;
+  const rows = statusRows ?? [];
+  const settledCount = rows.length;
+  const contactReady = rows.filter((r) => r.processing_status === "processed" && r.classification !== "recruiting").length;
+  const needsResolution = rows.filter((r) => r.processing_status === "needs_review").length;
+  const failed = rows.filter((r) => r.processing_status === "failed").length;
+  const notQualified = rows.filter((r) => r.processing_status === "not_qualified").length;
 
   return {
     new: Math.max(0, (totalSubmissions ?? 0) - settledCount),
-    needsReview,
+    contactReady,
+    needsResolution,
     failed,
     notQualified,
   };
@@ -228,6 +236,7 @@ export interface ProcessWebsiteIntakeInput {
   serviceSummary: string | null;
   intakeContextNote: string | null;
   actionTitle: string | null;
+  actionDetail: string | null;
   actionType: string | null;
   actionDueAt: string | null;
   recruitingRole: string | null;
@@ -284,6 +293,7 @@ export async function processWebsiteIntakeSubmission(
     p_service_summary: input.serviceSummary,
     p_intake_context_note: input.intakeContextNote,
     p_action_title: input.actionTitle,
+    p_action_detail: input.actionDetail,
     p_action_type: input.actionType,
     p_action_due_at: input.actionDueAt,
     p_recruiting_role: input.recruitingRole,
