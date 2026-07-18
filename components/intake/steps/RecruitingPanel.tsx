@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { ArrowLeft, ArrowRight, Check, Paperclip, X } from "lucide-react";
+import { uploadRecruitingResume } from "@/lib/actions/recruiting";
 import {
-  saveRecruitingLead,
-  markApploiRedirect,
-  uploadRecruitingResume,
-  type RecruitingLeadFormData,
-} from "@/lib/actions/recruiting";
+  recordConversationEvent,
+  startConversationSession,
+  submitCanonicalIntake,
+} from "@/lib/actions/conversationTelemetry";
 import type { RecruitingLeadRole } from "@/lib/supabase/types";
 import {
   FormField,
@@ -227,11 +227,15 @@ function validateForm(form: FormState): FormErrors {
 
 function LeadFormStep({
   role,
+  conversationSessionId,
+  sessionKey,
   onSuccess,
   onBack,
 }: {
   role: RecruitingLeadRole;
-  onSuccess: (leadId: string, firstName: string) => void;
+  conversationSessionId: string | null;
+  sessionKey: string;
+  onSuccess: (firstName: string) => void;
   onBack: () => void;
 }) {
   const meta = ROLE_META[role];
@@ -261,9 +265,7 @@ function LeadFormStep({
     }
 
     startTransition(async () => {
-      let resumeUrl: string | undefined;
       let resumeFilename: string | undefined;
-      let resumeUploadedAt: string | undefined;
 
       if (form.resumeFile) {
         const fd = new FormData();
@@ -273,37 +275,46 @@ function LeadFormStep({
           setSubmitError(upload.error);
           return;
         }
-        resumeUrl = upload.url;
         resumeFilename = upload.filename;
-        resumeUploadedAt = upload.uploadedAt;
       }
 
-      const payload: RecruitingLeadFormData = {
-        roleInterest: role,
-        firstName: form.firstName,
-        lastName: form.lastName,
-        phone: form.phone,
-        email: form.email,
-        zipCode: form.zipCode || undefined,
-        availability: form.availability || undefined,
-        experienceLevel: form.experienceLevel || undefined,
-        cityState: form.cityState || undefined,
-        linkedinUrl: form.linkedinUrl || undefined,
-        explorationTimeline: form.explorationTimeline || undefined,
-        resumeUrl,
-        resumeFilename,
-        resumeUploadedAt,
-        message: form.message || undefined,
-      };
+      const contactName = `${form.firstName} ${form.lastName}`.trim() || null;
 
-      const result = await saveRecruitingLead(payload);
+      // Raw form_payload keys match lib/intake/envelope.ts's existing
+      // employment-context reads exactly (role_interest, linkedin,
+      // city-state, resume.filename, leadership-interest) — the same shape
+      // the website's employment forms already produce.
+      const result = await submitCanonicalIntake(
+        {
+          source: role === "caregiver" ? "serve_os_get_started_caregiver" : "serve_os_get_started_managing_director",
+          intakeType: "employment_interest",
+          contactName,
+          contactPhone: form.phone || null,
+          contactEmail: form.email || null,
+          zip: form.zipCode || null,
+          formPayload: {
+            "form-name": "get-started-careers",
+            "full-name": contactName,
+            role_interest: role,
+            linkedin: form.linkedinUrl || null,
+            "city-state": form.cityState || null,
+            resume: resumeFilename ? { filename: resumeFilename } : null,
+            availability: form.availability || null,
+            experience_level: form.experienceLevel || null,
+            exploration_timeline: form.explorationTimeline || null,
+            message: form.message || null,
+          },
+          sourceSubmissionId: sessionKey,
+        },
+        conversationSessionId
+      );
+
       if (result.error) {
         setSubmitError(result.error);
         return;
       }
-      if (result.id) {
-        onSuccess(result.id, form.firstName.trim());
-      }
+
+      onSuccess(form.firstName.trim());
     });
   };
 
@@ -495,12 +506,12 @@ function LeadFormStep({
 function ConfirmationStep({
   role,
   firstName,
-  leadId,
+  conversationSessionId,
   onStartOver,
 }: {
   role: RecruitingLeadRole;
   firstName: string;
-  leadId: string;
+  conversationSessionId: string | null;
   onStartOver: () => void;
 }) {
   const meta = ROLE_META[role];
@@ -511,8 +522,14 @@ function ConfirmationStep({
       ? (process.env.NEXT_PUBLIC_APPLOI_CAREGIVER_URL ?? "")
       : "";
 
+  // Recorded as conversation telemetry rather than a recruiting_leads
+  // update (Scope J): the submission is now processed asynchronously by
+  // the Serve Intake Intelligence Engine, so no recruiting_leads.id is
+  // available synchronously at confirmation time to attach this to.
   const handleApploiClick = () => {
-    void markApploiRedirect(leadId);
+    if (conversationSessionId) {
+      void recordConversationEvent(conversationSessionId, "step_completed", { stepKey: "apploi_redirect" });
+    }
   };
 
   const bodyText =
@@ -569,16 +586,38 @@ type Step = "role-select" | "form" | "confirmation";
 export function RecruitingPanel() {
   const [step, setStep] = useState<Step>("role-select");
   const [role, setRole] = useState<RecruitingLeadRole | null>(null);
-  const [leadId, setLeadId] = useState<string | null>(null);
   const [leadFirstName, setLeadFirstName] = useState("");
+  const [conversationSessionId, setConversationSessionId] = useState<string | null>(null);
+  // useState, not useRef — this value is read during render (passed to
+  // LeadFormStep as a prop), and refs must never be read outside effects
+  // or event handlers.
+  const [sessionKey] = useState<string>(() => crypto.randomUUID());
+
+  // Conversation telemetry only (Scope J) — never creates a Recruiting
+  // Lead by itself; started once per mount, independent of ServeIntakeFlow's
+  // own "care" session (that one only starts for mode === "care").
+  useEffect(() => {
+    if (conversationSessionId) return;
+    startConversationSession({
+      sessionKey,
+      experienceType: "website_wizard_careers",
+      source: "serve_os_get_started_careers",
+      channelVersion: "v1",
+    }).then((session) => {
+      if (session) setConversationSessionId(session.id);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleRoleSelect = (selected: RecruitingLeadRole) => {
     setRole(selected);
     setStep("form");
+    if (conversationSessionId) {
+      void recordConversationEvent(conversationSessionId, "step_completed", { stepKey: "role-select" });
+    }
   };
 
-  const handleFormSuccess = (id: string, firstName: string) => {
-    setLeadId(id);
+  const handleFormSuccess = (firstName: string) => {
     setLeadFirstName(firstName);
     setStep("confirmation");
   };
@@ -586,7 +625,6 @@ export function RecruitingPanel() {
   const handleStartOver = () => {
     setStep("role-select");
     setRole(null);
-    setLeadId(null);
     setLeadFirstName("");
   };
 
@@ -598,18 +636,20 @@ export function RecruitingPanel() {
     return (
       <LeadFormStep
         role={role}
+        conversationSessionId={conversationSessionId}
+        sessionKey={sessionKey}
         onSuccess={handleFormSuccess}
         onBack={() => setStep("role-select")}
       />
     );
   }
 
-  if (step === "confirmation" && role && leadId) {
+  if (step === "confirmation" && role) {
     return (
       <ConfirmationStep
         role={role}
         firstName={leadFirstName}
-        leadId={leadId}
+        conversationSessionId={conversationSessionId}
         onStartOver={handleStartOver}
       />
     );

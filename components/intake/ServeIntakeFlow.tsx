@@ -1,8 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, Edit3, Phone } from "lucide-react";
-import { saveProspectDraft } from "@/lib/actions/intake";
+import {
+  captureDraftContact,
+  recordConversationEvent,
+  startConversationSession,
+  submitCanonicalIntake,
+} from "@/lib/actions/conversationTelemetry";
 import { Logo } from "@/components/Logo";
 import { Confirmation } from "./Confirmation";
 import { FormField, FormInput } from "./FormField";
@@ -519,10 +524,27 @@ export function ServeIntakeFlow({
   const [completed, setCompleted] = useState<CompletedMilestones>({});
   const [activeStep, setActiveStep] =
     useState<IntakeConversationStep>("relationship");
-  const [prospectId, setProspectId] = useState<string | null>(null);
+  const [conversationSessionId, setConversationSessionId] = useState<string | null>(null);
   const [savingMilestone, setSavingMilestone] =
     useState<IntakeSaveMilestone | null>(null);
   const [isPending, startTransition] = useTransition();
+  const sessionKeyRef = useRef<string>(crypto.randomUUID());
+
+  // Conversation telemetry only (Scope J) — never creates a Relationship,
+  // Recruiting Lead, or intake_submissions row by itself. One session per
+  // "care" journey; RecruitingPanel starts its own for "careers".
+  useEffect(() => {
+    if (mode !== "care" || conversationSessionId) return;
+    startConversationSession({
+      sessionKey: sessionKeyRef.current,
+      experienceType: "website_wizard_care",
+      source: "serve_os_get_started_care",
+      channelVersion: "v1",
+    }).then((session) => {
+      if (session) setConversationSessionId(session.id);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   const update = (updates: Partial<IntakeFormData>) => {
     setFormData((previous) => ({ ...previous, ...updates }));
@@ -540,10 +562,29 @@ export function ServeIntakeFlow({
     setSaveStatus("idle");
     setCompleted({});
     setActiveStep("relationship");
-    setProspectId(null);
+    setConversationSessionId(null);
+    sessionKeyRef.current = crypto.randomUUID();
     setSavingMilestone(null);
     setMode(newMode);
   };
+
+  // Builds the canonical intake payload's raw form_payload — keyed exactly
+  // like the website's own form fields, since lib/intake/envelope.ts's
+  // normalizeIntakeSubmission() is the one place that shape is parsed and
+  // it must not need to know this wizard exists.
+  function buildFormPayload(data: IntakeFormData): Record<string, unknown> {
+    return {
+      "form-name": "get-started-care",
+      "care-for": data.careFor || null,
+      message: data.careNeeds || null,
+      support_type: data.supportType || null,
+      start_timing: data.startTiming || null,
+      care_recipient_first_name: data.careRecipientFirstName || null,
+      care_recipient_last_name: data.careRecipientLastName || null,
+      referral_source: data.referralSource || null,
+      referral_other: data.referralOther || null,
+    };
+  }
 
   const persistMilestone = (
     milestone: IntakeSaveMilestone,
@@ -561,7 +602,59 @@ export function ServeIntakeFlow({
     setSubmitError(null);
 
     startTransition(async () => {
-      const result = await saveProspectDraft(nextData, milestone, prospectId);
+      if (milestone !== "intake_completed") {
+        // Telemetry only — never blocks on a real write, never surfaces an
+        // error to the visitor (there is nothing operational to fail yet).
+        if (conversationSessionId) {
+          if (milestone === "contact_completed") {
+            await captureDraftContact(conversationSessionId, {
+              name: `${nextData.firstName} ${nextData.lastName}`.trim() || null,
+              phone: nextData.phone || null,
+              email: nextData.email || null,
+              // The consent checkbox lives on the final "submit" step, not
+              // here — see docs/integrations/WEBSITE_TO_SERVE_INTAKE_CONTRACT.md,
+              // "Consent and outreach boundary."
+              consentGiven: false,
+              inquirySummary: nextData.zipCode ? `Care inquiry, ZIP ${nextData.zipCode}` : "Care inquiry",
+            });
+          }
+          await recordConversationEvent(conversationSessionId, "step_completed", { stepKey: milestone });
+        }
+
+        setSavingMilestone(null);
+        setCompleted((previous) => ({ ...previous, [milestone]: true }));
+        setSaveStatus("saved");
+        if (nextStep) setActiveStep(nextStep);
+        return;
+      }
+
+      // intake_completed: the one real submission for this entire journey.
+      if (conversationSessionId) {
+        await captureDraftContact(conversationSessionId, {
+          name: `${nextData.firstName} ${nextData.lastName}`.trim() || null,
+          phone: nextData.phone || null,
+          email: nextData.email || null,
+          consentGiven: nextData.consentGiven,
+          inquirySummary: nextData.zipCode ? `Care inquiry, ZIP ${nextData.zipCode}` : "Care inquiry",
+        });
+      }
+
+      const result = await submitCanonicalIntake(
+        {
+          source: "serve_os_get_started_care",
+          intakeType: "family_care_inquiry",
+          contactName: `${nextData.firstName} ${nextData.lastName}`.trim() || null,
+          contactPhone: nextData.phone || null,
+          contactEmail: nextData.email || null,
+          zip: nextData.zipCode || null,
+          community: null,
+          city: null,
+          outsideServiceArea: false,
+          formPayload: buildFormPayload(nextData),
+          sourceSubmissionId: sessionKeyRef.current,
+        },
+        conversationSessionId
+      );
       setSavingMilestone(null);
 
       if (result.error) {
@@ -570,20 +663,9 @@ export function ServeIntakeFlow({
         return;
       }
 
-      if (result.id) {
-        setProspectId(result.id);
-      }
-
       setCompleted((previous) => ({ ...previous, [milestone]: true }));
       setSaveStatus("saved");
-
-      if (nextStep) {
-        setActiveStep(nextStep);
-      }
-
-      if (milestone === "intake_completed") {
-        setSubmitted(true);
-      }
+      setSubmitted(true);
     });
   };
 
@@ -611,7 +693,8 @@ export function ServeIntakeFlow({
     setSaveStatus("idle");
     setCompleted({});
     setActiveStep("relationship");
-    setProspectId(null);
+    setConversationSessionId(null);
+    sessionKeyRef.current = crypto.randomUUID();
     setSavingMilestone(null);
   };
 
