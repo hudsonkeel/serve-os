@@ -36,9 +36,17 @@ read against that kernel, are not six things to design from scratch.
 **Governance is a domain built on the existing Intelligence Kernel, not a
 sixth parallel platform.** Concretely:
 
-1. Governance content registers under the kernel's existing `"compliance"`
-   domain slug (`lib/intelligence/core/shared.ts`'s
-   `KNOWN_INTELLIGENCE_DOMAINS`), not a new `"governance"` slug.
+1. As a Phase 0 working default, Governance content registers under the
+   kernel's existing `"compliance"` domain slug
+   (`lib/intelligence/core/shared.ts`'s `KNOWN_INTELLIGENCE_DOMAINS`)
+   rather than a new `"governance"` slug — because Background Eligibility,
+   the one governance module built out today, is at its core a compliance
+   determination (Texas HCSSA §558.245). This is not a permanent
+   classification of Governance Intelligence as a whole: it is scoped to
+   what exists today, and should be revisited as further governance
+   modules (Client Care Governance, Emergency Management, and others named
+   in `docs/architecture/serve-governance-crosswalk.md`) are actually
+   built — see the "Domain-slug decision, with a caveat" section below.
 2. Governance-specific code lives under a new `lib/intelligence/domains/`
    tree (previously empty), following the `logicReference` path convention
    the kernel's own tests already anticipated
