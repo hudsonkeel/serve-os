@@ -35,6 +35,7 @@ import type {
   RuleVersion,
   RuleRun,
   Explanation,
+  LearningObservation,
 } from "../index.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
@@ -259,6 +260,25 @@ test("a manually-created Action has recommendationId: null, exactly like today's
     createdAt: "2026-01-15T16:00:00.000Z",
   };
   assert.equal(manualAction.recommendationId, null);
+});
+
+test("LearningObservation: fictional data satisfies the shape, requires at least one Outcome", () => {
+  const observation: LearningObservation = {
+    id: "fict-learning-1",
+    domain: "compliance",
+    observationType: "compliance.policy_gap_identified",
+    subject: null,
+    outcomeIds: ["fict-outcome-1"],
+    summary: "Three Reviewable classifications this quarter cited the same undocumented offense category.",
+    reasoning:
+      "The offense category appears in raw background-check findings but has no entry in the offense taxonomy, forcing ad hoc executive review each time.",
+    confidence: "inferred",
+    recommendedImprovement: "Add the offense category to 06-offense-taxonomy.md so future cases classify deterministically.",
+    status: "open",
+    createdAt: "2026-07-18T09:00:00.000Z",
+  };
+  assert.equal(observation.outcomeIds.length >= 1, true);
+  assert.equal(observation.status, "open");
 });
 
 // ─── Runtime exhaustiveness on EvidenceReference's discriminated union ──

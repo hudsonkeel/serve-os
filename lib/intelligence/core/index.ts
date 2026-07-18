@@ -15,6 +15,7 @@ export type {
   OccurrenceTimestamps,
   CreationTimestamp,
   RunTimestamps,
+  NonEmptyArray,
 } from "./shared.ts";
 export { KNOWN_INTELLIGENCE_DOMAINS } from "./shared.ts";
 
@@ -51,3 +52,5 @@ export type {
   ExplanationNarrative,
   Explanation,
 } from "./explanations.ts";
+
+export type { LearningObservationStatus, LearningObservation } from "./learning.ts";

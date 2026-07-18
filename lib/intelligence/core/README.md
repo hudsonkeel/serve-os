@@ -1,6 +1,6 @@
 # Serve Intelligence Platform — Core (Phase A)
 
-Shared TypeScript types for the 11 Phase A primitives. **Read
+Shared TypeScript types for the 12 Phase A primitives. **Read
 [`docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md`](../../../docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md)
 before adding to this folder.** This README explains structure; the
 Constitution explains why the structure looks the way it does.
@@ -21,7 +21,25 @@ evaluation, no UI. This folder implements zero application behavior.
 | `recommendations.ts` | `Recommendation` |
 | `actions.ts` | `Action`, `Outcome` |
 | `explanations.ts` | `Explanation` |
+| `learning.ts` | `LearningObservation` |
 | `index.ts` | barrel export of everything above |
+
+## Organizational Learning
+
+`LearningObservation` (`learning.ts`) is the platform's Organizational
+Learning primitive — added during the Governance Knowledge Engine's Phase 0
+architecture work (see
+`docs/architecture/decisions/0001-governance-knowledge-engine-phase-0.md`)
+because it was the one of the scope's six named "frameworks" that had no
+existing home here; the other five map onto primitives that already
+existed. It is a shared kernel type, not domain-specific: any domain whose
+Outcomes should durably inform future policy, workflow, automation,
+training, or documentation — not just future Rule Runs — can produce one.
+Its substantive fields are immutable once created; only `status`
+transitions, and a superseding insight is always a new row, never a rewrite
+— the same discipline `HistoricalFact.supersedesFactId` already establishes
+for facts. See the type's own doc comment for the full immutability
+boundary.
 
 ## Deferred to Phase E
 

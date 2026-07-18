@@ -234,3 +234,17 @@ Serve OS
 ```
 
 **Reading this diagram honestly:** most of Serve's actual knowledge today sits in the second layer (Organizational Knowledge) and is only beginning to move into the third (Governance), one module at a time — Background Eligibility is the only completed example. Every layer below Governance is either partially specified (Architecture) or entirely unbuilt (Operational Playbooks as formal documents, Operational Intelligence, and the governance-aware parts of Serve OS). That gap is not a criticism — it is the roadmap the Operational Readiness & Audit Preparedness Roadmap itself describes, and this inventory is the first complete accounting of how much of it remains.
+
+## 6. Governance's Path Into Serve OS (added by ADR 0001)
+
+`docs/architecture/decisions/0001-governance-knowledge-engine-phase-0.md`
+establishes how the Governance layer above eventually becomes part of
+"the governance-aware parts of Serve OS" this document flags as entirely
+unbuilt: not as a new, parallel knowledge store, but as one more domain
+(`"compliance"`) on top of the Intelligence Kernel already built at
+`lib/intelligence/core/`. Governance documents themselves remain canonical
+and un-duplicated — read directly, never copied into a database — with a
+formal connection point (`EvidenceReference`'s `reference_knowledge` kind)
+reserved for once Reference Knowledge is implemented kernel-wide (Phase E).
+This section is additive; it does not change any finding, status, or
+recommendation elsewhere in this inventory.

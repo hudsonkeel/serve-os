@@ -77,3 +77,10 @@ export interface RunTimestamps {
   readonly startedAt: string;
   readonly completedAt: string | null;
 }
+
+// A readonly array guaranteed to have at least one element — for primitives
+// whose meaning depends on citing real evidence, never empty evidence (e.g.
+// LearningObservation.outcomeIds). Generic and reusable by any future
+// primitive with the same "must cite at least one X" requirement, rather
+// than each one locally duplicating a tuple shape.
+export type NonEmptyArray<T> = readonly [T, ...T[]];
