@@ -4,6 +4,7 @@ import { WellnessFollowUpsCard } from "@/components/WellnessFollowUpsCard";
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { getRecruitingLeads } from "@/lib/data/recruitingLeads";
 import { getActiveProspectRelationshipCount } from "@/lib/data/relationships";
+import { getIntakeQueueCounts } from "@/lib/data/intakeEngine";
 import {
   formatCentralDashboardDate,
   getCentralTimeGreeting,
@@ -15,11 +16,12 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function DashboardPage() {
-  const [profile, community, recruiting, activeProspectRelationships] = await Promise.all([
+  const [profile, community, recruiting, activeProspectRelationships, intakeQueueCounts] = await Promise.all([
     getCurrentAuthorizedUser(),
     getCommunityMetrics(),
     getRecruitingLeads(),
     getActiveProspectRelationshipCount(),
+    getIntakeQueueCounts(),
   ]);
   const currentUser = buildCurrentUserDisplay(profile);
   const { metrics } = community;
@@ -96,7 +98,7 @@ export default async function DashboardPage() {
           </div>
         </section>
 
-        <section className="pt-10">
+        <section className="py-10">
           <h2 className="mb-5 font-serif text-section-title font-light text-body">
             Staffing &amp; Recruiting
           </h2>
@@ -106,6 +108,32 @@ export default async function DashboardPage() {
               value={String(recruitingReviewCount)}
               description="Applicants needing attention"
               href="/recruiting"
+            />
+          </div>
+        </section>
+
+        <section className="pt-10">
+          <h2 className="mb-5 font-serif text-section-title font-light text-body">
+            Website Intake
+          </h2>
+          <div className="grid grid-cols-4 gap-5">
+            <DashboardCard
+              label="New Website Inquiries"
+              value={String(intakeQueueCounts.new)}
+              description="Not yet processed"
+              href="/relationships/intake?tab=new"
+            />
+            <DashboardCard
+              label="Needs Review"
+              value={String(intakeQueueCounts.needsReview)}
+              description="Identity or location unclear"
+              href="/relationships/intake?tab=needs_review"
+            />
+            <DashboardCard
+              label="Failed Intake Processing"
+              value={String(intakeQueueCounts.failed)}
+              description="Technical failures, retryable"
+              href="/relationships/intake?tab=failed"
             />
           </div>
         </section>

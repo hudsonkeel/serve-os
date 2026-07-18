@@ -1,11 +1,12 @@
 import Link from "next/link";
 
-export type RelationshipView = "actions" | "whiteboard" | "all";
+export type RelationshipView = "actions" | "whiteboard" | "all" | "intake";
 
 const VIEWS: { value: RelationshipView; label: string; href: string }[] = [
   { value: "actions", label: "Action Board", href: "/relationships/actions" },
   { value: "whiteboard", label: "Whiteboard", href: "/relationships/whiteboard" },
   { value: "all", label: "All Relationships", href: "/relationships" },
+  { value: "intake", label: "Website Intake", href: "/relationships/intake" },
 ];
 
 // Shared view switcher for the three Relationships surfaces (Part 12).

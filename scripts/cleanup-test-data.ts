@@ -92,7 +92,62 @@ async function cleanupRelationshipsByIds(relationshipIds: readonly string[]): Pr
   await deleteByColumnIn("relationship_service_opportunities", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_service_locations", "relationship_id", relationshipIds);
   await deleteByColumnIn("external_clients", "relationship_id", relationshipIds);
+
+  // intake_processing_records.relationship_id is `on delete set null`, not
+  // cascade (a processing record documents what happened even if its
+  // Relationship is later removed for a real, non-test reason) — so a
+  // marker-tagged Relationship's processing record must be deleted
+  // explicitly here rather than relying on the relationships delete below.
+  await deleteByColumnIn("intake_processing_records", "relationship_id", relationshipIds);
+
   await deleteByColumnIn("relationships", "id", relationshipIds);
+}
+
+// Serve Intake Intelligence Engine test data (docs/engineering/
+// TEST_DATA_HYGIENE.md + docs/design/SERVE_INTAKE_INTELLIGENCE_ENGINE.md):
+// website_intake_submissions has no test_marker column of its own (by
+// design — it's immutable provenance, not something normal application
+// code ever marks) — a verification script instead gives each synthetic
+// submission's `name` field a value containing the run marker, the same
+// "distinctly unique title" fallback TEST_DATA_HYGIENE.md already
+// establishes for resident_wellness_follow_ups. This sweep is marker-
+// driven from that name match, not from relationship_id, so it also
+// reaches recruiting-classified submissions (which never get a
+// relationship_id at all).
+async function cleanupIntakeTestData(marker: string): Promise<void> {
+  const { data: submissions, error } = await supabase
+    .from("website_intake_submissions")
+    .select("id")
+    .ilike("name", `%${marker}%`);
+  if (error) throw new Error(`Lookup by website_intake_submissions.name failed: ${error.message}`);
+
+  const submissionIds = (submissions ?? []).map((r) => r.id as string);
+  if (submissionIds.length === 0) {
+    console.log("No website_intake_submissions matched the marker — nothing to clean up.");
+    return;
+  }
+  console.log(`Website intake submissions to remove: ${submissionIds.join(", ")}`);
+
+  const { data: records } = await supabase
+    .from("intake_processing_records")
+    .select("id, relationship_id, recruiting_lead_id")
+    .in("source_submission_id", submissionIds);
+
+  const relationshipIds = (records ?? [])
+    .map((r) => r.relationship_id as string | null)
+    .filter((id): id is string => !!id);
+  const recruitingLeadIds = (records ?? [])
+    .map((r) => r.recruiting_lead_id as string | null)
+    .filter((id): id is string => !!id);
+
+  // Relationships created by the engine never got a test_marker of their
+  // own set here — cleanupRelationshipsByIds() cleans up by explicit ID
+  // list too, not only by marker lookup, so this still works even for a
+  // Relationship the marker-based sweep above wouldn't otherwise find.
+  await cleanupRelationshipsByIds(relationshipIds);
+  await deleteByColumnIn("recruiting_leads", "id", recruitingLeadIds);
+  await deleteByColumnIn("intake_processing_records", "source_submission_id", submissionIds);
+  await deleteByColumnIn("website_intake_submissions", "id", submissionIds);
 }
 
 async function cleanupByMarker(marker: string): Promise<void> {
@@ -103,6 +158,7 @@ async function cleanupByMarker(marker: string): Promise<void> {
 
   const relationshipIds = (data ?? []).map((r) => r.id as string);
   await cleanupRelationshipsByIds(relationshipIds);
+  await cleanupIntakeTestData(marker);
 
   if (!dryRun) {
     const { count } = await supabase
@@ -110,6 +166,12 @@ async function cleanupByMarker(marker: string): Promise<void> {
       .select("*", { count: "exact", head: true })
       .eq("test_marker", marker);
     console.log(`\nVerification: ${count ?? 0} relationships remain with test_marker = "${marker}" (expect 0).`);
+
+    const { count: submissionCount } = await supabase
+      .from("website_intake_submissions")
+      .select("*", { count: "exact", head: true })
+      .ilike("name", `%${marker}%`);
+    console.log(`Verification: ${submissionCount ?? 0} website_intake_submissions remain matching the marker (expect 0).`);
   }
 }
 

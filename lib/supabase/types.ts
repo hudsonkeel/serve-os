@@ -93,6 +93,79 @@ export interface Prospect {
 
 export type ProspectInsert = Partial<Omit<Prospect, "id" | "created_at">>;
 
+// Website Intake Submissions — the canonical raw intake source for the
+// Serve Intake Intelligence Engine (see
+// docs/design/SERVE_INTAKE_INTELLIGENCE_ENGINE.md). Immutable provenance:
+// the engine reads this table but never writes to it beyond the initial
+// insert (which happens outside serve-os, by the website's own intake
+// function). `form_payload` carries the full raw form submission
+// (including fields this table's normalized columns don't capture);
+// normalized columns are a convenience projection of the most common
+// fields, not a second source of truth independent of form_payload.
+export type WebsiteIntakeType =
+  | "family_care_inquiry"
+  | "professional_referral"
+  | "employment_interest"
+  | "outside_service_area";
+
+export interface WebsiteIntakeSubmission {
+  id: string;
+  created_at: string;
+  intake_type: string;
+  source: string;
+  status: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  zip: string | null;
+  community: string | null;
+  city: string | null;
+  form_payload: Record<string, unknown> | null;
+  outside_service_area: boolean;
+}
+
+// Intake Processing Records — the mutable operational-metadata layer the
+// Serve Intake Intelligence Engine writes (see
+// docs/design/SERVE_INTAKE_INTELLIGENCE_ENGINE.md). One row per source
+// submission (unique on intake_source + source_submission_id).
+export type IntakeProcessingStatus = "needs_review" | "processed" | "failed" | "not_qualified";
+
+export type IntakeClassificationValue =
+  | "resident_prospect"
+  | "external_prospect"
+  | "professional_relationship"
+  | "recruiting"
+  | "needs_review"
+  | "not_qualified";
+
+export interface IntakeProcessingRecord {
+  id: string;
+  intake_source: string;
+  source_submission_id: string;
+  source_table: string;
+  intake_type: string;
+  processing_status: IntakeProcessingStatus;
+  classification: IntakeClassificationValue | null;
+  confidence_score: number | null;
+  confidence_band: string | null;
+  reason_codes: string[];
+  processing_notes: string | null;
+  normalized_envelope: Record<string, unknown> | null;
+  relationship_id: string | null;
+  resident_id: string | null;
+  external_client_id: string | null;
+  recruiting_lead_id: string | null;
+  first_action_id: string | null;
+  processing_version: string;
+  processed_by: string;
+  processing_started_at: string | null;
+  processed_at: string | null;
+  last_error: string | null;
+  retry_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // Residents
 
 export type ServeRelationshipStatus =
