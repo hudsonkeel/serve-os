@@ -13,7 +13,7 @@ import {
 import { searchResidentsForLinking } from "@/lib/actions/relationships";
 import { reasonCodesToMissingFieldLabels } from "@/lib/intake/contactReadiness";
 import type { ResidentSearchResult } from "@/lib/data/relationships";
-import type { IntakeProcessingRecord, WebsiteIntakeSubmission } from "@/lib/supabase/types";
+import type { IntakeProcessingRecord, IntakeSubmission } from "@/lib/supabase/types";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Badge } from "@/components/ui/Badge";
 
@@ -198,7 +198,7 @@ function NeedsResolutionRow({ record }: { record: IntakeProcessingRecord }) {
   );
 }
 
-function NewSubmissionRow({ submission }: { submission: WebsiteIntakeSubmission }) {
+function NewSubmissionRow({ submission }: { submission: IntakeSubmission }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -242,7 +242,7 @@ function isQueueTab(value: string | undefined): value is QueueTab {
 }
 
 interface IntakeQueueWorkspaceProps {
-  newSubmissions: WebsiteIntakeSubmission[];
+  newSubmissions: IntakeSubmission[];
   records: IntakeProcessingRecord[];
   initialTab?: string;
 }

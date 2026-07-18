@@ -15,6 +15,11 @@ const PUBLIC_PATHS = [
   "/reset-password",
   "/get-started",
   "/careers",
+  // Server-to-server only (Database Webhook + scheduled reconciliation) —
+  // never a browser session. Each route verifies its own shared-secret
+  // header (INTAKE_INTERNAL_SECRET) rather than relying on cookie auth —
+  // see docs/integrations/WEBSITE_TO_SERVE_INTAKE_CONTRACT.md.
+  "/api/intake",
 ];
 
 function isPublicPath(pathname: string) {

@@ -105,7 +105,7 @@ async function cleanupRelationshipsByIds(relationshipIds: readonly string[]): Pr
 
 // Serve Intake Intelligence Engine test data (docs/engineering/
 // TEST_DATA_HYGIENE.md + docs/design/SERVE_INTAKE_INTELLIGENCE_ENGINE.md):
-// website_intake_submissions has no test_marker column of its own (by
+// intake_submissions has no test_marker column of its own (by
 // design — it's immutable provenance, not something normal application
 // code ever marks) — a verification script instead gives each synthetic
 // submission's `name` field a value containing the run marker, the same
@@ -116,14 +116,14 @@ async function cleanupRelationshipsByIds(relationshipIds: readonly string[]): Pr
 // relationship_id at all).
 async function cleanupIntakeTestData(marker: string): Promise<void> {
   const { data: submissions, error } = await supabase
-    .from("website_intake_submissions")
+    .from("intake_submissions")
     .select("id")
     .ilike("name", `%${marker}%`);
-  if (error) throw new Error(`Lookup by website_intake_submissions.name failed: ${error.message}`);
+  if (error) throw new Error(`Lookup by intake_submissions.name failed: ${error.message}`);
 
   const submissionIds = (submissions ?? []).map((r) => r.id as string);
   if (submissionIds.length === 0) {
-    console.log("No website_intake_submissions matched the marker — nothing to clean up.");
+    console.log("No intake_submissions matched the marker — nothing to clean up.");
     return;
   }
   console.log(`Website intake submissions to remove: ${submissionIds.join(", ")}`);
@@ -147,7 +147,7 @@ async function cleanupIntakeTestData(marker: string): Promise<void> {
   await cleanupRelationshipsByIds(relationshipIds);
   await deleteByColumnIn("recruiting_leads", "id", recruitingLeadIds);
   await deleteByColumnIn("intake_processing_records", "source_submission_id", submissionIds);
-  await deleteByColumnIn("website_intake_submissions", "id", submissionIds);
+  await deleteByColumnIn("intake_submissions", "id", submissionIds);
 }
 
 async function cleanupByMarker(marker: string): Promise<void> {
@@ -168,10 +168,10 @@ async function cleanupByMarker(marker: string): Promise<void> {
     console.log(`\nVerification: ${count ?? 0} relationships remain with test_marker = "${marker}" (expect 0).`);
 
     const { count: submissionCount } = await supabase
-      .from("website_intake_submissions")
+      .from("intake_submissions")
       .select("*", { count: "exact", head: true })
       .ilike("name", `%${marker}%`);
-    console.log(`Verification: ${submissionCount ?? 0} website_intake_submissions remain matching the marker (expect 0).`);
+    console.log(`Verification: ${submissionCount ?? 0} intake_submissions remain matching the marker (expect 0).`);
   }
 }
 

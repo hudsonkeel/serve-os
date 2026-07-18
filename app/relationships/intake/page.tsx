@@ -3,7 +3,7 @@ import { RelationshipViewTabs } from "@/components/relationships/RelationshipVie
 import { IntakeQueueWorkspace } from "@/components/relationships/IntakeQueueWorkspace";
 import {
   getIntakeProcessingRecords,
-  getUnprocessedWebsiteIntakeSubmissions,
+  getUnprocessedIntakeSubmissions,
 } from "@/lib/data/intakeEngine";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export default async function IntakeQueuePage({
 }) {
   const { tab } = await searchParams;
   const [newSubmissions, records] = await Promise.all([
-    getUnprocessedWebsiteIntakeSubmissions(),
+    getUnprocessedIntakeSubmissions(),
     getIntakeProcessingRecords(),
   ]);
 

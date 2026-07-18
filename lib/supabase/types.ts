@@ -108,7 +108,7 @@ export type WebsiteIntakeType =
   | "employment_interest"
   | "outside_service_area";
 
-export interface WebsiteIntakeSubmission {
+export interface IntakeSubmission {
   id: string;
   created_at: string;
   intake_type: string;
@@ -122,6 +122,59 @@ export interface WebsiteIntakeSubmission {
   city: string | null;
   form_payload: Record<string, unknown> | null;
   outside_service_area: boolean;
+  // Caller-supplied idempotency key (Scope J) — distinct from `id`, which
+  // is server-generated. Null for rows created before this key existed.
+  client_submission_id: string | null;
+}
+
+// Conversation telemetry (Scope J) — optional product-experience layer for
+// interactive intake journeys (e.g. the /get-started wizards). See
+// docs/integrations/WEBSITE_TO_SERVE_INTAKE_CONTRACT.md.
+export type ConversationContactCaptureStatus =
+  | "none"
+  | "partial_contact_captured"
+  | "consented_for_followup"
+  | "completed";
+
+export interface ConversationSession {
+  id: string;
+  session_key: string;
+  experience_type: string;
+  source: string;
+  channel_version: string;
+  started_at: string;
+  last_activity_at: string;
+  completed_at: string | null;
+  highest_step_reached: string | null;
+  final_submission_id: string | null;
+  contact_capture_status: ConversationContactCaptureStatus;
+  draft_contact_name: string | null;
+  draft_contact_phone: string | null;
+  draft_contact_email: string | null;
+  draft_inquiry_summary: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ConversationEventType =
+  | "conversation_started"
+  | "step_viewed"
+  | "step_completed"
+  | "contact_information_entered"
+  | "validation_failed"
+  | "back_navigation"
+  | "submission_attempted"
+  | "submission_succeeded"
+  | "submission_failed";
+
+export interface ConversationEvent {
+  id: string;
+  session_id: string;
+  event_type: ConversationEventType;
+  step_key: string | null;
+  step_sequence: number | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
 }
 
 // Intake Processing Records — the mutable operational-metadata layer the

@@ -4,13 +4,13 @@ import {
   findPossibleDuplicateRelationship,
   findResidentMatchCandidates,
   getIntakeProcessingRecordById,
-  getUnprocessedWebsiteIntakeSubmissions,
-  getWebsiteIntakeSubmissionById,
+  getUnprocessedIntakeSubmissions,
+  getIntakeSubmissionById,
   processWebsiteIntakeSubmission,
   recordIntakeProcessingFailure,
   type ProcessWebsiteIntakeInput,
 } from "@/lib/data/intakeEngine";
-import { normalizeWebsiteIntakeSubmission } from "@/lib/intake/envelope";
+import { normalizeIntakeSubmission } from "@/lib/intake/envelope";
 import { classifyIntakeSubmission } from "@/lib/intake/classification";
 import { buildFollowUpAgenda, reasonCodesToMissingFieldLabels } from "@/lib/intake/contactReadiness";
 import { matchResident } from "@/lib/intake/residentMatching";
@@ -19,6 +19,7 @@ import { mapSupportTypeToServiceOpportunity } from "@/lib/intake/serviceOpportun
 import { joinName } from "@/lib/intake/nameUtils";
 import type { IntakeEnvelope } from "@/lib/intake/types";
 import type { IntakeProcessingRecord } from "@/lib/supabase/types";
+import { emitEvent } from "@/lib/notifications";
 
 // The Serve Intake Intelligence Engine's server-action entry points — see
 // docs/design/SERVE_INTAKE_INTELLIGENCE_ENGINE.md. `processIntakeSubmission`
@@ -200,14 +201,57 @@ async function buildDecidedInput(
   };
 }
 
+// Scope J (Production Intake Unification): recruiting notifications used
+// to fire from the old direct-write saveRecruitingLead() action; now that
+// recruiting_leads is created only by this engine's recruiting
+// classification (triggered asynchronously by a webhook, not synchronously
+// from the applicant's own request), this is the one place left to fire
+// them. Best-effort and non-blocking — a notification failure must never
+// fail intake processing itself. Fires once per successful recruiting-
+// classified processing call; since automatic processing only runs once
+// per submission (idempotency short-circuit in the RPC), this does not
+// duplicate under normal operation — a manual staff force-reprocess is the
+// one edge case that could re-send it, an acceptable tradeoff against
+// silently never notifying at all.
+async function notifyIfNewRecruitingLead(
+  decided: ProcessWebsiteIntakeInput,
+  record: IntakeProcessingRecord | undefined
+): Promise<void> {
+  if (decided.classification !== "recruiting" || !record?.recruiting_lead_id) return;
+  if (!decided.recruitingFirstName || !decided.recruitingLastName) return;
+
+  const role = decided.recruitingRole === "managing_director" ? "managing_director" : "caregiver";
+
+  try {
+    await emitEvent({
+      type: role === "caregiver" ? "recruiting_lead.caregiver_created" : "recruiting_lead.md_created",
+      payload: {
+        leadId: record.recruiting_lead_id,
+        role,
+        firstName: decided.recruitingFirstName,
+        lastName: decided.recruitingLastName,
+        phone: decided.recruitingPhone ?? undefined,
+        email: decided.recruitingEmail ?? undefined,
+        zipCode: decided.recruitingZip ?? undefined,
+        cityState: decided.recruitingCityState ?? undefined,
+        linkedinUrl: decided.recruitingLinkedin ?? undefined,
+        resumeFilename: decided.recruitingResumeFilename ?? undefined,
+        message: decided.recruitingMessage ?? undefined,
+      },
+    });
+  } catch (err) {
+    console.error("[intakeEngine:notifyIfNewRecruitingLead:error]", err);
+  }
+}
+
 export async function processIntakeSubmission(
   submissionId: string
 ): Promise<{ record?: IntakeProcessingRecord; error?: string }> {
-  const submission = await getWebsiteIntakeSubmissionById(submissionId);
+  const submission = await getIntakeSubmissionById(submissionId);
   if (!submission) return { error: "Submission not found." };
 
   try {
-    const envelope = normalizeWebsiteIntakeSubmission(submission);
+    const envelope = normalizeIntakeSubmission(submission);
     const decided = await buildDecidedInput(envelope, false);
     const result = await processWebsiteIntakeSubmission(decided);
 
@@ -215,6 +259,8 @@ export async function processIntakeSubmission(
       await recordIntakeProcessingFailure(submissionId, submission.intake_type, result.error);
       return { error: result.error };
     }
+
+    await notifyIfNewRecruitingLead(decided, result.record);
 
     return { record: result.record };
   } catch (err) {
@@ -228,7 +274,7 @@ export async function processAllUnprocessedIntakeSubmissions(): Promise<{
   processed: number;
   failed: number;
 }> {
-  const submissions = await getUnprocessedWebsiteIntakeSubmissions();
+  const submissions = await getUnprocessedIntakeSubmissions();
   let processed = 0;
   let failed = 0;
 
@@ -261,10 +307,10 @@ export async function linkExistingResidentForReview(
 ): Promise<{ error?: string }> {
   const record = await getIntakeProcessingRecordById(processingRecordId);
   if (!record) return { error: "Processing record not found." };
-  const submission = await getWebsiteIntakeSubmissionById(record.source_submission_id);
+  const submission = await getIntakeSubmissionById(record.source_submission_id);
   if (!submission) return { error: "Original submission not found." };
 
-  const envelope = normalizeWebsiteIntakeSubmission(submission);
+  const envelope = normalizeIntakeSubmission(submission);
   const decided = await buildDecidedInput(envelope, true, {
     classification: "resident_prospect",
     residentId,
@@ -280,10 +326,10 @@ export async function dismissIntakeAsNotQualified(
 ): Promise<{ error?: string }> {
   const record = await getIntakeProcessingRecordById(processingRecordId);
   if (!record) return { error: "Processing record not found." };
-  const submission = await getWebsiteIntakeSubmissionById(record.source_submission_id);
+  const submission = await getIntakeSubmissionById(record.source_submission_id);
   if (!submission) return { error: "Original submission not found." };
 
-  const envelope = normalizeWebsiteIntakeSubmission(submission);
+  const envelope = normalizeIntakeSubmission(submission);
   const decided = await buildDecidedInput(envelope, true, {
     classification: "not_qualified",
     extraReasonCodes: ["STAFF_DISMISSED", `DISMISSAL_REASON: ${reason}`],

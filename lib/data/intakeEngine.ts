@@ -1,7 +1,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import type {
   IntakeProcessingRecord,
-  WebsiteIntakeSubmission,
+  IntakeSubmission,
 } from "@/lib/supabase/types";
 import type { ResidentMatchCandidate } from "@/lib/intake/types";
 
@@ -11,28 +11,32 @@ import type { ResidentMatchCandidate } from "@/lib/intake/types";
 // `record_intake_processing_failure()` RPCs
 // (supabase/migrations/20260721000000_create_intake_intelligence_engine.sql)
 // — this file never writes to `relationships`, `residents`,
-// `external_clients`, or `recruiting_leads` directly.
+// `external_clients`, or `recruiting_leads` directly. The `intake_submissions`
+// table itself (renamed from `website_intake_submissions` in Scope J) is
+// written to exclusively by the `accept_intake_submission()` RPC, called
+// only by the `intake-submit` Supabase Edge Function — this file only ever
+// reads it.
 
-export async function getWebsiteIntakeSubmissionById(
+export async function getIntakeSubmissionById(
   id: string
-): Promise<WebsiteIntakeSubmission | null> {
+): Promise<IntakeSubmission | null> {
   const supabase = createServerClient();
   const { data, error } = await supabase
-    .from("website_intake_submissions")
+    .from("intake_submissions")
     .select("*")
     .eq("id", id)
-    .maybeSingle<WebsiteIntakeSubmission>();
+    .maybeSingle<IntakeSubmission>();
 
   if (error) {
-    console.error("[intakeEngine:getWebsiteIntakeSubmissionById:error]", { id, message: error.message });
+    console.error("[intakeEngine:getIntakeSubmissionById:error]", { id, message: error.message });
     return null;
   }
   return data;
 }
 
-export async function getUnprocessedWebsiteIntakeSubmissions(
+export async function getUnprocessedIntakeSubmissions(
   limit = 50
-): Promise<WebsiteIntakeSubmission[]> {
+): Promise<IntakeSubmission[]> {
   const supabase = createServerClient();
   const { data: processed, error: processedError } = await supabase
     .from("intake_processing_records")
@@ -41,14 +45,14 @@ export async function getUnprocessedWebsiteIntakeSubmissions(
     .neq("processing_status", "failed");
 
   if (processedError) {
-    console.error("[intakeEngine:getUnprocessedWebsiteIntakeSubmissions:error]", processedError.message);
+    console.error("[intakeEngine:getUnprocessedIntakeSubmissions:error]", processedError.message);
     return [];
   }
 
   const processedIds = (processed ?? []).map((r) => r.source_submission_id as string);
 
   let query = supabase
-    .from("website_intake_submissions")
+    .from("intake_submissions")
     .select("*")
     .order("created_at", { ascending: true })
     .limit(limit);
@@ -59,10 +63,10 @@ export async function getUnprocessedWebsiteIntakeSubmissions(
 
   const { data, error } = await query;
   if (error) {
-    console.error("[intakeEngine:getUnprocessedWebsiteIntakeSubmissions:error]", error.message);
+    console.error("[intakeEngine:getUnprocessedIntakeSubmissions:error]", error.message);
     return [];
   }
-  return (data as WebsiteIntakeSubmission[] | null) ?? [];
+  return (data as IntakeSubmission[] | null) ?? [];
 }
 
 export async function getIntakeProcessingRecords(
@@ -116,7 +120,7 @@ export interface IntakeQueueCounts {
 export async function getIntakeQueueCounts(): Promise<IntakeQueueCounts> {
   const supabase = createServerClient();
   const [{ count: totalSubmissions }, { data: statusRows }] = await Promise.all([
-    supabase.from("website_intake_submissions").select("*", { count: "exact", head: true }),
+    supabase.from("intake_submissions").select("*", { count: "exact", head: true }),
     supabase.from("intake_processing_records").select("processing_status, classification").eq("intake_source", "website"),
   ]);
 

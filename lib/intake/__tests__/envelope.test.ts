@@ -1,8 +1,8 @@
 // Pure-function tests for lib/intake/envelope.ts. Run with:
 //   npm run test:intake
 import assert from "node:assert/strict";
-import { normalizeWebsiteIntakeSubmission } from "../envelope.ts";
-import type { WebsiteIntakeSubmission } from "../../supabase/types.ts";
+import { normalizeIntakeSubmission } from "../envelope.ts";
+import type { IntakeSubmission } from "../../supabase/types.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
 const tests: Test[] = [];
@@ -10,7 +10,7 @@ function test(name: string, fn: Test["fn"]) {
   tests.push({ name, fn });
 }
 
-function makeRow(overrides: Partial<WebsiteIntakeSubmission> = {}): WebsiteIntakeSubmission {
+function makeRow(overrides: Partial<IntakeSubmission> = {}): IntakeSubmission {
   return {
     id: "sub-1",
     created_at: "2026-07-17T12:00:00.000Z",
@@ -25,6 +25,7 @@ function makeRow(overrides: Partial<WebsiteIntakeSubmission> = {}): WebsiteIntak
     city: null,
     form_payload: null,
     outside_service_area: false,
+    client_submission_id: null,
     ...overrides,
   };
 }
@@ -38,7 +39,7 @@ test("1. family_care_inquiry with care-for=myself: submitter becomes prospective
     community: "Private home in Frisco or surrounding area",
     form_payload: { "care-for": "myself", message: "Need help", "form-name": "family-consultation" },
   });
-  const envelope = normalizeWebsiteIntakeSubmission(row);
+  const envelope = normalizeIntakeSubmission(row);
   assert.deepEqual(envelope.prospectiveClient, {
     firstName: "Jennifer",
     lastName: "Smith",
@@ -55,7 +56,7 @@ test("2. family_care_inquiry with care-for=someone else: prospective client iden
     phone: "5551234567",
     form_payload: { "care-for": "A parent or family member" },
   });
-  const envelope = normalizeWebsiteIntakeSubmission(row);
+  const envelope = normalizeIntakeSubmission(row);
   assert.deepEqual(envelope.prospectiveClient, {
     firstName: null,
     lastName: null,
@@ -65,6 +66,27 @@ test("2. family_care_inquiry with care-for=someone else: prospective client iden
   });
   assert.equal(envelope.primaryContact.isProspectiveClient, false);
   assert.equal(envelope.primaryContact.fullName, "Jennifer Smith");
+});
+
+test("2b. (Scope J) care-for=someone else, with an explicit care_recipient name -> used, not discarded", () => {
+  const row = makeRow({
+    name: "Jennifer Smith",
+    phone: "5551234567",
+    form_payload: {
+      "care-for": "A parent or family member",
+      care_recipient_first_name: "Margaret",
+      care_recipient_last_name: "Smith",
+    },
+  });
+  const envelope = normalizeIntakeSubmission(row);
+  assert.deepEqual(envelope.prospectiveClient, {
+    firstName: "Margaret",
+    lastName: "Smith",
+    fullName: "Margaret Smith",
+    phone: null,
+    email: null,
+  });
+  assert.equal(envelope.primaryContact.isProspectiveClient, false);
 });
 
 test("3. professional_referral: organization/title/reason/referral-details mapped", () => {
@@ -79,7 +101,7 @@ test("3. professional_referral: organization/title/reason/referral-details mappe
       "referral-details": "John needs help",
     },
   });
-  const envelope = normalizeWebsiteIntakeSubmission(row);
+  const envelope = normalizeIntakeSubmission(row);
   assert.equal(envelope.referralContext.organization, "Test SNF");
   assert.equal(envelope.referralContext.title, "Discharge Planner");
   assert.equal(envelope.referralContext.reason, "Patient / client referral");
@@ -98,7 +120,7 @@ test("4. employment_interest: full-name split, resume filename, role interest", 
       resume: { filename: "RESUME.pdf", size: 100, type: "application/pdf" },
     },
   });
-  const envelope = normalizeWebsiteIntakeSubmission(row);
+  const envelope = normalizeIntakeSubmission(row);
   assert.equal(envelope.primaryContact.firstName, "Test");
   assert.equal(envelope.primaryContact.lastName, "MD");
   assert.equal(envelope.employmentContext.roleInterest, "managing_director");
@@ -108,39 +130,39 @@ test("4. employment_interest: full-name split, resume filename, role interest", 
 
 test("5. honeypot field triggers metadata flag", () => {
   const row = makeRow({ form_payload: { "bot-field": "spammer-filled-this" } });
-  const envelope = normalizeWebsiteIntakeSubmission(row);
+  const envelope = normalizeIntakeSubmission(row);
   assert.equal(envelope.metadata.honeypotTriggered, true);
 });
 
 test("6. empty honeypot does not trigger metadata flag", () => {
   const row = makeRow({ form_payload: { "bot-field": "" } });
-  const envelope = normalizeWebsiteIntakeSubmission(row);
+  const envelope = normalizeIntakeSubmission(row);
   assert.equal(envelope.metadata.honeypotTriggered, false);
 });
 
 test("7. missing form_payload does not throw (malformed/legacy row)", () => {
   const row = makeRow({ form_payload: null });
-  const envelope = normalizeWebsiteIntakeSubmission(row);
+  const envelope = normalizeIntakeSubmission(row);
   assert.equal(envelope.careContext.message, null);
   assert.deepEqual(envelope.metadata.formPayloadKeys, []);
 });
 
 test("8. unknown/unexpected form_payload keys are preserved in metadata, not dropped silently", () => {
   const row = makeRow({ form_payload: { "some-future-field": "value", message: "hi" } });
-  const envelope = normalizeWebsiteIntakeSubmission(row);
+  const envelope = normalizeIntakeSubmission(row);
   assert.ok(envelope.metadata.formPayloadKeys.includes("some-future-field"));
 });
 
 test("9. sourceSubmissionId and rawSubmissionReference both point at the immutable row id", () => {
   const row = makeRow({ id: "abc-123" });
-  const envelope = normalizeWebsiteIntakeSubmission(row);
+  const envelope = normalizeIntakeSubmission(row);
   assert.equal(envelope.sourceSubmissionId, "abc-123");
   assert.equal(envelope.rawSubmissionReference, "abc-123");
 });
 
 test("10. outside_service_area flag is carried into serviceLocation", () => {
   const row = makeRow({ outside_service_area: true });
-  const envelope = normalizeWebsiteIntakeSubmission(row);
+  const envelope = normalizeIntakeSubmission(row);
   assert.equal(envelope.serviceLocation.outsideServiceArea, true);
 });
 

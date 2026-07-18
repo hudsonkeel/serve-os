@@ -1,8 +1,8 @@
-import type { WebsiteIntakeSubmission } from "@/lib/supabase/types";
-import { splitFullName } from "./nameUtils.ts";
+import type { IntakeSubmission } from "@/lib/supabase/types";
+import { joinName, splitFullName } from "./nameUtils.ts";
 import type { IntakeEnvelope } from "./types.ts";
 
-// Website adapter — translates the actual `website_intake_submissions`
+// Website adapter — translates the actual `intake_submissions`
 // row shape (see docs/design/SERVE_INTAKE_INTELLIGENCE_ENGINE.md, "Field
 // mapping inventory," for the live field-by-field justification of every
 // line below) into the source-agnostic canonical envelope. This is the
@@ -28,7 +28,7 @@ function readResumeFilename(payload: Record<string, unknown> | null): string | n
 // referral forms both collect one combined "name" field, not separate
 // first/last (see docs/design/SERVE_INTAKE_INTELLIGENCE_ENGINE.md) — the
 // employment form is the one exception, collecting "full-name" instead.
-function submitterName(row: WebsiteIntakeSubmission, payload: Record<string, unknown> | null): string | null {
+function submitterName(row: IntakeSubmission, payload: Record<string, unknown> | null): string | null {
   return row.name ?? readString(payload, "full-name") ?? readString(payload, "name");
 }
 
@@ -39,16 +39,33 @@ function submitterName(row: WebsiteIntakeSubmission, payload: Record<string, unk
 // name is not a separate field on the current form at all, so it cannot
 // be deterministically extracted (see PROSPECTIVE_CLIENT_NAME_NOT_COLLECTED
 // in classification.ts).
-export function normalizeWebsiteIntakeSubmission(row: WebsiteIntakeSubmission): IntakeEnvelope {
+export function normalizeIntakeSubmission(row: IntakeSubmission): IntakeEnvelope {
   const payload = row.form_payload;
   const careFor = readString(payload, "care-for");
   const submitter = submitterName(row, payload);
   const submitterSplit = splitFullName(submitter);
 
+  // Scope J (Production Intake Unification): unlike the website's basic
+  // form, Serve OS's own /get-started wizard collects an explicit care-
+  // recipient name for the non-self case — when present, use it rather
+  // than nulling it out. Absent for website-sourced submissions (the field
+  // simply won't exist in form_payload), so this changes nothing for the
+  // website path; it's a strictly additive, backward-compatible read.
+  const explicitRecipientFirst = readString(payload, "care_recipient_first_name");
+  const explicitRecipientLast = readString(payload, "care_recipient_last_name");
+
   const isProspectiveClientSelf = careFor === "myself" || careFor === "self";
   const prospectiveClient = isProspectiveClientSelf
     ? { ...submitterSplit, fullName: submitter, phone: row.phone, email: row.email }
-    : { firstName: null, lastName: null, fullName: null, phone: null, email: null };
+    : explicitRecipientFirst || explicitRecipientLast
+      ? {
+          firstName: explicitRecipientFirst,
+          lastName: explicitRecipientLast,
+          fullName: joinName(explicitRecipientFirst, explicitRecipientLast),
+          phone: null,
+          email: null,
+        }
+      : { firstName: null, lastName: null, fullName: null, phone: null, email: null };
 
   const honeypot = readString(payload, "bot-field");
 
