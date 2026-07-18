@@ -100,56 +100,19 @@ function buildRecruitingLeadHtml(
   `;
 }
 
-function buildProspectHtml(p: Record<string, unknown>): string {
-  const submitted = new Date().toLocaleString("en-US", {
-    timeZone: "America/Chicago",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-
-  const rows = [
-    p.name ? tableRow("Name", esc(String(p.name))) : "",
-    p.contactPhone ? tableRow("Phone", esc(String(p.contactPhone))) : "",
-    p.contactEmail ? tableRow("Email", esc(String(p.contactEmail))) : "",
-    p.zipCode ? tableRow("ZIP", esc(String(p.zipCode))) : "",
-    p.supportType ? tableRow("Support Type", esc(String(p.supportType))) : "",
-  ]
-    .filter(Boolean)
-    .join("");
-
-  const rawUrl = process.env.SERVE_APP_URL?.trim().replace(/\/+$/, "");
-  const safeUrl =
-    rawUrl?.startsWith("https://") || rawUrl?.startsWith("http://")
-      ? rawUrl
-      : undefined;
-  const viewLink = safeUrl
-    ? `<p style="margin-top:16px"><a href="${safeUrl}/prospects" style="color:#C9A96E;text-decoration:underline">View in Serve OS &rarr;</a></p>`
-    : "";
-
-  return `
-    <div style="font-family:sans-serif;color:#2F3F57;max-width:520px">
-      <p style="margin:0 0 16px;font-size:14px">
-        A new <b>care inquiry</b> was completed on ${submitted} CT.
-      </p>
-      <table style="border-collapse:collapse;width:100%">${rows}</table>
-      ${viewLink}
-      <p style="margin-top:24px;font-size:11px;color:#A9B3BC">
-        Sent by Serve OS${process.env.SERVE_NOTIFICATION_REPLY_TO ? " — reply to this email to respond." : " — do not reply to this address."}
-      </p>
-    </div>
-  `;
-}
-
 // ─── Rules ───────────────────────────────────────────────────────────────────
 //
 // Event                              Recipients env var           Channel
 // ─────────────────────────────────  ───────────────────────────  ───────
 // recruiting_lead.caregiver_created  SERVE_NOTIFY_RECRUITING      email
 // recruiting_lead.md_created         SERVE_NOTIFY_LEADERSHIP      email
-// prospect.completed                 SERVE_NOTIFY_CARE_PROSPECTS  email
+//
+// Scope J (Production Intake Unification) retired the never-finished
+// `prospect.completed`/`prospect.created` rules — `prospects` is no longer
+// written to by any active intake path. A Contact-Ready-care-inquiry
+// notification (the thing `prospect.completed` was reaching for) is a
+// reasonable follow-up but out of scope to build here; SERVE_NOTIFY_CARE_PROSPECTS
+// is left defined in .env.example for whenever that's picked up.
 
 export const RULES: NotificationRule[] = [
   {
@@ -168,19 +131,4 @@ export const RULES: NotificationRule[] = [
       `[Serve] New MD Interest — ${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
     getBody: (p) => buildRecruitingLeadHtml(p, "Managing Director"),
   },
-  // ─── Prospect rules (wire when ready) ──────────────────────────────────────
-  {
-    event: "prospect.completed",
-    channel: "email",
-    getRecipients: () => parseRecipients(process.env.SERVE_NOTIFY_CARE_PROSPECTS),
-    getSubject: (p) => `[Serve] New Care Inquiry - ${p.name ?? "Unknown"}`,
-    getBody: (p) => buildProspectHtml(p),
-  },
-  // {
-  //   event: "prospect.created",
-  //   channel: "email",
-  //   getRecipients: () => parseRecipients(process.env.SERVE_NOTIFY_CARE_PROSPECTS),
-  //   getSubject: (p) => `[Serve] New Prospect — ${p.name ?? "Unknown"}`,
-  //   getBody: (p) => buildProspectHtml(p),
-  // },
 ];

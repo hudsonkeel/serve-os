@@ -7,14 +7,13 @@
 export type NotificationEventType =
   // ─── Recruiting ───────────────────────────────────────────────
   | "recruiting_lead.caregiver_created"
-  | "recruiting_lead.md_created"
-  // ─── Prospects ────────────────────────────────────────────────
-  | "prospect.created"
-  | "prospect.completed";
+  | "recruiting_lead.md_created";
   // Future:
   // | "assessment.completed"
   // | "proposal.generated"
   // | "client.created"
+  // | "intake.contact_ready" — the Scope J successor to the retired
+  //   prospect.completed rule, not yet built.
 
 // ─── Payload shapes ─────────────────────────────────────────────
 
@@ -36,22 +35,11 @@ export interface RecruitingLeadPayload {
   message?: string;
 }
 
-export interface ProspectPayload {
-  prospectId: string;
-  name: string;
-  contactEmail?: string;
-  contactPhone?: string;
-  zipCode?: string;
-  supportType?: string;
-}
-
 // ─── Event union ────────────────────────────────────────────────
 
 export type NotificationEvent =
   | { type: "recruiting_lead.caregiver_created"; payload: RecruitingLeadPayload }
-  | { type: "recruiting_lead.md_created"; payload: RecruitingLeadPayload }
-  | { type: "prospect.created"; payload: ProspectPayload }
-  | { type: "prospect.completed"; payload: ProspectPayload };
+  | { type: "recruiting_lead.md_created"; payload: RecruitingLeadPayload };
 
 // ─── Channel types ──────────────────────────────────────────────
 

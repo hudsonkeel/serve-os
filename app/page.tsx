@@ -37,13 +37,13 @@ export default async function DashboardPage() {
     { label: "Residents",        value: String(metrics.totalResidents),   description: community.communityName, accent: true, href: "/residents" },
     { label: "Serve Clients",    value: String(metrics.serveClients),     description: "Active Serve relationships",         href: "/residents?tab=active_clients" },
     { label: "Active Prospects", value: String(activeProspectRelationships), description: "Resident & external prospect Relationships", href: "/relationships" },
-    { label: "Needs Follow-up",  value: String(metrics.requiresFollowUp), description: "Family outreach overdue",            href: "/prospects" },
+    { label: "Needs Follow-up",  value: String(metrics.requiresFollowUp), description: "Family outreach overdue",            href: "/relationships" },
   ];
 
   // Relationship Pipeline: where families and prospects stand in the funnel.
   const relationshipPipeline = [
-    { label: "Pending Assessments",        value: String(metrics.pendingAssessments),       description: "Awaiting scheduling or completion", href: "/prospects" },
-    { label: "Families Awaiting Proposal", value: String(metrics.familiesAwaitingProposal), description: "Ready to move forward",              href: "/prospects" },
+    { label: "Pending Assessments",        value: String(metrics.pendingAssessments),       description: "Awaiting scheduling or completion", href: "/relationships" },
+    { label: "Families Awaiting Proposal", value: String(metrics.familiesAwaitingProposal), description: "Ready to move forward",              href: "/relationships" },
     { label: "Birthdays This Week",        value: String(metrics.birthdaysThisWeek),        description: "Resident birthdays connected later" },
   ];
 

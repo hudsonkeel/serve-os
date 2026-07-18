@@ -14,11 +14,12 @@ import {
 import { getLastObservedAtByResident } from "@/lib/data/wellnessNotes";
 import {
   getActiveRelationshipSummariesByResident,
+  getRelationshipPipelineCounts,
+  RelationshipPipelineCounts,
   ResidentRelationshipSummary,
 } from "@/lib/data/relationships";
 import { collapseLegacyProspectStatus, deriveServeRelationshipStatus } from "@/lib/residents/search";
 import {
-  Prospect,
   Resident,
   ResidentContactImport,
   ResidentRelationshipImport,
@@ -112,11 +113,9 @@ export interface CommunityMetricsData {
   communityName: string;
   metrics: CommunityMetricCounts;
   residentTabCounts: Record<ResidentTabValue, number>;
-  prospects: Prospect[];
   residentRecords: CommunityResidentRecord[];
   error?: string;
   residentsError?: string;
-  prospectsError?: string;
 }
 
 function displayName(first: string | null, last: string | null, fallback: string) {
@@ -577,7 +576,7 @@ export function mapResidentToRecord(
 
 function buildMetrics(
   records: CommunityResidentRecord[],
-  prospects: Prospect[],
+  pipelineCounts: RelationshipPipelineCounts,
   wellnessDashboardCounts: WellnessFollowUpDashboardCounts
 ): CommunityMetricCounts {
   return {
@@ -589,15 +588,9 @@ function buildMetrics(
       .length,
     wellnessFollowUpsDueOrOverdue: wellnessDashboardCounts.dueOrOverdue,
     wellnessFollowUpsDueThisWeek: wellnessDashboardCounts.dueThisWeek,
-    requiresFollowUp: prospects.filter((prospect) =>
-      ["new", "reviewing"].includes(prospect.status)
-    ).length,
-    pendingAssessments: prospects.filter(
-      (prospect) => prospect.status === "assessment_scheduled"
-    ).length,
-    familiesAwaitingProposal: prospects.filter(
-      (prospect) => prospect.status === "contacted"
-    ).length,
+    requiresFollowUp: pipelineCounts.requiresFollowUp,
+    pendingAssessments: pipelineCounts.pendingAssessments,
+    familiesAwaitingProposal: pipelineCounts.familiesAwaitingProposal,
     formerClients: records.filter(
       (record) => record.serveRelationshipStatus === "former_client"
     ).length,
@@ -691,38 +684,12 @@ async function fetchContactImports(): Promise<ResidentContactImport[]> {
   return data ?? [];
 }
 
-async function fetchSupabaseProspects(): Promise<{
-  prospects: Prospect[];
-  error?: string;
-}> {
-  const supabase = createServerClient();
-  const { data, error } = await supabase
-    .from("prospects")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("[getCommunityMetrics:prospects:error]", {
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-    });
-    return {
-      prospects: [],
-      error: "Failed to load live Supabase prospects.",
-    };
-  }
-
-  return { prospects: data ?? [] };
-}
-
 export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
   await connection();
 
   const { residents, error: residentsError } = await fetchSupabaseResidents();
   const [
-    { prospects, error: prospectsError },
+    pipelineCounts,
     relationshipImports,
     contactImports,
     preferredNamesByResident,
@@ -731,7 +698,7 @@ export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
     wellnessDashboardCounts,
     activeRelationshipsByResident,
   ] = await Promise.all([
-    fetchSupabaseProspects(),
+    getRelationshipPipelineCounts(),
     fetchRelationshipImports(),
     fetchContactImports(),
     getPreferredNamesByResident(),
@@ -770,17 +737,15 @@ export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
       activeRelationshipsByResident.get(resident.id) ?? []
     )
   );
-  const metrics = buildMetrics(residentRecords, prospects, wellnessDashboardCounts);
+  const metrics = buildMetrics(residentRecords, pipelineCounts, wellnessDashboardCounts);
 
   return {
     communityName: residents[0]?.community_name || COMMUNITY.name,
     metrics,
     residentTabCounts: buildResidentTabCounts(residentRecords),
-    prospects,
     residentRecords,
-    error: residentsError || prospectsError,
+    error: residentsError,
     residentsError,
-    prospectsError,
   };
 }
 

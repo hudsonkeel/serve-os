@@ -55,6 +55,45 @@ export async function getActiveProspectRelationshipCount(): Promise<number> {
   return count ?? 0;
 }
 
+export interface RelationshipPipelineCounts {
+  // Newly arrived, not yet contacted — the Relationship-based replacement
+  // for the legacy prospects.status in ('new', 'reviewing') Dashboard
+  // metric (Scope J, Production Intake Unification).
+  requiresFollowUp: number;
+  pendingAssessments: number;
+  familiesAwaitingProposal: number;
+}
+
+// Dashboard pipeline counts, sourced entirely from relationships.stage —
+// the canonical replacement for the legacy prospects-table metrics in
+// lib/data/communityMetrics.ts#buildMetrics(). See docs/integrations/
+// WEBSITE_TO_SERVE_INTAKE_CONTRACT.md and docs/decisions for why prospects
+// no longer backs the Dashboard.
+export async function getRelationshipPipelineCounts(): Promise<RelationshipPipelineCounts> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("relationships")
+    .select("stage")
+    .eq("status", "active");
+
+  if (error) {
+    console.error("[relationships:getRelationshipPipelineCounts:error]", {
+      message: error.message,
+      code: error.code,
+    });
+    return { requiresFollowUp: 0, pendingAssessments: 0, familiesAwaitingProposal: 0 };
+  }
+
+  const stages = (data ?? []).map((row) => row.stage as string);
+
+  return {
+    requiresFollowUp: stages.filter((stage) => ["new_inquiry", "contact_attempted"].includes(stage)).length,
+    pendingAssessments: stages.filter((stage) => stage === "assessment_scheduled").length,
+    familiesAwaitingProposal: stages.filter((stage) => ["proposal_in_progress", "proposal_sent"].includes(stage))
+      .length,
+  };
+}
+
 export async function getResidentDisplayNameById(residentId: string): Promise<string | null> {
   const supabase = createServerClient();
   const { data, error } = await supabase
