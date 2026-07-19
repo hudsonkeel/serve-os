@@ -1,8 +1,8 @@
-import { NotificationEvent } from "./types";
-import { RULES } from "./rules";
-import { sendEmail } from "./channels/email";
+import type { NotificationEvent } from "./types.ts";
+import { RULES } from "./rules.ts";
+import { sendEmail } from "./channels/email.ts";
 
-export type { NotificationEventType, NotificationEvent } from "./types";
+export type { NotificationEventType, NotificationEvent } from "./types.ts";
 
 // emitEvent is the single entry point for the Serve Notification Service.
 //

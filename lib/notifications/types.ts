@@ -7,7 +7,9 @@
 export type NotificationEventType =
   // ─── Recruiting ───────────────────────────────────────────────
   | "recruiting_lead.caregiver_created"
-  | "recruiting_lead.md_created";
+  | "recruiting_lead.md_created"
+  // ─── Governance / Decision Intelligence ────────────────────────
+  | "compliance.executive_review_required";
   // Future:
   // | "assessment.completed"
   // | "proposal.generated"
@@ -35,11 +37,26 @@ export interface RecruitingLeadPayload {
   message?: string;
 }
 
+// Fired by the generic Decision Intelligence service
+// (lib/intelligence/decisionEngine/) when a decision's operational outcome
+// is executive_review_required — today, only Background Eligibility's
+// Presumptive Disqualification tier produces this. Deliberately named by
+// domain + outcome, not by decision type, so a future decision type in the
+// same domain can reuse this event rather than needing its own.
+export interface ExecutiveReviewRequiredPayload {
+  recommendationId: string;
+  subjectType: string;
+  subjectId: string;
+  decisionTitle: string;
+  decisionDescription: string;
+}
+
 // ─── Event union ────────────────────────────────────────────────
 
 export type NotificationEvent =
   | { type: "recruiting_lead.caregiver_created"; payload: RecruitingLeadPayload }
-  | { type: "recruiting_lead.md_created"; payload: RecruitingLeadPayload };
+  | { type: "recruiting_lead.md_created"; payload: RecruitingLeadPayload }
+  | { type: "compliance.executive_review_required"; payload: ExecutiveReviewRequiredPayload };
 
 // ─── Channel types ──────────────────────────────────────────────
 

@@ -8,8 +8,8 @@
 // Rules are pure code — no database required. Recipient lists come from env vars
 // so they can be changed without a deploy.
 
-import { NotificationRule } from "./types";
-import { esc, parseRecipients } from "./channels/email";
+import type { NotificationRule } from "./types.ts";
+import { esc, parseRecipients } from "./channels/email.ts";
 
 // ─── Email template helpers ──────────────────────────────────────────────────
 
@@ -100,12 +100,44 @@ function buildRecruitingLeadHtml(
   `;
 }
 
+function buildExecutiveReviewRequiredHtml(p: Record<string, unknown>): string {
+  const rows = [
+    tableRow("Subject", `${esc(String(p.subjectType ?? ""))} — ${esc(String(p.subjectId ?? ""))}`),
+    tableRow("Decision", esc(String(p.decisionTitle ?? ""))),
+    p.decisionDescription ? tableRow("Details", esc(String(p.decisionDescription))) : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const rawUrl = process.env.SERVE_APP_URL?.trim().replace(/\/+$/, "");
+  const safeUrl = rawUrl?.startsWith("https://") || rawUrl?.startsWith("http://") ? rawUrl : undefined;
+  const viewLink =
+    safeUrl && p.recommendationId
+      ? `<p style="margin-top:16px"><a href="${safeUrl}/governance/${esc(String(p.recommendationId))}" style="color:#C9A96E;text-decoration:underline">View in Serve OS &rarr;</a></p>`
+      : "";
+
+  return `
+    <div style="font-family:sans-serif;color:#2F3F57;max-width:520px">
+      <p style="margin:0 0 16px;font-size:14px">
+        A Governance decision requires executive review. This is a point-in-time
+        evaluation based on recorded evidence — not a continuously monitored feed.
+      </p>
+      <table style="border-collapse:collapse;width:100%">${rows}</table>
+      ${viewLink}
+      <p style="margin-top:24px;font-size:11px;color:#A9B3BC">
+        Sent by Serve OS — do not reply to this address.
+      </p>
+    </div>
+  `;
+}
+
 // ─── Rules ───────────────────────────────────────────────────────────────────
 //
-// Event                              Recipients env var           Channel
-// ─────────────────────────────────  ───────────────────────────  ───────
-// recruiting_lead.caregiver_created  SERVE_NOTIFY_RECRUITING      email
-// recruiting_lead.md_created         SERVE_NOTIFY_LEADERSHIP      email
+// Event                                Recipients env var           Channel
+// ───────────────────────────────────  ───────────────────────────  ───────
+// recruiting_lead.caregiver_created    SERVE_NOTIFY_RECRUITING      email
+// recruiting_lead.md_created           SERVE_NOTIFY_LEADERSHIP      email
+// compliance.executive_review_required SERVE_NOTIFY_LEADERSHIP      email
 //
 // Scope J (Production Intake Unification) retired the never-finished
 // `prospect.completed`/`prospect.created` rules — `prospects` is no longer
@@ -130,5 +162,12 @@ export const RULES: NotificationRule[] = [
     getSubject: (p) =>
       `[Serve] New MD Interest — ${p.firstName ?? ""} ${p.lastName ?? ""}`.trim(),
     getBody: (p) => buildRecruitingLeadHtml(p, "Managing Director"),
+  },
+  {
+    event: "compliance.executive_review_required",
+    channel: "email",
+    getRecipients: () => parseRecipients(process.env.SERVE_NOTIFY_LEADERSHIP),
+    getSubject: (p) => `[Serve] Executive Review Required — ${p.decisionTitle ?? "Governance decision"}`,
+    getBody: (p) => buildExecutiveReviewRequiredHtml(p),
   },
 ];

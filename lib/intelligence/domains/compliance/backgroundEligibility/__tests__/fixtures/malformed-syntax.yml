@@ -1,0 +1,4 @@
+version: "0.1"
+categories:
+  - id: violence
+    label: [this is not valid: yaml: syntax

@@ -1,0 +1,8 @@
+version: "0.1"
+status: draft
+categories:
+  - id: violence
+    label: Violence
+    classification: not_a_real_classification
+    offenses:
+      - Murder

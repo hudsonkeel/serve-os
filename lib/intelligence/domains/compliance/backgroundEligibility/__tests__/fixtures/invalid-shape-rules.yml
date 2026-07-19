@@ -1,0 +1,6 @@
+version: "0.1"
+status: draft
+evaluation_order:
+  - step: 1
+    action: normalize_findings
+fallback_classification: eligible
