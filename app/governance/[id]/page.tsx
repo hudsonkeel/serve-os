@@ -79,6 +79,16 @@ export default async function GovernanceDecisionDetailPage({ params }: { params:
         </Link>
       </div>
 
+      <div className="mb-6 rounded-lg border border-amber-200 bg-warning-surface px-4 py-4">
+        <p className="font-sans text-label font-semibold uppercase tracking-wide text-warning-text">
+          Decision Intelligence demonstration
+        </p>
+        <p className="mt-1 font-sans text-sm text-body">
+          No live workforce evidence connection is configured. This result is fictional and must not be used for
+          employment or assignment decisions.
+        </p>
+      </div>
+
       <div className="mb-8 flex items-baseline justify-between">
         <div>
           <h1 className="font-serif text-page-title font-light text-body">{decision.title}</h1>

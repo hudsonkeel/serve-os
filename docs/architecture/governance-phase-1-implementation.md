@@ -5,6 +5,33 @@ recorded in ADR 0002 (`docs/architecture/decisions/0002-governance-decision-vert
 — read that first for *why* each decision below was made; this document is *what* was built and
 *where*.
 
+## Status
+
+**Architecture Validated. Demonstration Data Only. Operational Use Blocked Pending Workforce
+Data Access.**
+
+Phase 1 proves that the Decision Intelligence architecture works — one real, persisted,
+explainable decision, evaluated and re-evaluated correctly against a live database. It does
+**not** make Background Eligibility a usable Serve capability yet, because no confirmed live or
+scheduled evidence source currently supplies the workforce data this decision type needs. Read
+this section before reading anything else in this document.
+
+- The five records visible in `/governance` are **fictional demonstrations**
+  (`scripts/seed-governance-demo-data.ts`), not real applicants or employees.
+- **No Viventium, recruiting, credentialing, onboarding, or screening-provider connection
+  currently supplies evidence to this system.** Every source adapter's every declared capability
+  is `"unverified"` — see `docs/integrations/VIVENTIUM_APPLOI_PLACEHOLDER_BOUNDARIES.md`.
+- The system does **not** continuously monitor applicant or caregiver readiness. Every decision
+  is a point-in-time evaluation over whatever evidence was recorded at the time.
+- **Serve personnel should not manually duplicate sensitive workforce evidence merely to make
+  the demonstration operational.** Manual evidence entry is not built in this phase, and working
+  around that by hand-copying real background-check findings into the seed script or database
+  would defeat the entire evidence-integrity design of this system.
+- **Background Eligibility should not be treated as a live business workflow.** It is the first
+  proof of the architecture, not an operational decision Serve currently relies on.
+
+`/governance` and `/governance/[id]` display this status directly in the Workspace UI.
+
 ## What this phase proves
 
 One real, persisted, explainable decision: **"can this applicant/caregiver proceed toward
@@ -128,8 +155,39 @@ files are actually listed. See ADR 0002 Decision 3 for the full reasoning.
   intake will likely need either taxonomy expansion or a human normalization step more often
   than a fuzzy matcher would.
 
-## Phase 2 recommendations
+## Next required workstream: Viventium Workforce Evidence Access Discovery
 
-See ADR 0002's Phase 2 roadmap (vendor discovery questions, Action/Outcome/RuleRun/
-LearningObservation persistence, a second decision type, legal review) — not duplicated here to
-avoid the two documents drifting out of sync.
+This is the actual next step — not further Governance or Decision Intelligence implementation
+work. Before any decision type can move from demonstration to operational, this workstream must
+determine, for Viventium specifically (and, where relevant, the recruiting/credentialing/
+screening systems it touches):
+
+- API access — does it exist, and can Serve get it?
+- Authentication and scopes required for that access.
+- Webhooks or other change-notification mechanisms, if any.
+- Scheduled reports or secure export options, if direct API access isn't available.
+- Applicant identifiers — stable and queryable?
+- Applicant-to-employee mapping — how an applicant's identity carries through to an employee
+  record once hired.
+- Recruiting and onboarding status — queryable?
+- Background-screening status and adjudication — the actual finding content this decision type
+  needs. Queryable, or only ever available as a document a human reads?
+- Credential and document metadata.
+- Expiration dates for credentials/documents/screenings.
+- Outstanding requirements — what's still needed to consider a case complete.
+- Secure source links or external record identifiers, so evidence can point back to its
+  authoritative source rather than duplicating it.
+- Historical data — how far back records go, and whether that matters for this decision type.
+- Licensing costs and contractual restrictions on using this data this way.
+
+**Do not assume Background Eligibility remains the first operational decision.** Once this
+discovery work establishes what evidence is actually available, reliable, and observable, the
+right next step is to identify whichever workforce decision has evidence that is both valuable
+enough to be worth automating and reliably observable through a confirmed source — that may or
+may not be Background Eligibility. This document, and ADR 0002, should be revisited once that
+determination is made, rather than assuming the architecture proven here simply continues down
+the Background Eligibility path by default.
+
+See ADR 0002's Phase 2 roadmap for the remaining architectural items (Action/Outcome/RuleRun/
+LearningObservation persistence, a second decision type, legal review) — those remain valid but
+are secondary to the discovery work above.
