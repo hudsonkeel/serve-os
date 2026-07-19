@@ -6,6 +6,10 @@ import type {
   RelationshipTouchType,
   RelationshipType,
   RelationshipWorkingNoteCategory,
+  RelationshipInteractionResult,
+  RelationshipInteractionParticipantRole,
+  RelationshipInsightCategory,
+  RelationshipCommitmentResponsiblePartyType,
   ResidenceType,
 } from "@/lib/supabase/types";
 
@@ -93,8 +97,10 @@ export const RELATIONSHIP_TOUCH_TYPES: readonly RelationshipTouchType[] = [
   "email",
   "text",
   "meeting",
-  "assessment",
   "resident_visit",
+  "internal_discussion",
+  "community_interaction",
+  "assessment",
   "proposal",
   "other",
 ];
@@ -107,6 +113,109 @@ export const RELATIONSHIP_TOUCH_TYPE_LABELS: Record<RelationshipTouchType, strin
   assessment: "Assessment",
   resident_visit: "Resident Visit",
   proposal: "Proposal",
+  internal_discussion: "Internal Discussion",
+  community_interaction: "Community Interaction",
+  other: "Other",
+};
+
+// Relationship Intelligence Phase 1 — see
+// docs/architecture/relationship-intelligence-phase-1-implementation.md.
+
+export const RELATIONSHIP_INTERACTION_RESULTS: readonly RelationshipInteractionResult[] = [
+  "connected",
+  "left_voicemail",
+  "no_response",
+  "information_sent",
+  "information_received",
+  "meeting_scheduled",
+  "decision_pending",
+  "follow_up_requested",
+  "not_interested",
+  "service_interest_confirmed",
+  "other",
+];
+
+export const RELATIONSHIP_INTERACTION_RESULT_LABELS: Record<RelationshipInteractionResult, string> = {
+  connected: "Connected",
+  left_voicemail: "Left Voicemail",
+  no_response: "No Response",
+  information_sent: "Information Sent",
+  information_received: "Information Received",
+  meeting_scheduled: "Meeting Scheduled",
+  decision_pending: "Decision Pending",
+  follow_up_requested: "Follow-Up Requested",
+  not_interested: "Not Interested",
+  service_interest_confirmed: "Service Interest Confirmed",
+  other: "Other",
+};
+
+export const RELATIONSHIP_INTERACTION_PARTICIPANT_ROLES: readonly RelationshipInteractionParticipantRole[] = [
+  "primary_contact",
+  "resident",
+  "family_member",
+  "serve_team_member",
+  "community_contact",
+  "other",
+];
+
+export const RELATIONSHIP_INTERACTION_PARTICIPANT_ROLE_LABELS: Record<
+  RelationshipInteractionParticipantRole,
+  string
+> = {
+  primary_contact: "Primary Contact",
+  resident: "Resident",
+  family_member: "Family Member",
+  serve_team_member: "Serve Team Member",
+  community_contact: "Community Contact",
+  other: "Other",
+};
+
+export const RELATIONSHIP_INSIGHT_CATEGORIES: readonly RelationshipInsightCategory[] = [
+  "resident_preference",
+  "family_context",
+  "decision_dynamics",
+  "communication_preference",
+  "timing",
+  "service_need",
+  "concern_or_barrier",
+  "financial_consideration",
+  "community_context",
+  "operational",
+  "other",
+];
+
+export const RELATIONSHIP_INSIGHT_CATEGORY_LABELS: Record<RelationshipInsightCategory, string> = {
+  resident_preference: "Resident Preference",
+  family_context: "Family Context",
+  decision_dynamics: "Decision Dynamics",
+  communication_preference: "Communication Preference",
+  timing: "Timing",
+  service_need: "Service Need",
+  concern_or_barrier: "Concern or Barrier",
+  financial_consideration: "Financial Consideration",
+  community_context: "Community Context",
+  operational: "Operational",
+  other: "Other",
+};
+
+export const RELATIONSHIP_COMMITMENT_RESPONSIBLE_PARTY_TYPES: readonly RelationshipCommitmentResponsiblePartyType[] = [
+  "serve",
+  "family",
+  "resident",
+  "community",
+  "referral_source",
+  "other",
+];
+
+export const RELATIONSHIP_COMMITMENT_RESPONSIBLE_PARTY_TYPE_LABELS: Record<
+  RelationshipCommitmentResponsiblePartyType,
+  string
+> = {
+  serve: "Serve",
+  family: "Family",
+  resident: "Resident",
+  community: "Community",
+  referral_source: "Referral Source",
   other: "Other",
 };
 
@@ -181,6 +290,20 @@ export function isValidRelationshipPriority(value: string): value is Relationshi
 
 export function isValidTouchType(value: string): value is RelationshipTouchType {
   return (RELATIONSHIP_TOUCH_TYPES as readonly string[]).includes(value);
+}
+
+export function isValidInteractionResult(value: string): value is RelationshipInteractionResult {
+  return (RELATIONSHIP_INTERACTION_RESULTS as readonly string[]).includes(value);
+}
+
+export function isValidInsightCategory(value: string): value is RelationshipInsightCategory {
+  return (RELATIONSHIP_INSIGHT_CATEGORIES as readonly string[]).includes(value);
+}
+
+export function isValidCommitmentResponsiblePartyType(
+  value: string,
+): value is RelationshipCommitmentResponsiblePartyType {
+  return (RELATIONSHIP_COMMITMENT_RESPONSIBLE_PARTY_TYPES as readonly string[]).includes(value);
 }
 
 export function isValidActionType(value: string): value is RelationshipActionType {

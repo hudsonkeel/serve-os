@@ -16,7 +16,14 @@
 //                   exactly matches <value>, plus every dependent row
 //                   reachable through relationship_id, in dependency
 //                   order. This is the mechanism every future
-//                   live-database verification run should use.
+//                   live-database verification run should use. Covers the
+//                   Relationship Intelligence Phase 1 tables
+//                   (relationship_insights/commitments/open_loops) —
+//                   deleted before relationship_touches, since their
+//                   source_interaction_id FK has no "on delete" clause
+//                   (NO ACTION — deliberate, see ADR 0003 point 9 in
+//                   docs/architecture/decisions/0003-interaction-extends-touch.md)
+//                   and would otherwise block the touches delete.
 // --wellness-title="<exact title>"
 //                   Removes a resident_wellness_follow_ups row matched by
 //                   an exact title (resident_wellness_follow_ups has no
@@ -83,6 +90,13 @@ async function cleanupRelationshipsByIds(relationshipIds: readonly string[]): Pr
   const actionIds = (actionRows ?? []).map((r) => r.id as string);
 
   await deleteByColumnIn("relationship_action_edits", "relationship_action_id", actionIds);
+  // Relationship Intelligence Phase 1 tables — must be deleted before
+  // relationship_actions/relationship_touches (see the --marker= doc
+  // comment above for why: their source_interaction_id/FK has no "on
+  // delete" clause).
+  await deleteByColumnIn("relationship_insights", "relationship_id", relationshipIds);
+  await deleteByColumnIn("relationship_commitments", "relationship_id", relationshipIds);
+  await deleteByColumnIn("relationship_open_loops", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_actions", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_touches", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_stage_history", "relationship_id", relationshipIds);

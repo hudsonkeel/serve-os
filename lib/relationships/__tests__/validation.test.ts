@@ -3,13 +3,18 @@
 import assert from "node:assert/strict";
 import {
   normalizeActionTitle,
+  normalizeCommitmentDescription,
   normalizeDisplayName,
+  normalizeInsightContent,
+  normalizeInteractionSummary,
+  normalizeOpenLoopQuestion,
   normalizeOptionalText,
   normalizeTouchSummary,
   parseOptionalBoundedInteger,
   parseOptionalDate,
   parseOptionalDateOnly,
   validateDueDateNotPast,
+  validateParticipants,
 } from "../validation.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
@@ -160,6 +165,46 @@ test("16. parseOptionalDateOnly parses a valid date", () => {
 
 test("17. parseOptionalDateOnly rejects an invalid date", () => {
   assert.ok(parseOptionalDateOnly("not-a-date").error);
+});
+
+// ─── Relationship Intelligence Phase 1 ──────────────────────────────
+
+test("18. normalizeInteractionSummary trims and rejects blank", () => {
+  assert.equal(normalizeInteractionSummary("  Spoke with Cary.  ").value, "Spoke with Cary.");
+  assert.ok(normalizeInteractionSummary("   ").error);
+});
+
+test("19. normalizeInsightContent trims and rejects blank", () => {
+  assert.equal(normalizeInsightContent("  Daughter decides.  ").value, "Daughter decides.");
+  assert.ok(normalizeInsightContent("").error);
+});
+
+test("20. normalizeCommitmentDescription trims and rejects blank", () => {
+  assert.equal(normalizeCommitmentDescription("  Send pricing.  ").value, "Send pricing.");
+  assert.ok(normalizeCommitmentDescription("").error);
+});
+
+test("21. normalizeOpenLoopQuestion trims and rejects blank", () => {
+  assert.equal(normalizeOpenLoopQuestion("  Confirm pricing received?  ").value, "Confirm pricing received?");
+  assert.ok(normalizeOpenLoopQuestion("").error);
+});
+
+test("22. validateParticipants drops blank rows without rejecting the submission", () => {
+  const result = validateParticipants(
+    [{ role: "resident", name: "  " }, { role: "family_member", name: "Cary" }],
+    (r) => ["resident", "family_member"].includes(r),
+  );
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.value, [{ role: "family_member", name: "Cary", personId: null }]);
+});
+
+test("23. validateParticipants rejects an invalid role on a non-blank row", () => {
+  const result = validateParticipants([{ role: "not_a_role", name: "Cary" }], (r) => r === "family_member");
+  assert.ok(result.error);
+});
+
+test("24. validateParticipants with no input returns an empty array, not an error", () => {
+  assert.deepEqual(validateParticipants(undefined, () => true), { value: [] });
 });
 
 // ─── Runner ──────────────────────────────────────────────────────────

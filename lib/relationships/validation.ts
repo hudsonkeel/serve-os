@@ -129,3 +129,77 @@ export function parseOptionalDateOnly(raw: string | undefined): ParseDateResult 
   }
   return { iso: raw };
 }
+
+// ─── Relationship Intelligence Phase 1 (Interaction / Insight / Commitment / Open Loop) ──
+
+export function normalizeInteractionSummary(raw: string): NormalizeTextResult {
+  const value = raw.trim();
+  if (!value) {
+    return { error: "Describe what happened in this interaction." };
+  }
+  return { value };
+}
+
+export function normalizeInsightContent(raw: string): NormalizeTextResult {
+  const value = raw.trim();
+  if (!value) {
+    return { error: "Describe what was learned." };
+  }
+  return { value };
+}
+
+export function normalizeCommitmentDescription(raw: string): NormalizeTextResult {
+  const value = raw.trim();
+  if (!value) {
+    return { error: "Describe what was committed to." };
+  }
+  return { value };
+}
+
+export function normalizeOpenLoopQuestion(raw: string): NormalizeTextResult {
+  const value = raw.trim();
+  if (!value) {
+    return { error: "Describe what remains unresolved." };
+  }
+  return { value };
+}
+
+export interface RawParticipant {
+  role?: string;
+  name?: string;
+  personId?: string | null;
+}
+
+export interface ValidatedParticipant {
+  role: string;
+  name: string;
+  personId: string | null;
+}
+
+export interface ValidateParticipantsResult {
+  value?: ValidatedParticipant[];
+  error?: string;
+}
+
+// Drops blank rows the UI may have left behind (an empty repeatable-row
+// form field), rather than rejecting the whole submission for them —
+// matches this form family's general "optional, repeatable" leniency.
+export function validateParticipants(
+  raw: RawParticipant[] | undefined,
+  isValidRole: (value: string) => boolean,
+): ValidateParticipantsResult {
+  if (!raw || raw.length === 0) {
+    return { value: [] };
+  }
+  const value: ValidatedParticipant[] = [];
+  for (const item of raw) {
+    const name = item.name?.trim();
+    if (!name) continue;
+    const role = item.role?.trim();
+    if (!role || !isValidRole(role)) {
+      return { error: "Select a valid role for each participant." };
+    }
+    value.push({ role, name, personId: item.personId?.trim() || null });
+  }
+  return { value };
+}

@@ -1,9 +1,14 @@
-import { createServerClient } from "@/lib/supabase/server";
-import {
+import { createServerClient } from "../supabase/server.ts";
+import type {
   PipelineStage,
   Relationship,
   RelationshipAction,
   RelationshipActionType,
+  RelationshipCommitment,
+  RelationshipInsight,
+  RelationshipInteractionParticipant,
+  RelationshipInteractionResult,
+  RelationshipOpenLoop,
   RelationshipPriority,
   RelationshipServiceLocation,
   RelationshipServiceOpportunity,
@@ -15,9 +20,9 @@ import {
   RelationshipWorkingNote,
   RelationshipWorkingNoteCategory,
   ResidenceType,
-} from "@/lib/supabase/types";
-import { RelationshipWorkspaceRow } from "@/lib/relationships/search";
-import { selectPrimaryOpenAction } from "@/lib/relationships/sorting";
+} from "../supabase/types.ts";
+import type { RelationshipWorkspaceRow } from "../relationships/search.ts";
+import { selectPrimaryOpenAction } from "../relationships/sorting.ts";
 
 function residentDisplayName(row: {
   first_name: string | null;
@@ -1100,11 +1105,19 @@ export async function upsertRelationshipServiceLocation(
   return { id: data as string };
 }
 
+export interface CreateWorkingNoteExtras {
+  relevantUntil?: string | null;
+  residentId?: string | null;
+  contactName?: string | null;
+  sourceDescription?: string | null;
+}
+
 export async function createRelationshipWorkingNote(
   relationshipId: string,
   content: string,
   category: RelationshipWorkingNoteCategory | null,
-  actor: string
+  actor: string,
+  extras: CreateWorkingNoteExtras = {},
 ): Promise<{ id?: string; error?: string }> {
   const supabase = createServerClient();
   const { data, error } = await supabase.rpc("create_relationship_working_note", {
@@ -1112,6 +1125,10 @@ export async function createRelationshipWorkingNote(
     p_content: content,
     p_category: category,
     p_actor: actor,
+    p_relevant_until: extras.relevantUntil ?? null,
+    p_resident_id: extras.residentId ?? null,
+    p_contact_name: extras.contactName ?? null,
+    p_source_description: extras.sourceDescription ?? null,
   });
 
   if (error) {
@@ -1165,6 +1182,263 @@ export async function archiveRelationshipWorkingNote(
       code: error.code,
     });
     return { error: "Could not archive working note." };
+  }
+
+  return {};
+}
+
+// ─── Relationship Intelligence Phase 1 ──────────────────────────────────
+// See docs/architecture/relationship-intelligence-phase-1-implementation.md
+// and docs/architecture/decisions/0003-interaction-extends-touch.md. All
+// writes go through log_relationship_interaction() (atomic) or the
+// single-purpose resolve_* RPCs — this file never writes to
+// relationship_insights/relationship_commitments/relationship_open_loops
+// directly.
+
+export async function getRelationshipInsights(relationshipId: string): Promise<RelationshipInsight[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("relationship_insights")
+    .select("*")
+    .eq("relationship_id", relationshipId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[relationships:getRelationshipInsights:error]", {
+      relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return [];
+  }
+
+  return (data as RelationshipInsight[] | null) ?? [];
+}
+
+export async function getRelationshipCommitments(relationshipId: string): Promise<RelationshipCommitment[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("relationship_commitments")
+    .select("*")
+    .eq("relationship_id", relationshipId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[relationships:getRelationshipCommitments:error]", {
+      relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return [];
+  }
+
+  return (data as RelationshipCommitment[] | null) ?? [];
+}
+
+export async function getRelationshipOpenLoops(relationshipId: string): Promise<RelationshipOpenLoop[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("relationship_open_loops")
+    .select("*")
+    .eq("relationship_id", relationshipId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[relationships:getRelationshipOpenLoops:error]", {
+      relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return [];
+  }
+
+  return (data as RelationshipOpenLoop[] | null) ?? [];
+}
+
+export interface LogInteractionInsightInput {
+  content: string;
+  category: string;
+  whyItMatters: string | null;
+  relevantUntil: string | null;
+  residentId: string | null;
+}
+
+export interface LogInteractionCommitmentInput {
+  description: string;
+  responsiblePartyType: string;
+  responsiblePartyReference: string | null;
+  expectedDate: string | null;
+}
+
+export interface LogInteractionOpenLoopInput {
+  question: string;
+  owner: string | null;
+  targetResolutionDate: string | null;
+}
+
+export interface LogInteractionNextActionInput {
+  title: string;
+  actionType: string;
+  dueAt: string | null;
+  assignedTo: string | null;
+  priority: string;
+  description: string | null;
+}
+
+export interface LogInteractionInput {
+  relationshipId: string;
+  touchType: RelationshipTouchType;
+  occurredAt: string | null;
+  summary: string;
+  interactionResult: RelationshipInteractionResult | null;
+  outcome: string | null;
+  contactName: string | null;
+  participants: RelationshipInteractionParticipant[];
+  insights: LogInteractionInsightInput[];
+  commitments: LogInteractionCommitmentInput[];
+  openLoops: LogInteractionOpenLoopInput[];
+  nextAction: LogInteractionNextActionInput | null;
+  actor: string;
+  testMarker?: string | null;
+  // Client-generated, one per Log Interaction form session — lets a
+  // retried/double-clicked submission return the original Interaction
+  // instead of duplicating it and its child records.
+  idempotencyKey?: string | null;
+}
+
+// Atomic — a partial submission never leaves an Interaction recorded
+// without its explicitly-submitted accountability records. See
+// log_relationship_interaction() in
+// supabase/migrations/20260725000000_create_relationship_interaction_intelligence.sql.
+export async function logRelationshipInteraction(
+  input: LogInteractionInput,
+): Promise<{ interaction?: RelationshipTouch; error?: string }> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase.rpc("log_relationship_interaction", {
+    p_relationship_id: input.relationshipId,
+    p_touch_type: input.touchType,
+    p_occurred_at: input.occurredAt,
+    p_summary: input.summary,
+    p_interaction_result: input.interactionResult,
+    p_outcome: input.outcome,
+    p_contact_name: input.contactName,
+    p_participants: input.participants,
+    p_insights: input.insights.map((i) => ({
+      content: i.content,
+      category: i.category,
+      whyItMatters: i.whyItMatters,
+      relevantUntil: i.relevantUntil,
+      residentId: i.residentId,
+    })),
+    p_commitments: input.commitments.map((c) => ({
+      description: c.description,
+      responsiblePartyType: c.responsiblePartyType,
+      responsiblePartyReference: c.responsiblePartyReference,
+      expectedDate: c.expectedDate,
+    })),
+    p_open_loops: input.openLoops.map((o) => ({
+      question: o.question,
+      owner: o.owner,
+      targetResolutionDate: o.targetResolutionDate,
+    })),
+    p_next_action: input.nextAction
+      ? {
+          title: input.nextAction.title,
+          actionType: input.nextAction.actionType,
+          dueAt: input.nextAction.dueAt,
+          assignedTo: input.nextAction.assignedTo,
+          priority: input.nextAction.priority,
+          description: input.nextAction.description,
+        }
+      : null,
+    p_actor: input.actor,
+    p_test_marker: input.testMarker ?? null,
+    p_idempotency_key: input.idempotencyKey ?? null,
+  });
+
+  if (error) {
+    console.error("[relationships:logRelationshipInteraction:error]", {
+      relationshipId: input.relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not log this interaction." };
+  }
+
+  return { interaction: data as RelationshipTouch };
+}
+
+export async function resolveRelationshipInsight(
+  insightId: string,
+  status: "resolved" | "outdated",
+  actor: string,
+): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+  const { error } = await supabase.rpc("resolve_relationship_insight", {
+    p_insight_id: insightId,
+    p_status: status,
+    p_actor: actor,
+  });
+
+  if (error) {
+    console.error("[relationships:resolveRelationshipInsight:error]", {
+      insightId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not update this insight." };
+  }
+
+  return {};
+}
+
+export async function resolveRelationshipCommitment(
+  commitmentId: string,
+  status: "completed" | "cancelled",
+  closureNote: string | null,
+  actor: string,
+): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+  const { error } = await supabase.rpc("resolve_relationship_commitment", {
+    p_commitment_id: commitmentId,
+    p_status: status,
+    p_closure_note: closureNote,
+    p_actor: actor,
+  });
+
+  if (error) {
+    console.error("[relationships:resolveRelationshipCommitment:error]", {
+      commitmentId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not update this commitment." };
+  }
+
+  return {};
+}
+
+export async function resolveRelationshipOpenLoop(
+  openLoopId: string,
+  status: "resolved" | "no_longer_relevant",
+  resolution: string | null,
+  actor: string,
+): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+  const { error } = await supabase.rpc("resolve_relationship_open_loop", {
+    p_open_loop_id: openLoopId,
+    p_status: status,
+    p_resolution: resolution,
+    p_actor: actor,
+  });
+
+  if (error) {
+    console.error("[relationships:resolveRelationshipOpenLoop:error]", {
+      openLoopId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not update this open loop." };
   }
 
   return {};

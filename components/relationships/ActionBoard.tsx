@@ -195,7 +195,12 @@ function ActionBoardCard({
             onClick={() => setMode("logTouch")}
             className="inline-flex h-9 items-center justify-center rounded-md border border-ivory-border bg-surface px-3 font-sans text-sm font-medium text-body transition-colors hover:border-navy/20 hover:bg-ivory-warm"
           >
-            Log Touch
+            {/* Relabeled for consistency with the full Log Interaction
+                workflow on the Relationship detail page — still the
+                lightweight quick-touch path (log_relationship_touch), not
+                upgraded to capture Insights/Commitments/Open Loops here.
+                See docs/architecture/decisions/0003-interaction-extends-touch.md. */}
+            Log Interaction
           </button>
           <Link
             href={`/relationships/${row.id}`}

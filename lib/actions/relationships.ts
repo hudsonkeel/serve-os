@@ -11,42 +11,62 @@ import {
   dismissRelationshipAction as dismissRelationshipActionRecord,
   getRelationshipsByResident as getRelationshipsByResidentRecord,
   linkRelationshipToResident as linkRelationshipToResidentRecord,
+  logRelationshipInteraction as logRelationshipInteractionRecord,
   logRelationshipTouch as logRelationshipTouchRecord,
+  resolveRelationshipCommitment as resolveRelationshipCommitmentRecord,
+  resolveRelationshipInsight as resolveRelationshipInsightRecord,
+  resolveRelationshipOpenLoop as resolveRelationshipOpenLoopRecord,
   resolveRelationshipWorkingNote as resolveRelationshipWorkingNoteRecord,
   searchResidentsForLinking as searchResidentsForLinkingRecord,
   updateRelationshipAction as updateRelationshipActionRecord,
   updateRelationshipOwnerAndPriority as updateRelationshipOwnerAndPriorityRecord,
   upsertRelationshipServiceLocation as upsertRelationshipServiceLocationRecord,
   upsertRelationshipServiceOpportunity as upsertRelationshipServiceOpportunityRecord,
+  LogInteractionCommitmentInput,
+  LogInteractionInsightInput,
+  LogInteractionNextActionInput,
+  LogInteractionOpenLoopInput,
   ResidentSearchResult,
 } from "@/lib/data/relationships";
 import { convertResidentProspectToActiveClient as convertResidentProspectToActiveClientRecord } from "@/lib/data/externalClients";
 import { findActiveResidentProspect } from "@/lib/relationships/duplicateDetection";
 import {
   isValidActionType,
+  isValidCommitmentResponsiblePartyType,
+  isValidInsightCategory,
+  isValidInteractionResult,
   isValidRelationshipPriority,
   isValidRelationshipStage,
   isValidRelationshipType,
   isValidResidenceType,
   isValidTouchType,
+  RELATIONSHIP_INTERACTION_PARTICIPANT_ROLES,
   RELATIONSHIP_WORKING_NOTE_CATEGORIES,
 } from "@/lib/relationships/constants";
 import { isValidOpenActionDisposition } from "@/lib/externalClients/constants";
 import { normalizeRequiredName, validateServiceAddress } from "@/lib/externalClients/validation";
 import {
   normalizeActionTitle,
+  normalizeCommitmentDescription,
   normalizeDisplayName,
+  normalizeInsightContent,
+  normalizeInteractionSummary,
+  normalizeOpenLoopQuestion,
   normalizeOptionalText,
   normalizeTouchSummary,
   parseOptionalBoundedInteger,
   parseOptionalDate,
   parseOptionalDateOnly,
+  RawParticipant,
   validateDueDateNotPast,
+  validateParticipants,
 } from "@/lib/relationships/validation";
 import {
   PipelineStage,
   Relationship,
   RelationshipActionType,
+  RelationshipInteractionParticipantRole,
+  RelationshipInteractionResult,
   RelationshipPriority,
   RelationshipTouchType,
   RelationshipType,
@@ -738,6 +758,13 @@ export async function createRelationshipWorkingNote(data: {
   relationshipId: string;
   content: string;
   category: string;
+  // Relationship Intelligence Phase 1 additions — see
+  // docs/architecture/relationship-intelligence-phase-1-implementation.md.
+  // All optional; no existing caller needs to change.
+  relevantUntil?: string;
+  residentId?: string;
+  contactName?: string;
+  sourceDescription?: string;
 }): Promise<{ error?: string }> {
   if (!data.relationshipId) {
     return { error: "Missing relationship." };
@@ -751,6 +778,11 @@ export async function createRelationshipWorkingNote(data: {
     return { error: "Keep working notes under 1000 characters." };
   }
 
+  const relevantUntil = parseOptionalDateOnly(data.relevantUntil);
+  if (relevantUntil.error) {
+    return { error: relevantUntil.error };
+  }
+
   const actor = await currentActorLabel();
   if (!actor) {
     return { error: "You must be signed in to add a working note." };
@@ -760,7 +792,13 @@ export async function createRelationshipWorkingNote(data: {
     data.relationshipId,
     content,
     normalizeWorkingNoteCategory(data.category),
-    actor
+    actor,
+    {
+      relevantUntil: relevantUntil.iso ?? null,
+      residentId: normalizeOptionalText(data.residentId),
+      contactName: normalizeOptionalText(data.contactName),
+      sourceDescription: normalizeOptionalText(data.sourceDescription),
+    },
   );
 
   if (result.error) {
@@ -842,4 +880,229 @@ export async function convertResidentProspectToActiveClient(data: {
     onboardingActionDueAt: onboardingDueAt.iso ?? null,
     actor,
   });
+}
+
+// ─── Relationship Intelligence Phase 1 — Log Interaction ────────────────
+// See docs/architecture/relationship-intelligence-phase-1-implementation.md.
+// This action validates and delegates to the single atomic RPC wrapper
+// (logRelationshipInteractionRecord) — it contains no logic the data layer
+// doesn't already have.
+
+export async function logRelationshipInteraction(data: {
+  relationshipId: string;
+  touchType: string;
+  occurredAt?: string;
+  summary: string;
+  interactionResult?: string;
+  outcome?: string;
+  contactName?: string;
+  participants?: RawParticipant[];
+  insights?: Array<{
+    content: string;
+    category: string;
+    whyItMatters?: string;
+    relevantUntil?: string;
+    residentId?: string;
+  }>;
+  commitments?: Array<{
+    description: string;
+    responsiblePartyType: string;
+    responsiblePartyReference?: string;
+    expectedDate?: string;
+  }>;
+  openLoops?: Array<{
+    question: string;
+    owner?: string;
+    targetResolutionDate?: string;
+  }>;
+  nextAction?: {
+    title: string;
+    actionType: string;
+    dueAt?: string;
+    assignedTo?: string;
+    priority: string;
+    description?: string;
+  } | null;
+  // Client-generated, one per Log Interaction form session — see
+  // lib/data/relationships.ts#LogInteractionInput.
+  idempotencyKey?: string;
+}): Promise<{ error?: string }> {
+  if (!data.relationshipId) {
+    return { error: "Missing relationship." };
+  }
+  if (!isValidTouchType(data.touchType)) {
+    return { error: "Select an interaction type." };
+  }
+  if (data.interactionResult && !isValidInteractionResult(data.interactionResult)) {
+    return { error: "Select a valid result." };
+  }
+
+  const summary = normalizeInteractionSummary(data.summary);
+  if (summary.error || !summary.value) {
+    return { error: summary.error };
+  }
+
+  const occurredAt = parseOptionalDate(data.occurredAt);
+  if (occurredAt.error) {
+    return { error: occurredAt.error };
+  }
+
+  const participants = validateParticipants(data.participants, (role) =>
+    (RELATIONSHIP_INTERACTION_PARTICIPANT_ROLES as readonly string[]).includes(role),
+  );
+  if (participants.error) {
+    return { error: participants.error };
+  }
+
+  const insights: LogInteractionInsightInput[] = [];
+  for (const raw of data.insights ?? []) {
+    const content = normalizeInsightContent(raw.content ?? "");
+    if (content.error || !content.value) continue; // blank repeatable row — skip, don't reject the submission
+    if (!isValidInsightCategory(raw.category)) {
+      return { error: "Select a valid insight category." };
+    }
+    insights.push({
+      content: content.value,
+      category: raw.category,
+      whyItMatters: normalizeOptionalText(raw.whyItMatters),
+      relevantUntil: parseOptionalDateOnly(raw.relevantUntil).iso ?? null,
+      residentId: normalizeOptionalText(raw.residentId),
+    });
+  }
+
+  const commitments: LogInteractionCommitmentInput[] = [];
+  for (const raw of data.commitments ?? []) {
+    const description = normalizeCommitmentDescription(raw.description ?? "");
+    if (description.error || !description.value) continue;
+    if (!isValidCommitmentResponsiblePartyType(raw.responsiblePartyType)) {
+      return { error: "Select who the commitment belongs to." };
+    }
+    commitments.push({
+      description: description.value,
+      responsiblePartyType: raw.responsiblePartyType,
+      responsiblePartyReference: normalizeOptionalText(raw.responsiblePartyReference),
+      expectedDate: parseOptionalDateOnly(raw.expectedDate).iso ?? null,
+    });
+  }
+
+  const openLoops: LogInteractionOpenLoopInput[] = [];
+  for (const raw of data.openLoops ?? []) {
+    const question = normalizeOpenLoopQuestion(raw.question ?? "");
+    if (question.error || !question.value) continue;
+    openLoops.push({
+      question: question.value,
+      owner: normalizeOptionalText(raw.owner),
+      targetResolutionDate: parseOptionalDateOnly(raw.targetResolutionDate).iso ?? null,
+    });
+  }
+
+  let nextAction: LogInteractionNextActionInput | null = null;
+  if (data.nextAction) {
+    if (!isValidActionType(data.nextAction.actionType)) {
+      return { error: "Select a type for the next action." };
+    }
+    if (!isValidRelationshipPriority(data.nextAction.priority)) {
+      return { error: "Select a valid priority for the next action." };
+    }
+    const title = normalizeActionTitle(data.nextAction.title);
+    if (title.error || !title.value) {
+      return { error: title.error };
+    }
+    const dueAt = parseOptionalDate(data.nextAction.dueAt);
+    if (dueAt.error) {
+      return { error: dueAt.error };
+    }
+    nextAction = {
+      title: title.value,
+      actionType: data.nextAction.actionType,
+      dueAt: dueAt.iso ?? null,
+      assignedTo: normalizeOptionalText(data.nextAction.assignedTo),
+      priority: data.nextAction.priority,
+      description: normalizeOptionalText(data.nextAction.description),
+    };
+  }
+
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to log an interaction." };
+  }
+
+  const result = await logRelationshipInteractionRecord({
+    relationshipId: data.relationshipId,
+    touchType: data.touchType as RelationshipTouchType,
+    occurredAt: occurredAt.iso ?? null,
+    summary: summary.value,
+    interactionResult: (data.interactionResult as RelationshipInteractionResult | undefined) ?? null,
+    outcome: normalizeOptionalText(data.outcome),
+    contactName: normalizeOptionalText(data.contactName),
+    // role is already validated against RELATIONSHIP_INTERACTION_PARTICIPANT_ROLES
+    // by validateParticipants() above.
+    participants: (participants.value ?? []).map((p) => ({
+      role: p.role as RelationshipInteractionParticipantRole,
+      name: p.name,
+      personId: p.personId,
+    })),
+    insights,
+    commitments,
+    openLoops,
+    nextAction,
+    actor,
+    idempotencyKey: normalizeOptionalText(data.idempotencyKey),
+  });
+
+  if (result.error) {
+    return { error: result.error };
+  }
+
+  return {};
+}
+
+// ─── Insights / Commitments / Open Loops lifecycle ──────────────────────
+
+export async function resolveInsight(data: {
+  insightId: string;
+  status: "resolved" | "outdated";
+}): Promise<{ error?: string }> {
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to update an insight." };
+  }
+  const result = await resolveRelationshipInsightRecord(data.insightId, data.status, actor);
+  return result.error ? { error: result.error } : {};
+}
+
+export async function resolveCommitment(data: {
+  commitmentId: string;
+  status: "completed" | "cancelled";
+  closureNote?: string;
+}): Promise<{ error?: string }> {
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to update a commitment." };
+  }
+  const result = await resolveRelationshipCommitmentRecord(
+    data.commitmentId,
+    data.status,
+    normalizeOptionalText(data.closureNote),
+    actor,
+  );
+  return result.error ? { error: result.error } : {};
+}
+
+export async function resolveOpenLoop(data: {
+  openLoopId: string;
+  status: "resolved" | "no_longer_relevant";
+  resolution?: string;
+}): Promise<{ error?: string }> {
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to update an open loop." };
+  }
+  const result = await resolveRelationshipOpenLoopRecord(
+    data.openLoopId,
+    data.status,
+    normalizeOptionalText(data.resolution),
+    actor,
+  );
+  return result.error ? { error: result.error } : {};
 }

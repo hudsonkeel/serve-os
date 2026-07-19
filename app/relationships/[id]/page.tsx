@@ -6,6 +6,9 @@ import {
   getCurrentServiceLocationByRelationshipId,
   getRelationshipActions,
   getRelationshipById,
+  getRelationshipCommitments,
+  getRelationshipInsights,
+  getRelationshipOpenLoops,
   getRelationshipTimeline,
   getRelationshipTouches,
   getRelationshipWorkingNotes,
@@ -13,10 +16,17 @@ import {
 } from "@/lib/data/relationships";
 import { getExternalClientByRelationshipId } from "@/lib/data/externalClients";
 import { RELATIONSHIP_TYPE_LABELS } from "@/lib/relationships/constants";
+import { selectPrimaryOpenAction } from "@/lib/relationships/sorting";
+import { generateRelationshipBrief } from "@/lib/relationships/brief";
 import { RelationshipOverview } from "@/components/relationships/RelationshipOverview";
+import { RelationshipBriefSection } from "@/components/relationships/RelationshipBriefSection";
+import { RelationshipNextActionCard } from "@/components/relationships/RelationshipNextActionCard";
+import { RelationshipCommitmentsSection } from "@/components/relationships/RelationshipCommitmentsSection";
+import { RelationshipOpenLoopsSection } from "@/components/relationships/RelationshipOpenLoopsSection";
+import { RelationshipInteractionsSection } from "@/components/relationships/RelationshipInteractionsSection";
+import { RelationshipInsightsSection } from "@/components/relationships/RelationshipInsightsSection";
 import { RelationshipActionsList } from "@/components/relationships/RelationshipActionsList";
 import { RelationshipWorkingNotesSection } from "@/components/relationships/RelationshipWorkingNotesSection";
-import { RelationshipTouchesSection } from "@/components/relationships/RelationshipTouchesSection";
 import { RelationshipTimelineSection } from "@/components/relationships/RelationshipTimelineSection";
 import { RelationshipServiceLocationSection } from "@/components/relationships/RelationshipServiceLocationSection";
 import { ConvertRelationshipPanel } from "@/components/relationships/ConvertRelationshipPanel";
@@ -35,15 +45,38 @@ export default async function RelationshipDetailPage({
 
   if (!relationship) notFound();
 
-  const [actions, notes, touches, timeline, linkedResidentName, externalClient, currentLocation] = await Promise.all([
-    getRelationshipActions(id),
-    getRelationshipWorkingNotes(id),
-    getRelationshipTouches(id),
-    getRelationshipTimeline(id),
-    relationship.resident_id ? getResidentDisplayNameById(relationship.resident_id) : Promise.resolve(null),
-    getExternalClientByRelationshipId(id),
-    getCurrentServiceLocationByRelationshipId(id),
-  ]);
+  const [actions, notes, interactions, insights, commitments, openLoops, timeline, linkedResidentName, externalClient, currentLocation] =
+    await Promise.all([
+      getRelationshipActions(id),
+      getRelationshipWorkingNotes(id),
+      getRelationshipTouches(id),
+      getRelationshipInsights(id),
+      getRelationshipCommitments(id),
+      getRelationshipOpenLoops(id),
+      getRelationshipTimeline(id),
+      relationship.resident_id ? getResidentDisplayNameById(relationship.resident_id) : Promise.resolve(null),
+      getExternalClientByRelationshipId(id),
+      getCurrentServiceLocationByRelationshipId(id),
+    ]);
+
+  const openActions = actions.filter((a) => a.status === "open");
+  const currentNextAction = selectPrimaryOpenAction(
+    openActions.map((a) => ({ id: a.id, dueAt: a.due_at, priority: a.priority, createdAt: a.created_at })),
+  );
+  const currentNextActionRecord = currentNextAction ? actions.find((a) => a.id === currentNextAction.id) ?? null : null;
+
+  const activeInsights = insights.filter((i) => i.status === "active");
+  const openCommitments = commitments.filter((c) => c.status === "open");
+  const openOpenLoops = openLoops.filter((o) => o.status === "open");
+
+  const brief = generateRelationshipBrief({
+    relationship,
+    recentInteractions: interactions.slice(0, 5),
+    activeInsights,
+    openCommitments,
+    openLoops: openOpenLoops,
+    currentNextAction: currentNextActionRecord,
+  });
 
   return (
     <PageContainer title={relationship.display_name}>
@@ -81,17 +114,44 @@ export default async function RelationshipDetailPage({
             <ConvertRelationshipPanel relationship={relationship} currentLocation={currentLocation} />
           )}
 
+          <RelationshipBriefSection brief={brief} />
+
+          <RelationshipNextActionCard action={currentNextActionRecord} />
+
           <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
-            <RelationshipActionsList relationshipId={id} actions={actions} />
+            <RelationshipCommitmentsSection commitments={commitments} />
+          </div>
+
+          <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
+            <RelationshipOpenLoopsSection openLoops={openLoops} />
+          </div>
+
+          <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
+            <RelationshipInteractionsSection relationshipId={id} interactions={interactions} />
+          </div>
+
+          <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
+            <RelationshipInsightsSection insights={insights} />
           </div>
 
           <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
             <RelationshipWorkingNotesSection relationshipId={id} notes={notes} />
           </div>
 
-          <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
-            <RelationshipTouchesSection relationshipId={id} touches={touches} />
+          <div id="next-actions" className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
+            <RelationshipActionsList relationshipId={id} actions={actions} />
           </div>
+
+          {relationship.summary && (
+            <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
+              <h2 className="mb-1 font-serif text-card-title font-light text-body">Original / Intake Summary</h2>
+              <p className="mb-3 font-sans text-sm text-subtle">
+                Historical source context from when this relationship was created — not the current living
+                understanding. See the Relationship Brief above for that.
+              </p>
+              <p className="font-sans text-sm text-body">{relationship.summary}</p>
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">

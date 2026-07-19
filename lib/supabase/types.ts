@@ -967,7 +967,17 @@ export type RelationshipTimelineEventType =
   | "relationship_updated"
   | "relationship_converted"
   | "external_client_status_changed"
-  | "service_location_updated";
+  | "service_location_updated"
+  | "website_inquiry_received"
+  // One interaction_logged event per Log Interaction submission already
+  // covers initial capture of any Insights/Commitments/Open Loops it
+  // produced (see log_relationship_interaction's event_description) — no
+  // insight_recorded/commitment_created/open_loop_created event type
+  // exists. commitment_resolved/open_loop_resolved fire only when
+  // something is later closed.
+  | "interaction_logged"
+  | "commitment_resolved"
+  | "open_loop_resolved";
 
 export interface RelationshipTimelineEvent {
   id: string;
@@ -990,7 +1000,41 @@ export type RelationshipTouchType =
   | "assessment"
   | "resident_visit"
   | "proposal"
+  | "internal_discussion"
+  | "community_interaction"
   | "other";
+
+// Structured result of an interaction — Relationship Intelligence Phase 1.
+// Distinct from the free-text `outcome` field, which predates it and is
+// kept for backward compatibility.
+export type RelationshipInteractionResult =
+  | "connected"
+  | "left_voicemail"
+  | "no_response"
+  | "information_sent"
+  | "information_received"
+  | "meeting_scheduled"
+  | "decision_pending"
+  | "follow_up_requested"
+  | "not_interested"
+  | "service_interest_confirmed"
+  | "other";
+
+export type RelationshipInteractionParticipantRole =
+  | "primary_contact"
+  | "resident"
+  | "family_member"
+  | "serve_team_member"
+  | "community_contact"
+  | "other";
+
+export interface RelationshipInteractionParticipant {
+  role: RelationshipInteractionParticipantRole;
+  name: string;
+  // Points at an existing identity (e.g. a residents.id) when known — never
+  // a duplicate identity record created just for interaction capture.
+  personId?: string | null;
+}
 
 export interface RelationshipTouch {
   id: string;
@@ -998,8 +1042,15 @@ export interface RelationshipTouch {
   touch_type: RelationshipTouchType;
   occurred_at: string;
   summary: string;
+  interaction_result: RelationshipInteractionResult | null;
   outcome: string | null;
   contact_name: string | null;
+  participants: RelationshipInteractionParticipant[];
+  // Client-generated, one per Log Interaction form session — lets a
+  // retried/double-clicked submission return the original row instead of
+  // duplicating it. Null for legacy rows and for anything not submitted
+  // through the Log Interaction workflow.
+  idempotency_key: string | null;
   created_by: string;
   created_at: string;
   source_type: string;
@@ -1040,6 +1091,12 @@ export interface RelationshipAction {
   completed_at: string | null;
   dismissed_by: string | null;
   dismissed_at: string | null;
+  // Relationship Intelligence Phase 1 — traces a Next Action back to the
+  // Interaction that spawned it, when created through the Log Interaction
+  // workflow. Null for manually-created actions. source_commitment_id/
+  // source_open_loop_id were deferred (nothing in this phase creates an
+  // Action directly from a Commitment or Open Loop) — see ADR 0003.
+  source_interaction_id: string | null;
 }
 
 export type RelationshipActionEditField =
@@ -1084,6 +1141,104 @@ export interface RelationshipWorkingNote {
   created_by: string;
   updated_at: string | null;
   updated_by: string | null;
+  // Relationship Intelligence Phase 1 — see
+  // docs/architecture/relationship-intelligence-phase-1-implementation.md.
+  // The status vocabulary itself (open/resolved/archived) is unchanged;
+  // these are additive fields the original scope asked for.
+  relevant_until: string | null;
+  resident_id: string | null;
+  contact_name: string | null;
+  source_description: string | null;
+}
+
+// ─── Relationship Intelligence Phase 1 ────────────────────────────────────
+// See docs/architecture/relationship-intelligence-phase-1-implementation.md
+// and docs/architecture/decisions/0003-interaction-extends-touch.md.
+
+export type RelationshipInsightCategory =
+  | "resident_preference"
+  | "family_context"
+  | "decision_dynamics"
+  | "communication_preference"
+  | "timing"
+  | "service_need"
+  | "concern_or_barrier"
+  | "financial_consideration"
+  | "community_context"
+  | "operational"
+  | "other";
+
+export type RelationshipInsightStatus = "active" | "resolved" | "outdated";
+
+export interface RelationshipInsight {
+  id: string;
+  relationship_id: string;
+  resident_id: string | null;
+  contact_name: string | null;
+  content: string;
+  category: RelationshipInsightCategory;
+  why_it_matters: string | null;
+  status: RelationshipInsightStatus;
+  relevant_until: string | null;
+  source_interaction_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+}
+
+export type RelationshipCommitmentResponsiblePartyType =
+  | "serve"
+  | "family"
+  | "resident"
+  | "community"
+  | "referral_source"
+  | "other";
+
+// "superseded" is deferred — no real supersede workflow exists yet in this
+// phase. See ADR 0003.
+export type RelationshipCommitmentStatus = "open" | "completed" | "cancelled";
+
+export interface RelationshipCommitment {
+  id: string;
+  relationship_id: string;
+  description: string;
+  responsible_party_type: RelationshipCommitmentResponsiblePartyType;
+  responsible_party_reference: string | null;
+  expected_date: string | null;
+  status: RelationshipCommitmentStatus;
+  // Consistent closure fields regardless of which terminal status was
+  // reached — status itself distinguishes completed vs. cancelled.
+  closed_at: string | null;
+  closed_by: string | null;
+  closure_note: string | null;
+  source_interaction_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+// "superseded" is deferred, same rationale as Commitment above.
+export type RelationshipOpenLoopStatus = "open" | "resolved" | "no_longer_relevant";
+
+export interface RelationshipOpenLoop {
+  id: string;
+  relationship_id: string;
+  question: string;
+  owner: string | null;
+  target_resolution_date: string | null;
+  status: RelationshipOpenLoopStatus;
+  resolution: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  source_interaction_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
 }
 
 // Early, nonclinical service-planning information for a prospect-oriented

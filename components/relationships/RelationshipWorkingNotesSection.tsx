@@ -89,6 +89,7 @@ export function RelationshipWorkingNotesSection({
   const [isAdding, setIsAdding] = useState(false);
   const [content, setContent] = useState("");
   const [category, setCategory] = useState<RelationshipWorkingNoteCategory | "">("");
+  const [relevantUntil, setRelevantUntil] = useState("");
   const [isSaving, startSaveTransition] = useTransition();
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -99,7 +100,12 @@ export function RelationshipWorkingNotesSection({
     event.preventDefault();
     setSaveError(null);
     startSaveTransition(async () => {
-      const result = await createRelationshipWorkingNote({ relationshipId, content, category });
+      const result = await createRelationshipWorkingNote({
+        relationshipId,
+        content,
+        category,
+        relevantUntil: relevantUntil || undefined,
+      });
       if (result.error) {
         setSaveError(result.error);
         return;
@@ -107,6 +113,7 @@ export function RelationshipWorkingNotesSection({
       setIsAdding(false);
       setContent("");
       setCategory("");
+      setRelevantUntil("");
       router.refresh();
     });
   }
@@ -167,23 +174,36 @@ export function RelationshipWorkingNotesSection({
               className="w-full rounded-md border border-ivory-border bg-surface px-3 py-2 font-sans text-base text-body outline-none placeholder:text-subtle focus:border-gold/60"
             />
           </label>
-          <label className="mt-3 block max-w-xs">
-            <span className="mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-subtle">
-              Category
-            </span>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as RelationshipWorkingNoteCategory | "")}
-              className="w-full rounded-md border border-ivory-border bg-surface px-3 py-2 font-sans text-base text-body outline-none focus:border-gold/60"
-            >
-              <option value="">No category</option>
-              {RELATIONSHIP_WORKING_NOTE_CATEGORIES.map((value) => (
-                <option key={value} value={value}>
-                  {RELATIONSHIP_WORKING_NOTE_CATEGORY_LABELS[value]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-subtle">
+                Category
+              </span>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as RelationshipWorkingNoteCategory | "")}
+                className="w-full rounded-md border border-ivory-border bg-surface px-3 py-2 font-sans text-base text-body outline-none focus:border-gold/60"
+              >
+                <option value="">No category</option>
+                {RELATIONSHIP_WORKING_NOTE_CATEGORIES.map((value) => (
+                  <option key={value} value={value}>
+                    {RELATIONSHIP_WORKING_NOTE_CATEGORY_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-subtle">
+                Review by (optional)
+              </span>
+              <input
+                type="date"
+                value={relevantUntil}
+                onChange={(e) => setRelevantUntil(e.target.value)}
+                className="w-full rounded-md border border-ivory-border bg-surface px-3 py-2 font-sans text-base text-body outline-none focus:border-gold/60"
+              />
+            </label>
+          </div>
 
           <div className="mt-3 flex items-center justify-between">
             <span className="font-sans text-sm text-subtle">{remaining} characters remaining</span>

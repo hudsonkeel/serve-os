@@ -331,12 +331,12 @@ export function RelationshipOverview({
         </div>
       </div>
 
-      {relationship.summary && (
-        <div className="mt-4 border-t border-ivory-border pt-4">
-          <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">Summary</p>
-          <p className="mt-0.5 font-sans text-sm text-body">{relationship.summary}</p>
-        </div>
-      )}
+      {/* relationship.summary moved to the page's "Original / Intake Summary"
+          section (near the bottom, alongside the Relationship Brief reorg —
+          Relationship Intelligence Phase 1). It's historical source
+          context now, not the current living understanding of the
+          relationship, so it no longer lives in the primary overview
+          card. */}
     </div>
   );
 }
