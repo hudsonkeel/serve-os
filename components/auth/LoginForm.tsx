@@ -14,7 +14,7 @@ export function LoginForm() {
 
   useEffect(() => {
     if (state.success) {
-      router.replace("/");
+      router.replace("/workspace");
       router.refresh();
     }
   }, [router, state.success]);

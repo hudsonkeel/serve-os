@@ -13,7 +13,7 @@ export default async function LoginPage() {
   const user = await getCurrentAuthorizedUser();
 
   if (user) {
-    redirect("/");
+    redirect("/workspace");
   }
 
   return (
