@@ -9,6 +9,7 @@ import { WorkforceRosterTable } from "@/components/workforce/WorkforceRosterTabl
 import { SyncNowButton } from "@/components/workforce/SyncNowButton";
 import { SyncComplianceActionsButton } from "@/components/workforce/SyncComplianceActionsButton";
 import { WorkforceAttentionDashboard } from "@/components/workforce/WorkforceAttentionDashboard";
+import { WorkforceSubNav } from "@/components/workforce/WorkforceSubNav";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -29,6 +30,7 @@ export default async function WorkforcePage({
 
   return (
     <PageContainer title="Workforce">
+      <WorkforceSubNav active="overview" />
       <div className="mb-6 flex items-baseline justify-between">
         <div>
           <h1 className="font-serif text-3xl font-light text-body">Workforce</h1>

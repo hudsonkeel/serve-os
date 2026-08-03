@@ -10,6 +10,7 @@ import { SUBJECT_TYPE_WORKFORCE_MEMBER } from "@/lib/supabase/types";
 import { buildIdentityRejectionWarning, findPotentialDuplicateLinks } from "@/lib/workforce/identityDuplicateDetection";
 import { IdentityReviewQueue, type IdentityReviewRow } from "@/components/workforce/IdentityReviewQueue";
 import { ResolvedIdentityLinkQueue, type ResolvedIdentityReviewRow } from "@/components/workforce/ResolvedIdentityLinkQueue";
+import { WorkforceSubNav } from "@/components/workforce/WorkforceSubNav";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -57,6 +58,7 @@ export default async function WorkforceIdentityReviewPage({
 
   return (
     <PageContainer title="Workforce Identity Review">
+      <WorkforceSubNav active="identity-review" />
       <div className="mb-6">
         <h1 className="font-serif text-3xl font-light text-body">Identity Review</h1>
         <p className="mt-1 font-sans text-sm text-muted">
