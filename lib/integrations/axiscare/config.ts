@@ -128,3 +128,13 @@ export function getAxisCareConfig(): AxisCareConfig {
 export function isAxisCareScheduleEnabled(): boolean {
   return process.env.AXISCARE_SCHEDULE_ENABLED === "true";
 }
+
+// Same server-only release-control discipline as
+// isAxisCareScheduleEnabled() above, independent of credential
+// configuration — gates the Workforce Intelligence AxisCare caregiver sync
+// specifically (lib/workforce/axiscareCaregiverSync.ts), not the Workforce
+// roster/detail pages themselves, which still show already-confirmed data
+// regardless of this flag. Exact, case-sensitive "true" match only.
+export function isAxisCareWorkforceEnabled(): boolean {
+  return process.env.AXISCARE_WORKFORCE_ENABLED === "true";
+}

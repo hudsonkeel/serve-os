@@ -42,6 +42,514 @@ export type RecruitingLeadInsert = Partial<
   Omit<RecruitingLead, "id" | "created_at">
 >;
 
+// ─── Workforce Identity ─────────────────────────────────────────────────
+// See docs/intelligence/SERVE_HUMAN_LIFECYCLE_ONTOLOGY.md Part 1 — a
+// durable Serve workforce identity that survives beyond recruiting.
+// Deliberately minimal: no name/contact/HR fields live here, only the
+// link back to the recruiting lead that originated it.
+// The canonical profile's review lifecycle — see
+// supabase/migrations/20260813000000_add_canonical_workforce_profile_editor.sql.
+// 'reviewed' and 'locked' both mean AxisCare sync may never again silently
+// overwrite the profile's canonical fields (a differing source value
+// creates a discrepancy instead) — 'locked' additionally refuses ordinary
+// human edits too, until explicitly unlocked.
+export type WorkforceCanonicalProfileStatus = "unreviewed" | "reviewed" | "needs_review" | "locked";
+
+export interface WorkforceMember {
+  id: string;
+  // Nullable: most/all AxisCare-synced caregivers were hired before Serve
+  // OS's recruiting pipeline existed, or applied via Apploi directly (which
+  // never creates a recruiting_leads row today). See
+  // supabase/migrations/20260808000000_create_workforce_intelligence_platform.sql.
+  source_recruiting_lead_id: string | null;
+  // Canonical identity — see
+  // supabase/migrations/20260812000000_add_workforce_member_canonical_identity.sql
+  // and 20260813000000_add_canonical_workforce_profile_editor.sql.
+  // Initialized once at creation (from the recruiting lead, or from the
+  // approved AxisCare source data for a standalone member) and edited only
+  // through update_workforce_canonical_profile() thereafter — AxisCare/the
+  // recruiting lead remain the source of attribution, never a second
+  // silently-overwriting name source. display_name is never null
+  // (DB-enforced); every other identity field may be null when neither a
+  // human nor a source has provided it.
+  display_name: string;
+  legal_first_name: string | null;
+  legal_middle_name: string | null;
+  legal_last_name: string | null;
+  preferred_name: string | null;
+  primary_email: string | null;
+  primary_phone: string | null;
+  canonical_profile_status: WorkforceCanonicalProfileStatus;
+  canonical_identity_notes: string | null;
+  created_at: string;
+  created_by: string;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+// ─── Multi-community foundation ───────────────────────────────────────────
+// See supabase/migrations/20260813000000_add_canonical_workforce_profile_editor.sql.
+// The first normalized Community entity in Serve OS — every other domain
+// still uses a free-text community_name/community_code pair (residents,
+// relationships), untouched by this migration.
+export interface Community {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export type WorkforceCommunityMembershipStatus = "pending" | "active" | "inactive" | "terminated" | "transferred";
+
+// "Jessicah exists as a Serve workforce member" (workforce_members) is
+// distinct from "Jessicah currently works at Watermere" (this table). One
+// workforce member, any number of community memberships — never a second
+// workforce_members row for the same person working at another community.
+export interface WorkforceCommunityMembership {
+  id: string;
+  workforce_member_id: string;
+  community_id: string;
+  membership_status: WorkforceCommunityMembershipStatus;
+  role_type: string | null;
+  employment_relationship: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_primary_community: boolean;
+  community_display_name_override: string | null;
+  community_email: string | null;
+  community_phone: string | null;
+  scheduler_notes: string | null;
+  availability_notes: string | null;
+  transportation_notes: string | null;
+  access_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string | null;
+}
+
+// ─── Canonical profile audit trail ────────────────────────────────────────
+export type WorkforceProfileChangeType =
+  | "canonical_correction"
+  | "preferred_value_change"
+  | "community_override"
+  | "profile_reviewed"
+  | "profile_unlocked"
+  | "profile_locked"
+  | "discrepancy_flagged"
+  | "discrepancy_resolved";
+
+// Append-only — one row per changed field per save. Distinct from
+// person_vendor_identity_link_decisions (20260811000000): that table
+// tracks identity-LINK decisions (which vendor record is primary/
+// confirmed); this one tracks canonical PROFILE field values themselves.
+export interface WorkforceProfileChange {
+  id: string;
+  workforce_member_id: string;
+  community_id: string | null;
+  field_name: string;
+  previous_value: string | null;
+  new_value: string | null;
+  change_type: WorkforceProfileChangeType;
+  actor: string;
+  rationale: string | null;
+  created_at: string;
+}
+
+export type WorkforceProfileDiscrepancyStatus = "open" | "accepted_source" | "retained_canonical" | "dismissed";
+
+// "Source differs from reviewed canonical value -> create discrepancy."
+// One open row per workforce_member_id + field_name at a time (DB-enforced
+// partial unique index) — a later sync refresh updates the same open row
+// rather than piling up duplicates.
+export interface WorkforceProfileDiscrepancy {
+  id: string;
+  workforce_member_id: string;
+  field_name: string;
+  canonical_value: string | null;
+  source_value: string | null;
+  source_system: string;
+  status: WorkforceProfileDiscrepancyStatus;
+  detected_at: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  resolution_rationale: string | null;
+}
+
+// ─── Workforce Intelligence Phase 1 — platform-owned compliance layer ─────
+// See docs/intelligence/SERVE_HUMAN_LIFECYCLE_ONTOLOGY.md and
+// supabase/migrations/20260808000000_create_workforce_intelligence_platform.sql.
+// Hierarchy: Subject -> Requirement Set -> Requirements -> Evidence ->
+// Verification -> Compliance Status (lib/compliance/requirementSetStatus.ts)
+// -> Domain Interpretation (lib/workforce/registryReadiness.ts).
+//
+// subject_type is a closed, controlled vocabulary — only 'workforce_member'
+// today. Adding a second value is always a migration (new CHECK constraint
+// branch) plus a new branch in assert_valid_person_subject() — the two
+// travel together, by convention, so they can never drift.
+export type PersonSubjectType = "workforce_member";
+
+export const SUBJECT_TYPE_WORKFORCE_MEMBER: PersonSubjectType = "workforce_member";
+
+// The same 7-tier match ladder originally proven by Recruiting's
+// lead-to-vendor-record matching, reused unchanged for AxisCare caregiver
+// identity resolution below — one shared vocabulary, not a workforce-only
+// reinvention.
+export type VendorIdentityMatchMethod =
+  | "existing_linkage"
+  | "vendor_id"
+  | "verified_email"
+  | "verified_phone"
+  | "verified_email_or_phone_plus_name"
+  | "normalized_name_plus_attribute"
+  | "name_similarity_pending_review";
+
+export type VendorIdentityMatchConfidence = "high" | "medium" | "low";
+
+export type PersonVendorIdentityLinkStatus = "proposed" | "confirmed" | "rejected" | "deferred";
+
+// link_role only ever applies once status = 'confirmed' — see
+// supabase/migrations/20260811000000_add_vendor_identity_lineage.sql.
+//   primary    — the current, profile/lifecycle-driving record for this
+//                subject+source. At most one, DB-enforced.
+//   duplicate  — confirmed same person, kept in sync, not profile-driving.
+//   retired    — explicitly retired from active tracking by a reviewer.
+//   historical — reserved for future lineage use; no Phase 1 action assigns
+//                this value yet.
+export type LinkRole = "primary" | "duplicate" | "retired" | "historical";
+
+export interface PersonVendorIdentityLink {
+  id: string;
+  subject_type: PersonSubjectType;
+  subject_id: string | null;
+  source_system: string;
+  vendor_record_id: string;
+  vendor_display_name: string | null;
+  match_method: VendorIdentityMatchMethod;
+  match_confidence: VendorIdentityMatchConfidence;
+  status: PersonVendorIdentityLinkStatus;
+  link_role: LinkRole | null;
+  duplicate_of_link_id: string | null;
+  approved_source_data: Record<string, unknown>;
+  last_synced_at: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  resolution_rationale: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Append-only — every human decision made on a PersonVendorIdentityLink,
+// preserved even after later corrections. See
+// supabase/migrations/20260811000000_add_vendor_identity_lineage.sql's
+// person_vendor_identity_link_decisions. System-generated proposals (from
+// the AxisCare sync) are not logged here — only human decisions are.
+export type PersonVendorIdentityLinkDecisionAction =
+  | "confirmed"
+  | "rejected"
+  | "deferred"
+  | "reopened"
+  | "role_changed"
+  | "subject_reassigned";
+
+export interface PersonVendorIdentityLinkDecision {
+  id: string;
+  link_id: string;
+  action: PersonVendorIdentityLinkDecisionAction;
+  previous_status: PersonVendorIdentityLinkStatus | null;
+  new_status: PersonVendorIdentityLinkStatus | null;
+  previous_link_role: LinkRole | null;
+  new_link_role: LinkRole | null;
+  previous_subject_id: string | null;
+  new_subject_id: string | null;
+  actor: string;
+  rationale: string;
+  created_at: string;
+}
+
+export interface RequirementSet {
+  id: string;
+  set_code: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PersonRequirement {
+  id: string;
+  requirement_code: string;
+  name: string;
+  description: string | null;
+  category: string;
+  requires_document: boolean;
+  requires_verification: boolean;
+  is_active: boolean;
+  // Employee Record Audit — score-gated requirements only (HIPAA/HB300,
+  // Infection Control training). Null for every requirement that isn't
+  // score-gated. See supabase/migrations/20260814000000_add_employee_record_audit.sql.
+  required_score: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RequirementSetMember {
+  id: string;
+  requirement_set_id: string;
+  requirement_id: string;
+  is_required: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export type PersonDocumentStatus = "active" | "superseded";
+
+export interface PersonDocument {
+  id: string;
+  subject_type: PersonSubjectType;
+  subject_id: string;
+  storage_bucket: string;
+  storage_path: string;
+  original_filename: string;
+  document_type: string;
+  mime_type: string | null;
+  file_size_bytes: number | null;
+  document_date: string | null;
+  source_system: string;
+  uploaded_by: string;
+  uploaded_at: string;
+  is_sensitive: boolean;
+  status: PersonDocumentStatus;
+  checksum: string | null;
+  supersedes_document_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Two independent dimensions — deliberately never collapsed into one. See
+// supabase/migrations/20260808000000_create_workforce_intelligence_platform.sql's
+// comment on person_evidence.verification_status/lifecycle_status.
+//
+// verification_status: was this evidence reviewed and found correct? A
+// human judgment, set exactly once (verified/rejected) and never
+// overwritten by a later lifecycle event.
+export type PersonEvidenceVerificationStatus = "unverified" | "verified" | "rejected";
+
+// lifecycle_status: is this evidence still the current record for its
+// requirement? Changes over time (expiration, supersession, or — Evidence
+// Management — a correction) without ever touching the verification
+// judgment above. 'entered_in_error' is distinct from 'superseded': a
+// superseded record was correct when created and later replaced by newer
+// evidence; an entered-in-error record should never have existed for this
+// subject/requirement at all (wrong caregiver, wrong requirement, duplicate).
+export type PersonEvidenceLifecycleStatus = "active" | "expired" | "superseded" | "entered_in_error";
+
+export type PersonEvidenceResult =
+  | "no_record_returned"
+  | "listed_no_findings"
+  | "listed_with_findings"
+  | "requires_review"
+  | "unable_to_determine";
+
+// Human Attestation & Evidence Assurance (Phase 1D) — see
+// supabase/migrations/20260817000000_add_human_attestation.sql. Three
+// deliberately distinct concepts; never collapse one into another:
+//   - WHERE the fact lives (authoritative source system)
+//   - HOW Serve OS came to have this evidence (collection method)
+//   - HOW that collection was itself verified (verification method)
+export type AuthoritativeSourceSystem =
+  | "viventium"
+  | "axiscare"
+  | "texas_nar"
+  | "semarc"
+  | "background_vendor"
+  | "uploaded_document"
+  | "other_authorized_source";
+
+export type EvidenceCollectionMethod =
+  | "human_attestation"
+  | "api_sync"
+  | "structured_import"
+  | "document_upload"
+  | "digital_compatriot_observation";
+
+export type EvidenceVerificationMethod =
+  | "direct_source_review"
+  | "document_review"
+  | "imported_authoritative_status"
+  | "automated_source_confirmation";
+
+// The structured "what was observed" outcome for a Human Attestation —
+// deliberately a superset covering both generic verification outcomes and
+// the E-Verify-specific set (completed_closed/pending/case_not_found) the
+// product mission names explicitly. Whether a given value counts as
+// "satisfies the requirement" is a per-requirement decision made in
+// lib/workforce/humanAttestation.ts, never assumed centrally.
+export type AttestationResult =
+  | "verified"
+  | "verified_with_observation"
+  | "completed_closed"
+  | "pending"
+  | "case_not_found"
+  | "unable_to_verify"
+  | "contradictory"
+  | "requires_review"
+  | "not_found"
+  | "unknown";
+
+export interface PersonEvidence {
+  id: string;
+  subject_type: PersonSubjectType;
+  subject_id: string;
+  requirement_id: string;
+  document_id: string | null;
+  verification_status: PersonEvidenceVerificationStatus;
+  lifecycle_status: PersonEvidenceLifecycleStatus;
+  // Populated together, exactly when lifecycle_status moves off 'active' —
+  // never when verification_status changes. See the migration's
+  // person_evidence_lifecycle_status_fields_check.
+  lifecycle_status_reason: string | null;
+  lifecycle_status_changed_by: string | null;
+  lifecycle_status_changed_at: string | null;
+  result: PersonEvidenceResult | null;
+  source_system: string;
+  performed_at: string | null;
+  effective_date: string | null;
+  review_due_date: string | null;
+  expiration_date: string | null;
+  entered_by: string;
+  verified_by: string | null;
+  verified_at: string | null;
+  notes: string | null;
+  supersedes_evidence_id: string | null;
+  // Employee Record Audit — the score a score-gated requirement's evidence
+  // was verified with (e.g. a training completion score). Null unless the
+  // requirement being satisfied has a required_score. See
+  // supabase/migrations/20260814000000_add_employee_record_audit.sql.
+  numeric_score: number | null;
+  // Human Attestation & Evidence Assurance — see
+  // supabase/migrations/20260817000000_add_human_attestation.sql. All four
+  // null except on rows collected via Human Attestation (or, in future, a
+  // Digital Compatriot observation).
+  authoritative_source_system: AuthoritativeSourceSystem | null;
+  collection_method: EvidenceCollectionMethod | null;
+  verification_method: EvidenceVerificationMethod | null;
+  attestation_result: AttestationResult | null;
+  external_reference: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WorkforceActivityEventType =
+  | "workforce_profile_created"
+  | "identity_link_confirmed"
+  | "axiscare_source_data_refreshed"
+  | "document_uploaded"
+  | "evidence_created"
+  | "evidence_verified"
+  | "evidence_rejected"
+  // Evidence Management — see
+  // supabase/migrations/20260808000000_create_workforce_intelligence_platform.sql's
+  // workforce_activity_event_type_check and lib/workforce/evidenceLifecycle.ts.
+  | "document_metadata_corrected"
+  | "document_reassigned"
+  | "accidental_upload_removed"
+  | "evidence_corrected"
+  | "evidence_marked_entered_in_error"
+  | "evidence_replaced"
+  | "evidence_renewed"
+  // Vendor Identity Lineage — see
+  // supabase/migrations/20260811000000_add_vendor_identity_lineage.sql and
+  // lib/data/personVendorIdentityLinks.ts.
+  | "identity_link_reopened"
+  | "identity_link_promoted_to_primary"
+  | "identity_link_role_changed"
+  | "identity_link_subject_reassigned"
+  // Canonical Profile Editor — see
+  // supabase/migrations/20260813000000_add_canonical_workforce_profile_editor.sql.
+  | "canonical_profile_updated"
+  | "canonical_profile_reviewed"
+  | "canonical_profile_locked"
+  | "canonical_profile_unlocked"
+  | "community_membership_updated"
+  | "profile_discrepancy_flagged"
+  | "profile_discrepancy_resolved"
+  // Employee Record Audit — see
+  // supabase/migrations/20260814000000_add_employee_record_audit.sql.
+  | "compliance_action_created"
+  | "compliance_action_resolved"
+  | "compliance_action_dismissed"
+  // Human Attestation & Evidence Assurance — see
+  // supabase/migrations/20260817000000_add_human_attestation.sql.
+  | "evidence_attested";
+
+export interface WorkforceActivityEvent {
+  id: string;
+  workforce_member_id: string;
+  event_type: WorkforceActivityEventType;
+  event_title: string;
+  event_description: string | null;
+  source: string;
+  system_generated: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+// ─── Employee Record Audit — operational work ──────────────────────────
+// See supabase/migrations/20260814000000_add_employee_record_audit.sql.
+// Deliberately Workforce-domain-scoped (workforce_member_id, not a
+// polymorphic subject) — the smallest structure this product needs, not a
+// platform-wide action primitive built ahead of a second consumer.
+export type WorkforceComplianceActionType =
+  | "evidence_missing"
+  | "evidence_expired"
+  | "evidence_expiring_soon"
+  | "evidence_requires_review"
+  // Attention-Driven Operations (Phase 1C) — see
+  // supabase/migrations/20260815000000_add_attention_driven_operations.sql.
+  | "evidence_awaiting_verification";
+
+export type WorkforceComplianceActionPriority = "low" | "normal" | "high" | "urgent";
+
+export type WorkforceComplianceActionStatus = "open" | "resolved" | "dismissed";
+
+export interface WorkforceComplianceAction {
+  id: string;
+  workforce_member_id: string;
+  requirement_id: string | null;
+  action_type: WorkforceComplianceActionType;
+  title: string;
+  reason: string;
+  owner: string | null;
+  priority: WorkforceComplianceActionPriority;
+  due_at: string | null;
+  status: WorkforceComplianceActionStatus;
+  resolution_note: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WorkforceAxisCareSyncRunStatus = "in_progress" | "success" | "failed" | "partial";
+
+export interface WorkforceAxisCareSyncRun {
+  id: string;
+  status: WorkforceAxisCareSyncRunStatus;
+  started_at: string;
+  completed_at: string | null;
+  records_received: number;
+  source_records_refreshed: number;
+  source_records_unchanged: number;
+  review_candidates_created: number;
+  errors: unknown[];
+  initiated_by: string;
+}
+
 // Prospects
 
 export type ProspectStatus =
