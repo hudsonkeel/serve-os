@@ -8,6 +8,7 @@ import {
   Users,
   Handshake,
   Home,
+  ShieldCheck,
   BarChart2,
   Sparkles,
   MessageSquare,
@@ -16,28 +17,44 @@ import {
 import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
 
-// Core operating areas — Dashboard = Know, Workspace = Do, Residents =
-// Manage (identity), Relationships = Manage (engagement, resident-linked
-// and non-client relationship work), External Clients = Manage (the
-// durable prospective/active/paused/former traditional-home-care client
-// lifecycle outside supported communities — see
-// docs/design/RELATIONSHIPS.md), Community Intelligence = Think
-// proactively, Ask Serve = Think on demand. See
+// Grouped by the operating flow: do the day's work, work with the people
+// Serve serves and the people who provide that care, then understand
+// performance and emerging conditions. See
 // docs/architecture/SERVE_OS_NAVIGATION_MODEL.md.
-const primaryNav = [
-  { icon: Briefcase,       label: "Workspace",              href: "/workspace" },
-  { icon: LayoutDashboard, label: "Dashboard",              href: "/" },
-  { icon: Users,           label: "Residents",             href: "/residents" },
-  { icon: Handshake,       label: "Relationships",          href: "/relationships" },
-  { icon: Home,            label: "External Clients",       href: "/external-clients" },
-  { icon: BarChart2,       label: "Community Intelligence", href: "/community-intelligence" },
-  { icon: Sparkles,        label: "Ask Serve",             href: "/ask-serve" },
+//
+// "The People Who Serve" (recruiting) is deliberately NOT a top-level
+// destination here — recruiting is reachable as a Candidates entry point
+// from within Workforce (see the Workforce page's own sub-navigation),
+// preserving the existing /recruiting route without duplicating it as a
+// second primary nav concept.
+const sections = [
+  {
+    heading: "Work",
+    items: [
+      { icon: Briefcase, label: "Workspace", href: "/workspace" },
+      { icon: LayoutDashboard, label: "Dashboard", href: "/" },
+    ],
+  },
+  {
+    heading: "Serve",
+    items: [
+      { icon: Users, label: "Residents", href: "/residents" },
+      { icon: Handshake, label: "Relationships", href: "/relationships" },
+      { icon: Home, label: "External Clients", href: "/external-clients" },
+      { icon: ShieldCheck, label: "Workforce", href: "/workforce" },
+    ],
+  },
+  {
+    heading: "Understand",
+    items: [
+      { icon: BarChart2, label: "Community Intelligence", href: "/community-intelligence" },
+      { icon: Sparkles, label: "Ask Serve", href: "/ask-serve" },
+    ],
+  },
 ];
 
-// Communications is the only "Coming Soon" item — Recruiting, Scheduling,
-// and Care Plans were removed from the sidebar (not deleted) per the
-// navigation model. Recruiting is reachable from Workspace; Scheduling and
-// Care Plans have no dedicated route yet.
+// Communications is the only "Coming Soon" item — Scheduling and Care
+// Plans have no dedicated route yet.
 const comingSoonNav = [
   { icon: MessageSquare,   label: "Communications" },
 ];
@@ -56,30 +73,36 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
       </div>
 
       {/* ─── Navigation ─── */}
-      <nav className="flex-1 overflow-y-auto px-4 py-6">
-
-        {/* Primary nav */}
-        <ul className="space-y-1">
-          {primaryNav.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
-                    active
-                      ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
-                      : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
-                  }`}
-                >
-                  <item.icon size={17} strokeWidth={active ? 2 : 1.5} className="shrink-0" />
-                  <span>{item.label}</span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+      <nav className="flex-1 overflow-y-auto px-4 py-6" aria-label="Primary">
+        {/* Grouped primary nav */}
+        {sections.map((section) => (
+          <div key={section.heading} className="mb-5 last:mb-0">
+            <p className="mb-2 px-4 font-sans text-label font-semibold uppercase tracking-[0.18em] text-white/35">
+              {section.heading}
+            </p>
+            <ul className="space-y-1">
+              {section.items.map((item) => {
+                const active = isActive(item.href);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
+                        active
+                          ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
+                          : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
+                      }`}
+                    >
+                      <item.icon size={17} strokeWidth={active ? 2 : 1.5} className="shrink-0" />
+                      <span>{item.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
 
         {/* Coming Soon — dimmed, non-interactive */}
         <div className="mt-6 border-t border-white/10 pt-6">
