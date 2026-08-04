@@ -6,49 +6,45 @@ import {
   Briefcase,
   LayoutDashboard,
   Users,
-  Handshake,
-  Home,
   ShieldCheck,
   BarChart2,
-  Sparkles,
   MessageSquare,
+  Sparkles,
   Settings,
 } from "lucide-react";
 import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
 
-// Grouped by the operating flow: do the day's work, work with the people
-// Serve serves and the people who provide that care, then understand
-// performance and emerging conditions. See
-// docs/architecture/SERVE_OS_NAVIGATION_MODEL.md.
+// Preserves the navigation model users already understand — Today's Work
+// as the sole operational home, The People We Serve as one destination for
+// the whole resident/client relationship realm, Workforce covering the
+// full lifecycle of people who may/do/did serve. See DECISION_LOG.md
+// ("Serve OS navigation shell") for the retirement of "The People Who
+// Serve" as a separate destination and why there is no standalone
+// Dashboard in this release.
 //
-// "The People Who Serve" (recruiting) is deliberately NOT a top-level
-// destination here — recruiting is reachable as a Candidates entry point
-// from within Workforce (see the Workforce page's own sub-navigation),
-// preserving the existing /recruiting route without duplicating it as a
-// second primary nav concept.
+// Relationships and External Clients remain fully functional at their
+// existing routes — they're reached from within The People We Serve, not
+// duplicated as separate top-level entries. Recruiting remains fully
+// functional at /recruiting — reached as Workforce's Hiring Pipeline, not
+// duplicated as a separate top-level entry either.
 const sections = [
   {
-    heading: "Work",
-    items: [
-      { icon: Briefcase, label: "Workspace", href: "/workspace" },
-      { icon: LayoutDashboard, label: "Dashboard", href: "/" },
-    ],
+    heading: "Today",
+    items: [{ icon: Briefcase, label: "Today's Work", href: "/workspace" }],
   },
   {
     heading: "Serve",
     items: [
-      { icon: Users, label: "Residents", href: "/residents" },
-      { icon: Handshake, label: "Relationships", href: "/relationships" },
-      { icon: Home, label: "External Clients", href: "/external-clients" },
+      { icon: Users, label: "The People We Serve", href: "/residents" },
       { icon: ShieldCheck, label: "Workforce", href: "/workforce" },
     ],
   },
   {
     heading: "Understand",
     items: [
-      { icon: BarChart2, label: "Community Intelligence", href: "/community-intelligence" },
-      { icon: Sparkles, label: "Ask Serve", href: "/ask-serve" },
+      { icon: LayoutDashboard, label: "How We're Doing", href: "/" },
+      { icon: BarChart2, label: "Community Outlook", href: "/community-intelligence" },
     ],
   },
 ];
@@ -124,8 +120,21 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
           </ul>
         </div>
 
-        {/* System */}
-        <div className="mt-6 border-t border-white/10 pt-6">
+        {/* Utility area — Ask Serve + Settings, deliberately outside the
+            Today/Serve/Understand work hierarchy above. */}
+        <div className="mt-6 space-y-1 border-t border-white/10 pt-6">
+          <Link
+            href="/ask-serve"
+            aria-current={isActive("/ask-serve") ? "page" : undefined}
+            className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
+              isActive("/ask-serve")
+                ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
+                : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
+            }`}
+          >
+            <Sparkles size={17} strokeWidth={isActive("/ask-serve") ? 2 : 1.5} className="shrink-0" />
+            <span>Ask Serve</span>
+          </Link>
           <Link
             href="/settings"
             aria-current={isActive("/settings") ? "page" : undefined}
