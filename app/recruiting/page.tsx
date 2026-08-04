@@ -1,6 +1,7 @@
 import { getRecruitingLeads } from "@/lib/data/recruitingLeads";
 import { PageContainer } from "@/components/PageContainer";
 import { RecruitingInbox } from "@/components/recruiting/RecruitingInbox";
+import { WorkforceSubNav } from "@/components/workforce/WorkforceSubNav";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -9,7 +10,8 @@ export default async function RecruitingPage() {
   const { leads, error } = await getRecruitingLeads();
 
   return (
-    <PageContainer title="Recruiting">
+    <PageContainer title="Workforce · Hiring Pipeline">
+      <WorkforceSubNav active="hiring-pipeline" />
       <div className="mb-6 flex items-baseline justify-between">
         <div>
           <h1 className="font-serif text-3xl font-light text-body">Recruiting Leads</h1>
