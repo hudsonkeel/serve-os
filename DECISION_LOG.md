@@ -265,3 +265,14 @@ The Constitution and `ARCHITECTURE.md` establish philosophy and structure, but n
 
 ### Result
 Any future intelligence-domain implementation (Scheduling Intelligence V1 or later) must follow the Engineering Standards' Rule template, naming conventions, Fact/Signal/Recommendation/Action/Outcome standards, AI boundary, implementation checklist, and Definition of Done before merge. Where the Engineering Standards ever conflict with the Constitution, the Constitution governs and the Engineering Standards must be corrected — not the reverse. Committed as `8e46bfe` (`docs: establish intelligence engineering standards`).
+
+---
+
+### Decision
+Serve OS navigation shell: Today's Work is the sole Today destination, The People We Serve is the single Serve destination for the resident/client relationship realm, Workforce covers the full lifecycle of people who may/do/did serve, and "The People Who Serve" (recruiting) is retired as a separate top-level destination. Recruiting survives as Workforce -> Hiring Pipeline at its existing /recruiting route. There is no standalone Dashboard in this release; How We're Doing and Community Outlook own organizational understanding.
+
+### Reason
+Recruiting and Workforce are both "people who serve" concepts — a separate top-level Recruiting destination duplicated that idea instead of presenting one coherent Workforce journey from hiring through active/inactive/terminated employment. Residents, Relationships, and External Clients splitting into three top-level items likewise fragmented one relationship realm users already understand as a single destination. Neither retirement touches the underlying capability: recruiting_leads and workforce_members remain separate data models, and every existing route, action, and permission stays intact — only the top-level navigation surface changed.
+
+### Result
+components/Sidebar.tsx renders Today (Today's Work) / Serve (The People We Serve, Workforce) / Understand (How We're Doing, Community Outlook) / Coming Soon (Communications) / a utility area (Ask Serve, Settings) outside the work hierarchy. components/workforce/WorkforceSubNav.tsx gives Workforce a coherent sub-navigation (Overview, Hiring Pipeline, Onboarding, Active, Inactive, Terminated, Identity Review) and is reused as a breadcrumb at the top of /recruiting itself. Relationships and External Clients remain reachable at their existing routes from within The People We Serve. No database migration, permission change, or feature regression accompanied this change.
