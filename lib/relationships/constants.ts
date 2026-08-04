@@ -10,6 +10,8 @@ import type {
   RelationshipInteractionParticipantRole,
   RelationshipInsightCategory,
   RelationshipCommitmentResponsiblePartyType,
+  RelationshipInteractionSuggestionType,
+  RelationshipInteractionSuggestionStatus,
   ResidenceType,
 } from "@/lib/supabase/types";
 
@@ -309,6 +311,43 @@ export function isValidCommitmentResponsiblePartyType(
 export function isValidActionType(value: string): value is RelationshipActionType {
   return (RELATIONSHIP_ACTION_TYPES as readonly string[]).includes(value);
 }
+
+// Interaction Suggestion Review — see lib/relationships/suggestionEngine.ts
+// and docs/architecture/relationship-intelligence-phase-1-implementation.md.
+
+export const RELATIONSHIP_INTERACTION_SUGGESTION_TYPES: readonly RelationshipInteractionSuggestionType[] = [
+  "summary",
+  "commitment",
+  "open_loop",
+  "next_action",
+  "working_note",
+  "service_opportunity",
+  "stage_change",
+  "resident_need",
+];
+
+export const RELATIONSHIP_INTERACTION_SUGGESTION_TYPE_LABELS: Record<RelationshipInteractionSuggestionType, string> = {
+  summary: "Summary",
+  commitment: "Commitment",
+  open_loop: "Open Question",
+  next_action: "Next Action",
+  working_note: "Working Note",
+  service_opportunity: "Service Opportunity",
+  stage_change: "Stage Change",
+  resident_need: "Resident Need",
+};
+
+export const RELATIONSHIP_INTERACTION_SUGGESTION_STATUSES: readonly RelationshipInteractionSuggestionStatus[] = [
+  "pending",
+  "approved",
+  "dismissed",
+];
+
+export const RELATIONSHIP_INTERACTION_SUGGESTION_STATUS_LABELS: Record<RelationshipInteractionSuggestionStatus, string> = {
+  pending: "Pending Review",
+  approved: "Approved",
+  dismissed: "Dismissed",
+};
 
 // Residence context for an External Prospect's expected service location
 // (Part 4 of the External Prospect domain-model scope) — contextual only,

@@ -11,6 +11,10 @@ import {
 } from "@/lib/utils/date";
 import { buildCurrentUserDisplay } from "@/lib/auth/display";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
+import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
+import { buildAskServeContext } from "@/lib/askServe/buildContext";
+import { ORGANIZATION_PERFORMANCE_CONTEXT } from "@/lib/askServe/areaContexts";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -27,6 +31,7 @@ export default async function DashboardPage() {
   const { metrics } = community;
   const dashboardDate = formatCentralDashboardDate();
   const greeting = getCentralTimeGreeting();
+  const askServeEnabled = isContextualAskServeEnabled(currentUser.role);
 
   const recruitingReviewCount = recruiting.leads.filter((lead) =>
     ["new", "in_review"].includes(lead.status)
@@ -48,19 +53,27 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <PageContainer title="Dashboard">
-      <div className="mb-10">
-        <p className="mb-2 font-sans text-label font-semibold uppercase tracking-[0.2em] text-gold-dark">
-          {dashboardDate}
-        </p>
-        <h1 className="font-serif text-page-title font-light leading-tight text-body">
-          {greeting}, {currentUser.shortName}.
-        </h1>
-        <p className="mt-2 font-sans text-base text-body">
-          {community.communityName} - {activeProspectRelationships} active prospects,{" "}
-          {metrics.requiresFollowUp} residents due for follow-up, and{" "}
-          {metrics.pendingAssessments} assessments pending.
-        </p>
+    <PageContainer title="How We're Doing">
+      <div className="mb-10 flex items-start justify-between gap-6">
+        <div>
+          <p className="mb-2 font-sans text-label font-semibold uppercase tracking-[0.2em] text-gold-dark">
+            {dashboardDate}
+          </p>
+          <h1 className="font-serif text-page-title font-light leading-tight text-body">
+            {greeting}, {currentUser.shortName}.
+          </h1>
+          <p className="mt-2 font-sans text-base text-body">
+            {community.communityName} - {activeProspectRelationships} active prospects,{" "}
+            {metrics.requiresFollowUp} residents due for follow-up, and{" "}
+            {metrics.pendingAssessments} assessments pending.
+          </p>
+        </div>
+        {askServeEnabled && (
+          <AskServeTrigger
+            context={buildAskServeContext(ORGANIZATION_PERFORMANCE_CONTEXT, { userRole: currentUser.role ?? undefined })}
+            label="Ask Serve about our performance"
+          />
+        )}
       </div>
 
       <div className="divide-y divide-ivory-border border-t border-ivory-border">
