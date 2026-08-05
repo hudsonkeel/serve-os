@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, DM_Sans } from "next/font/google";
+import { AskServeProvider } from "@/components/askServe/AskServeProvider";
 import "./globals.css";
 
 const cormorant = Cormorant_Garamond({
@@ -32,7 +33,9 @@ export default function RootLayout({
       lang="en"
       className={`${cormorant.variable} ${dmSans.variable} h-full`}
     >
-      <body className="h-full">{children}</body>
+      <body className="h-full">
+        <AskServeProvider>{children}</AskServeProvider>
+      </body>
     </html>
   );
 }

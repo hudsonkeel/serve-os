@@ -2,13 +2,17 @@
 
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import {
+  approveInteractionSuggestion as approveInteractionSuggestionRecord,
   changeRelationshipStage as changeRelationshipStageRecord,
   completeRelationshipAction as completeRelationshipActionRecord,
+  createInteractionSuggestions as createInteractionSuggestionsRecord,
   createRelationship as createRelationshipRecord,
   createRelationshipAction as createRelationshipActionRecord,
   createRelationshipWorkingNote as createRelationshipWorkingNoteRecord,
   archiveRelationshipWorkingNote as archiveRelationshipWorkingNoteRecord,
+  dismissInteractionSuggestion as dismissInteractionSuggestionRecord,
   dismissRelationshipAction as dismissRelationshipActionRecord,
+  getRelationshipById as getRelationshipByIdRecord,
   getRelationshipsByResident as getRelationshipsByResidentRecord,
   linkRelationshipToResident as linkRelationshipToResidentRecord,
   logRelationshipInteraction as logRelationshipInteractionRecord,
@@ -29,7 +33,9 @@ import {
   ResidentSearchResult,
 } from "@/lib/data/relationships";
 import { convertResidentProspectToActiveClient as convertResidentProspectToActiveClientRecord } from "@/lib/data/externalClients";
+import { getResidentCurrentNeeds } from "@/lib/data/residentCurrentNeeds";
 import { findActiveResidentProspect } from "@/lib/relationships/duplicateDetection";
+import { generateInteractionSuggestions } from "@/lib/relationships/suggestionEngine";
 import {
   isValidActionType,
   isValidCommitmentResponsiblePartyType,
@@ -67,6 +73,7 @@ import {
   RelationshipActionType,
   RelationshipInteractionParticipantRole,
   RelationshipInteractionResult,
+  RelationshipInteractionSuggestion,
   RelationshipPriority,
   RelationshipTouchType,
   RelationshipType,
@@ -926,7 +933,7 @@ export async function logRelationshipInteraction(data: {
   // Client-generated, one per Log Interaction form session — see
   // lib/data/relationships.ts#LogInteractionInput.
   idempotencyKey?: string;
-}): Promise<{ error?: string }> {
+}): Promise<{ error?: string; interactionId?: string; suggestions?: RelationshipInteractionSuggestion[] }> {
   if (!data.relationshipId) {
     return { error: "Missing relationship." };
   }
@@ -1050,11 +1057,45 @@ export async function logRelationshipInteraction(data: {
     idempotencyKey: normalizeOptionalText(data.idempotencyKey),
   });
 
-  if (result.error) {
-    return { error: result.error };
+  if (result.error || !result.interaction) {
+    return { error: result.error ?? "Could not log this interaction." };
   }
 
-  return {};
+  // Generate review suggestions in the same request — no extra round trip
+  // the user has to wait on separately. Deterministic, no AI call (see
+  // lib/relationships/suggestionEngine.ts). Failure here never invalidates
+  // the Interaction that was already saved above; it's reported but the
+  // interaction itself is still a success.
+  const suggestions = await generateSuggestionsForInteraction(result.interaction, actor, nextAction !== null);
+
+  return { interactionId: result.interaction.id, suggestions };
+}
+
+async function generateSuggestionsForInteraction(
+  interaction: { id: string; relationship_id: string; summary: string; touch_type: RelationshipTouchType; interaction_result: RelationshipInteractionResult | null },
+  actor: string,
+  hasExplicitNextAction: boolean,
+): Promise<RelationshipInteractionSuggestion[]> {
+  const relationship = await getRelationshipByIdRecord(interaction.relationship_id);
+  if (!relationship) return [];
+
+  const isResidentLinked = Boolean(relationship.resident_id);
+  const existingNeeds = isResidentLinked ? await getResidentCurrentNeeds(relationship.resident_id as string) : null;
+
+  const drafts = generateInteractionSuggestions({
+    narrative: interaction.summary,
+    touchType: interaction.touch_type,
+    interactionResult: interaction.interaction_result,
+    hasExplicitNextAction,
+    isResidentLinked,
+    currentStage: relationship.stage,
+    existingResidentNeedsContent: existingNeeds?.content ?? "",
+  });
+
+  if (drafts.length === 0) return [];
+
+  const created = await createInteractionSuggestionsRecord(interaction.id, interaction.relationship_id, drafts, actor);
+  return created.suggestions ?? [];
 }
 
 // ─── Insights / Commitments / Open Loops lifecycle ──────────────────────
@@ -1105,4 +1146,36 @@ export async function resolveOpenLoop(data: {
     actor,
   );
   return result.error ? { error: result.error } : {};
+}
+
+// ─── Interaction Suggestion Review ─────────────────────────────────────
+// Approve/edit/dismiss a deterministically-generated suggestion (see
+// lib/relationships/suggestionEngine.ts). Approving composes the same
+// existing write RPCs every other part of this file already calls
+// directly — never a duplicate write path. Both are idempotent: retrying
+// or double-clicking either action is safe (see
+// approve_interaction_suggestion/dismiss_interaction_suggestion's
+// no-op-if-already-resolved guard).
+
+export async function approveInteractionSuggestion(data: {
+  suggestionId: string;
+  editedPayload?: Record<string, unknown>;
+}): Promise<{ error?: string; suggestion?: RelationshipInteractionSuggestion }> {
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to approve a suggestion." };
+  }
+  const result = await approveInteractionSuggestionRecord(data.suggestionId, data.editedPayload ?? null, actor);
+  return result.error ? { error: result.error } : { suggestion: result.suggestion };
+}
+
+export async function dismissInteractionSuggestion(data: {
+  suggestionId: string;
+}): Promise<{ error?: string; suggestion?: RelationshipInteractionSuggestion }> {
+  const actor = await currentActorLabel();
+  if (!actor) {
+    return { error: "You must be signed in to dismiss a suggestion." };
+  }
+  const result = await dismissInteractionSuggestionRecord(data.suggestionId, actor);
+  return result.error ? { error: result.error } : { suggestion: result.suggestion };
 }

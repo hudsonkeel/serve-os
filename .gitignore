@@ -40,3 +40,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local sensitive data — real caregiver background-check documents and
+# resident import spreadsheets accumulated during development. These are
+# real PHI/PII-adjacent records for named individuals and must never enter
+# source control. See docs/product-intelligence/CAPTURE_INBOX.md.
+/docs/workforce/Caregiver EMR/
+/docs/workforce/Caregiver NAR/
+/data/

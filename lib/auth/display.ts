@@ -1,9 +1,15 @@
+import { isAuthRole, type AuthRole } from "./constants";
+
 export interface CurrentUserDisplay {
   fullName: string;
   shortName: string;
   initials: string;
   roleLabel: string;
   email: string;
+  // The raw role, distinct from roleLabel's title-cased display text —
+  // needed by client components (e.g. lib/askServe/featureFlag.ts's
+  // isContextualAskServeEnabled) that gate on the actual role value.
+  role: AuthRole | null;
 }
 
 function titleCaseRole(role: string | null | undefined) {
@@ -44,5 +50,6 @@ export function buildCurrentUserDisplay(profile: {
     initials: profile?.full_name ? initialsFromName(fullName) : initialsFromName(email),
     roleLabel: titleCaseRole(profile?.role),
     email,
+    role: isAuthRole(profile?.role) ? profile.role : null,
   };
 }
