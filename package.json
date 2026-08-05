@@ -20,6 +20,7 @@
     "test:residentTimeline": "node --experimental-strip-types --conditions=react-server lib/residentTimeline/__tests__/grouping.test.ts",
     "test:gettingToKnow": "node --experimental-strip-types --conditions=react-server lib/gettingToKnow/__tests__/mapping.test.ts",
     "test:wellnessFollowUps": "node --experimental-strip-types --conditions=react-server lib/wellnessFollowUps/__tests__/validation.test.ts",
+    "test:workspace": "node --experimental-strip-types --conditions=react-server lib/workspace/__tests__/mapping.test.ts && node --experimental-strip-types --conditions=react-server lib/workspace/__tests__/ranking.test.ts && node --experimental-strip-types --conditions=react-server lib/workspace/__tests__/sections.test.ts && node --experimental-strip-types --conditions=react-server lib/workspace/__tests__/ownership.test.ts && node --experimental-strip-types --conditions=react-server lib/workspace/__tests__/originMarker.test.ts",
     "test:relationships": "node --experimental-strip-types --conditions=react-server lib/relationships/__tests__/validation.test.ts && node --experimental-strip-types --conditions=react-server lib/relationships/__tests__/attention.test.ts && node --experimental-strip-types --conditions=react-server lib/relationships/__tests__/search.test.ts && node --experimental-strip-types --conditions=react-server lib/relationships/__tests__/sorting.test.ts && node --experimental-strip-types --conditions=react-server lib/relationships/__tests__/boardFilters.test.ts && node --experimental-strip-types --conditions=react-server lib/relationships/__tests__/testMarker.test.ts && node --experimental-strip-types --conditions=react-server lib/relationships/__tests__/duplicateDetection.test.ts && node --experimental-strip-types --conditions=react-server lib/relationships/__tests__/brief.test.ts",
     "test:externalClients": "node --experimental-strip-types --conditions=react-server lib/externalClients/__tests__/search.test.ts && node --experimental-strip-types --conditions=react-server lib/externalClients/__tests__/validation.test.ts",
     "test:intake": "node --experimental-strip-types --conditions=react-server lib/intake/__tests__/envelope.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/residentMatching.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/confidence.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/priority.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/serviceOpportunityMapping.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/contactReadiness.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/classification.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/conversationConsent.test.ts",
@@ -32,10 +33,12 @@
     "next": "16.2.9",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "playwright": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
