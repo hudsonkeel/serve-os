@@ -47,15 +47,16 @@ const sample = [
   lead({ id: "c", status: "archived" }),
   lead({ id: "d", status: "archived" }),
   lead({ id: "e", status: "hired" }),
+  lead({ id: "f", status: "not_a_fit" }),
 ];
 
-test("'all' excludes archived records", () => {
+test("'all' (Active Pipeline) excludes every terminal status: archived, hired, not_a_fit", () => {
   const result = filterRecruitingLeadsForPipeline(sample, "all");
-  assert.equal(result.length, 3);
-  assert.ok(result.every((l) => l.status !== "archived"));
+  assert.equal(result.length, 2);
+  assert.ok(result.every((l) => ["new", "in_review"].includes(l.status)));
 });
 
-test("an explicit status filter, including 'archived', returns exactly that status", () => {
+test("an explicit status filter, including every terminal one, returns exactly that status", () => {
   const archived = filterRecruitingLeadsForPipeline(sample, "archived");
   assert.equal(archived.length, 2);
   assert.ok(archived.every((l) => l.status === "archived"));
@@ -63,6 +64,10 @@ test("an explicit status filter, including 'archived', returns exactly that stat
   const hired = filterRecruitingLeadsForPipeline(sample, "hired");
   assert.equal(hired.length, 1);
   assert.equal(hired[0].id, "e");
+
+  const notAFit = filterRecruitingLeadsForPipeline(sample, "not_a_fit");
+  assert.equal(notAFit.length, 1);
+  assert.equal(notAFit[0].id, "f");
 });
 
 test("an empty list produces an empty result for every filter", () => {
@@ -70,17 +75,18 @@ test("an empty list produces an empty result for every filter", () => {
   assert.deepEqual(filterRecruitingLeadsForPipeline([], "archived"), []);
 });
 
-test("'all' count excludes archived records", () => {
+test("'all' (Active Pipeline) count excludes every terminal status", () => {
   const counts = countRecruitingLeadsByFilter(sample);
-  assert.equal(counts.all, 3);
+  assert.equal(counts.all, 2);
 });
 
-test("per-status counts include archived in its own bucket", () => {
+test("per-status counts include every terminal status in its own bucket", () => {
   const counts = countRecruitingLeadsByFilter(sample);
   assert.equal(counts.archived, 2);
   assert.equal(counts.new, 1);
   assert.equal(counts.in_review, 1);
   assert.equal(counts.hired, 1);
+  assert.equal(counts.not_a_fit, 1);
 });
 
 test("counts and filtered results stay consistent with each other", () => {

@@ -25,7 +25,7 @@ const FILTER_ORDER: FilterValue[] = [
 ];
 
 const FILTER_LABELS: Record<FilterValue, string> = {
-  all:       "All",
+  all:       "Active Pipeline",
   new:       "New",
   contacted: "Contacted",
   in_review: "In Review",
