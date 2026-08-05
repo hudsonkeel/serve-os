@@ -19,6 +19,11 @@ import {
   validateServiceAddress,
 } from "@/lib/externalClients/validation";
 import { RelationshipActionType } from "@/lib/supabase/types";
+import { createIntegrityIssues } from "@/lib/data/residentDataIntegrity";
+import { computeFingerprint } from "@/lib/residents/dataIntegrity/fingerprint";
+import { detectMalformedPhone } from "@/lib/residents/dataIntegrity/malformedPhoneDetection";
+import { validatePhoneForStorage } from "@/lib/residents/dataIntegrity/phoneNormalization";
+import { randomUUID } from "node:crypto";
 
 async function currentActorLabel(): Promise<string | null> {
   const profile = await getCurrentAuthorizedUser();
@@ -146,14 +151,18 @@ export async function convertExternalProspectToNewResident(data: {
     return { error: "You must be signed in to convert this relationship." };
   }
 
-  return convertExternalProspectToNewResidentRecord({
+  const phoneRaw = normalizeOptionalText(data.phone);
+  const phoneValidation = validatePhoneForStorage(phoneRaw);
+
+  const result = await convertExternalProspectToNewResidentRecord({
     relationshipId: data.relationshipId,
     firstName: firstName.value,
     lastName: lastName.value,
     preferredName: normalizeOptionalText(data.preferredName),
     communityName: normalizeOptionalText(data.communityName),
     unitNumber: normalizeOptionalText(data.unitNumber),
-    phone: normalizeOptionalText(data.phone),
+    phone: phoneValidation.normalized,
+    phoneRaw,
     email: normalizeOptionalText(data.email),
     familyContactName: normalizeOptionalText(data.familyContactName),
     familyContactRelationship: normalizeOptionalText(data.familyContactRelationship),
@@ -162,6 +171,32 @@ export async function convertExternalProspectToNewResident(data: {
     conversionNote: normalizeOptionalText(data.conversionNote),
     actor,
   });
+
+  if (!result.error && result.residentId && !phoneValidation.valid) {
+    const evidence = detectMalformedPhone(phoneRaw);
+    await createIntegrityIssues(
+      randomUUID(),
+      [
+        {
+          issueType: "malformed_phone",
+          severity: "medium",
+          sourceSystem: "serve_os_manual",
+          sourceFile: null,
+          importBatch: null,
+          importRunId: null,
+          evidence,
+          recommendedAction: "Confirm the correct phone number, then use Correct Malformed Field.",
+          detectorRule: "malformed_phone_at_external_prospect_conversion",
+          detectorVersion: "1",
+          fingerprint: computeFingerprint("malformed_phone", [result.residentId], [phoneRaw]),
+          members: [{ residentId: result.residentId, role: "subject" }],
+        },
+      ],
+      actor,
+    );
+  }
+
+  return result;
 }
 
 // ─── Part 16: External Prospect → Existing Resident Prospect ───────────
