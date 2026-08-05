@@ -188,9 +188,10 @@ export interface WorkforceProfileDiscrepancy {
 // today. Adding a second value is always a migration (new CHECK constraint
 // branch) plus a new branch in assert_valid_person_subject() — the two
 // travel together, by convention, so they can never drift.
-export type PersonSubjectType = "workforce_member";
+export type PersonSubjectType = "workforce_member" | "resident";
 
 export const SUBJECT_TYPE_WORKFORCE_MEMBER: PersonSubjectType = "workforce_member";
+export const SUBJECT_TYPE_RESIDENT: PersonSubjectType = "resident";
 
 // The same 7-tier match ladder originally proven by Recruiting's
 // lead-to-vendor-record matching, reused unchanged for AxisCare caregiver
