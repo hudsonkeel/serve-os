@@ -16,6 +16,8 @@ import { StartRelationshipCard } from "@/components/residents/StartRelationshipC
 import { getResidentTimeline } from "@/lib/data/residentTimeline";
 import { ResidentMemory } from "@/components/residents/ResidentMemory";
 import { Badge } from "@/components/ui/Badge";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canEditResidentProfile } from "@/lib/auth/permissions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -105,6 +107,9 @@ export default async function ResidentDetailPage({
 
   if (!record) notFound();
 
+  const currentUser = await getCurrentAuthorizedUser();
+  const canEditProfile = canEditResidentProfile(currentUser?.role);
+
   const connections = await getResidentConnections(id);
   const wellnessNotes = await getWellnessNotes(id);
   const openFollowUps = await getOpenResidentWellnessFollowUps(id);
@@ -161,6 +166,7 @@ export default async function ResidentDetailPage({
           <Section title="Resident Profile">
             <ResidentProfileCard
               residentId={id}
+              canEdit={canEditProfile}
               fullName={record.residentName}
               location={location}
               residentType={record.residentType}
@@ -168,6 +174,8 @@ export default async function ResidentDetailPage({
               serviceModel={record.importedServiceModel}
               residentStatus={resident.status}
               needsReview={record.needsReview}
+              sourceSystem={resident.source_system}
+              lastSyncedAt={record.updatedAt ?? record.createdAt}
               initialPreferredName={connections.profile?.preferred_name ?? ""}
               initialEmail={resident.email ?? ""}
               initialPhone={resident.phone ?? ""}
@@ -220,6 +228,7 @@ export default async function ResidentDetailPage({
           <Section title="Family Contacts">
             <FamilyContactsCard
               residentId={id}
+              canEdit={canEditProfile}
               initialContactName={contactName === "-" ? "" : contactName}
               initialRelationship={resident.family_contact_relationship ?? ""}
               initialPhone={record.phone ?? ""}

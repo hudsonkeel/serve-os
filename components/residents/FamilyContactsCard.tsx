@@ -50,6 +50,7 @@ function EditableField({
 
 interface FamilyContactsCardProps {
   residentId: string;
+  canEdit: boolean;
   initialContactName: string;
   initialRelationship: string;
   initialPhone: string;
@@ -58,6 +59,7 @@ interface FamilyContactsCardProps {
 
 export function FamilyContactsCard({
   residentId,
+  canEdit,
   initialContactName,
   initialRelationship,
   initialPhone,
@@ -119,13 +121,15 @@ export function FamilyContactsCard({
     return (
       <div>
         <div className="mb-4 flex items-center justify-end">
-          <button
-            type="button"
-            onClick={handleEdit}
-            className="font-sans text-sm font-medium text-muted transition-colors hover:text-body"
-          >
-            Edit
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={handleEdit}
+              className="font-sans text-sm font-medium text-muted transition-colors hover:text-body"
+            >
+              Edit
+            </button>
+          )}
         </div>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-x-8 gap-y-4">

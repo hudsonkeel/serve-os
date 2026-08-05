@@ -5,6 +5,23 @@ import {
   updateResidentProfileFields,
 } from "@/lib/data/residents";
 import { updateRelationshipDetails } from "@/lib/actions/connections";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canEditResidentProfile } from "@/lib/auth/permissions";
+import { logResidentProfileUpdated } from "@/lib/data/residentTimeline";
+
+// Server-side enforcement is the actual security boundary — the UI hiding
+// the Edit button (components/residents/ResidentProfileCard.tsx,
+// FamilyContactsCard.tsx) is a convenience, never the guarantee. Every
+// mutating action here re-checks role independently of what the client
+// claims. Returns the actor label (for the audit entry) alongside the
+// permission result so callers never query the session twice.
+async function assertCanEditResidentProfile(): Promise<{ error?: string; actor?: string }> {
+  const profile = await getCurrentAuthorizedUser();
+  if (!canEditResidentProfile(profile?.role)) {
+    return { error: "You do not have permission to edit resident profiles." };
+  }
+  return { actor: profile?.full_name || profile?.email || "Unknown" };
+}
 
 export interface ResidentProfileFormData {
   residentId: string;
@@ -27,6 +44,9 @@ function isValidDateString(value: string): boolean {
 export async function saveResidentProfile(
   data: ResidentProfileFormData
 ): Promise<{ error?: string }> {
+  const permissionCheck = await assertCanEditResidentProfile();
+  if (permissionCheck.error) return permissionCheck;
+
   if (!data.residentId) {
     return { error: "Missing resident." };
   }
@@ -66,6 +86,8 @@ export async function saveResidentProfile(
     return { error: nicknameResult.error };
   }
 
+  await logResidentProfileUpdated(data.residentId, permissionCheck.actor!, "Resident profile");
+
   return {};
 }
 
@@ -85,6 +107,9 @@ function isValidPhone(value: string): boolean {
 export async function saveFamilyContact(
   data: FamilyContactFormData
 ): Promise<{ error?: string }> {
+  const permissionCheck = await assertCanEditResidentProfile();
+  if (permissionCheck.error) return permissionCheck;
+
   if (!data.residentId) {
     return { error: "Missing resident." };
   }
@@ -109,6 +134,8 @@ export async function saveFamilyContact(
   if (result.error) {
     return { error: result.error };
   }
+
+  await logResidentProfileUpdated(data.residentId, permissionCheck.actor!, "Family contact");
 
   return {};
 }

@@ -1313,7 +1313,8 @@ export type ResidentTimelineEventType =
   | "current_needs_updated"
   | "working_note_created"
   | "working_note_resolved"
-  | "relationship_conversion";
+  | "relationship_conversion"
+  | "profile_updated";
 
 export interface ResidentTimelineEvent {
   id: string;
