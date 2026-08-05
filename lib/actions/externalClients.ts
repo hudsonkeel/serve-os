@@ -19,6 +19,7 @@ import {
   validateServiceAddress,
 } from "@/lib/externalClients/validation";
 import { RelationshipActionType } from "@/lib/supabase/types";
+import { validatePhoneForStorage } from "@/lib/residents/dataIntegrity/phoneNormalization";
 
 async function currentActorLabel(): Promise<string | null> {
   const profile = await getCurrentAuthorizedUser();
@@ -146,6 +147,9 @@ export async function convertExternalProspectToNewResident(data: {
     return { error: "You must be signed in to convert this relationship." };
   }
 
+  const phoneRaw = normalizeOptionalText(data.phone);
+  const phoneValidation = validatePhoneForStorage(phoneRaw);
+
   return convertExternalProspectToNewResidentRecord({
     relationshipId: data.relationshipId,
     firstName: firstName.value,
@@ -153,7 +157,8 @@ export async function convertExternalProspectToNewResident(data: {
     preferredName: normalizeOptionalText(data.preferredName),
     communityName: normalizeOptionalText(data.communityName),
     unitNumber: normalizeOptionalText(data.unitNumber),
-    phone: normalizeOptionalText(data.phone),
+    phone: phoneValidation.normalized,
+    phoneRaw,
     email: normalizeOptionalText(data.email),
     familyContactName: normalizeOptionalText(data.familyContactName),
     familyContactRelationship: normalizeOptionalText(data.familyContactRelationship),
