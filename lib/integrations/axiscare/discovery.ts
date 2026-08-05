@@ -8,12 +8,23 @@ import { getTodaysVisits } from "./visits.ts";
 import { getScheduleSample } from "./schedules.ts";
 import { getClientSample } from "./clients.ts";
 import { getCaregiverSample } from "./caregivers.ts";
+import { getApplicantSample } from "./applicants.ts";
+import { getOrganizationSample } from "./organizations.ts";
+import { getAdlSample, getAdlCategorySample } from "./adls.ts";
+import { getTaggingCategorySample } from "./taggingCategories.ts";
+import { getExpiringTokensSample } from "./expiringTokens.ts";
 
 export type AxisCareEndpointName =
   | "visits"
   | "schedules"
   | "clients"
-  | "caregivers";
+  | "caregivers"
+  | "applicants"
+  | "organizations"
+  | "adls"
+  | "adlCategories"
+  | "taggingCategories"
+  | "expiringTokens";
 
 export type AxisCareCollectionShape =
   | "array"
@@ -63,6 +74,15 @@ const RESOURCE_KEY_BY_ENDPOINT: Record<AxisCareEndpointName, string> = {
   schedules: "schedules",
   clients: "clients",
   caregivers: "caregivers",
+  applicants: "applicants",
+  organizations: "organizations",
+  // Per the spec, both ADL endpoints nest their collection under
+  // results.data, not results.adls / results.adlCategories.
+  adls: "data",
+  adlCategories: "data",
+  // Per the spec, results.categories, not results.taggingCategories.
+  taggingCategories: "categories",
+  expiringTokens: "expiringTokens",
 };
 
 // Generic fallback candidates only — used when the known results.<key>
@@ -350,16 +370,28 @@ async function discoverEndpoint(
   }
 }
 
-// Orchestrates the full discovery pass in the required priority order:
-// visits, schedules, clients, caregivers. Stops trying nothing — every
-// endpoint is attempted independently even if an earlier one fails, so one
-// bad guess at an endpoint path doesn't hide the others.
+// Orchestrates the full discovery pass in priority order: visits,
+// schedules, clients, caregivers, applicants, organizations, adls,
+// adlCategories, taggingCategories, expiringTokens. Stops trying nothing —
+// every endpoint is attempted independently even if an earlier one fails,
+// so one bad guess at an endpoint path doesn't hide the others.
 export async function runAxisCareDiscovery(): Promise<AxisCareDiscoveryResult> {
   const configuration = getAxisCareConfigurationState();
 
   if (!configuration.configured) {
     const endpoints = (
-      ["visits", "schedules", "clients", "caregivers"] as const
+      [
+        "visits",
+        "schedules",
+        "clients",
+        "caregivers",
+        "applicants",
+        "organizations",
+        "adls",
+        "adlCategories",
+        "taggingCategories",
+        "expiringTokens",
+      ] as const
     ).map((endpoint) => {
       const discovery = emptyDiscovery(endpoint);
       discovery.errorCategory = "configuration";
@@ -387,6 +419,42 @@ export async function runAxisCareDiscovery(): Promise<AxisCareDiscoveryResult> {
   const caregivers = await discoverEndpoint("caregivers", getCaregiverSample);
   endpoints.push(caregivers.discovery);
   allFieldPaths.push(...caregivers.fieldPaths);
+
+  const applicants = await discoverEndpoint("applicants", getApplicantSample);
+  endpoints.push(applicants.discovery);
+  allFieldPaths.push(...applicants.fieldPaths);
+
+  const organizations = await discoverEndpoint(
+    "organizations",
+    getOrganizationSample
+  );
+  endpoints.push(organizations.discovery);
+  allFieldPaths.push(...organizations.fieldPaths);
+
+  const adls = await discoverEndpoint("adls", getAdlSample);
+  endpoints.push(adls.discovery);
+  allFieldPaths.push(...adls.fieldPaths);
+
+  const adlCategories = await discoverEndpoint(
+    "adlCategories",
+    getAdlCategorySample
+  );
+  endpoints.push(adlCategories.discovery);
+  allFieldPaths.push(...adlCategories.fieldPaths);
+
+  const taggingCategories = await discoverEndpoint(
+    "taggingCategories",
+    getTaggingCategorySample
+  );
+  endpoints.push(taggingCategories.discovery);
+  allFieldPaths.push(...taggingCategories.fieldPaths);
+
+  const expiringTokens = await discoverEndpoint(
+    "expiringTokens",
+    getExpiringTokensSample
+  );
+  endpoints.push(expiringTokens.discovery);
+  allFieldPaths.push(...expiringTokens.fieldPaths);
 
   return {
     configuration,
