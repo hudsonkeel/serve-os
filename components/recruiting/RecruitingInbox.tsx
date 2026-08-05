@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Check, Minus } from "lucide-react";
 import { RecruitingLead, RecruitingLeadStatus } from "@/lib/supabase/types";
 import { RecruitingStatusBadge } from "./RecruitingStatusBadge";
@@ -76,7 +77,12 @@ function RecruitingRow({ lead }: { lead: RecruitingLead }) {
   return (
     <div className="recruiting-inbox-grid grid items-center gap-x-4 px-5 py-3">
       <div className="min-w-0">
-        <p className="truncate font-sans text-sm font-medium text-body">{name}</p>
+        <Link
+          href={`/recruiting/${lead.id}`}
+          className="truncate font-sans text-sm font-medium text-navy hover:text-navy-light hover:underline"
+        >
+          {name}
+        </Link>
         <p className="mt-0.5 font-sans text-xs text-muted">
           {ROLE_LABELS[lead.role_interest] ?? lead.role_interest}
         </p>

@@ -29,12 +29,17 @@ import {
   categorizeHttpStatus,
   safeErrorMessage,
 } from "../errors.ts";
-import { getAxisCareConfigurationState, isAxisCareScheduleEnabled } from "../config.ts";
+import { getAxisCareConfigurationState, isAxisCareScheduleEnabled, isAxisCareWorkforceEnabled } from "../config.ts";
 import { axisCareGet } from "../client.ts";
 import { getTodaysVisits } from "../visits.ts";
 import { getScheduleSample } from "../schedules.ts";
 import { getClientSample } from "../clients.ts";
 import { getCaregiverSample } from "../caregivers.ts";
+import { getApplicantSample } from "../applicants.ts";
+import { getOrganizationSample } from "../organizations.ts";
+import { getAdlSample, getAdlCategorySample } from "../adls.ts";
+import { getTaggingCategorySample } from "../taggingCategories.ts";
+import { getExpiringTokensSample } from "../expiringTokens.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
 const tests: Test[] = [];
@@ -599,6 +604,76 @@ test("getClientSample and getCaregiverSample never send requestedSensitiveFields
   );
 });
 
+test("getApplicantSample never sends requestedSensitiveFields or a limit param", async () => {
+  await withFakeFetch(
+    { ok: true, status: 200, json: async () => ({ results: { applicants: {}, nextPage: null } }) },
+    async (captured) => {
+      await getApplicantSample();
+      assert.equal(captured[0].url.pathname, "/api/applicants");
+      assert.equal(captured[0].url.searchParams.has("requestedSensitiveFields"), false);
+      // Unlike clients/caregivers, this endpoint's spec has no `limit`
+      // parameter at all — asserting its absence guards against a future
+      // edit reintroducing an unsupported param by copy-paste.
+      assert.equal(captured[0].url.searchParams.has("limit"), false);
+    }
+  );
+});
+
+test("getOrganizationSample, getAdlSample, getTaggingCategorySample, getExpiringTokensSample hit the correct spec-confirmed paths", async () => {
+  await withFakeFetch(
+    { ok: true, status: 200, json: async () => ({ results: { organizations: [], nextPage: null } }) },
+    async (captured) => {
+      await getOrganizationSample();
+      assert.equal(captured[0].url.pathname, "/api/organizations");
+      assert.equal(captured[0].url.searchParams.get("limit"), "1");
+    }
+  );
+  await withFakeFetch(
+    { ok: true, status: 200, json: async () => ({ results: { data: [], nextPage: null } }) },
+    async (captured) => {
+      await getAdlSample();
+      assert.equal(captured[0].url.pathname, "/api/adls");
+      assert.equal(captured[0].url.searchParams.get("limit"), "1");
+    }
+  );
+  await withFakeFetch(
+    { ok: true, status: 200, json: async () => ({ results: { data: [] } }) },
+    async (captured) => {
+      await getAdlCategorySample();
+      assert.equal(captured[0].url.pathname, "/api/adls/categories");
+    }
+  );
+  await withFakeFetch(
+    { ok: true, status: 200, json: async () => ({ results: { categories: [] } }) },
+    async (captured) => {
+      await getTaggingCategorySample();
+      assert.equal(captured[0].url.pathname, "/api/taggingCategories");
+    }
+  );
+  await withFakeFetch(
+    { ok: true, status: 200, json: async () => ({ results: { expiringTokens: [], nextPage: null } }) },
+    async (captured) => {
+      await getExpiringTokensSample();
+      assert.equal(captured[0].url.pathname, "/api/tokens/expiring");
+      assert.equal(captured[0].url.searchParams.get("limit"), "5");
+    }
+  );
+});
+
+test("summarizeResponse handles the new endpoints' non-standard envelope keys (results.data, results.categories)", () => {
+  const adlsDiscovery = summarizeResponse("adls", 200, {
+    results: { data: [{ id: 1, name: "Client Errands" }], nextPage: null },
+  });
+  assert.equal(adlsDiscovery.recordCount, 1);
+  assert.equal(adlsDiscovery.collectionShape, "array");
+
+  const taggingDiscovery = summarizeResponse("taggingCategories", 200, {
+    results: { categories: [{ id: 1, name: "Incident Report" }] },
+  });
+  assert.equal(taggingDiscovery.recordCount, 1);
+  assert.ok(taggingDiscovery.resultsKeys.includes("categories"));
+});
+
 test("axisCareGet throws invalid_response on non-JSON body", async () => {
   await withFakeFetch(
     {
@@ -698,6 +773,44 @@ test("isAxisCareScheduleEnabled: exactly 'true' is enabled", () => {
   });
 });
 
+// ─── Release-control flag: isAxisCareWorkforceEnabled() ─────────────────
+
+function withWorkforceFlag<T>(value: string | undefined, fn: () => T): T {
+  const saved = process.env.AXISCARE_WORKFORCE_ENABLED;
+  if (value === undefined) delete process.env.AXISCARE_WORKFORCE_ENABLED;
+  else process.env.AXISCARE_WORKFORCE_ENABLED = value;
+  try {
+    return fn();
+  } finally {
+    if (saved === undefined) delete process.env.AXISCARE_WORKFORCE_ENABLED;
+    else process.env.AXISCARE_WORKFORCE_ENABLED = saved;
+  }
+}
+
+test("isAxisCareWorkforceEnabled: missing env var is disabled", () => {
+  withWorkforceFlag(undefined, () => {
+    assert.equal(isAxisCareWorkforceEnabled(), false);
+  });
+});
+
+test("isAxisCareWorkforceEnabled: 'false' is disabled", () => {
+  withWorkforceFlag("false", () => {
+    assert.equal(isAxisCareWorkforceEnabled(), false);
+  });
+});
+
+test("isAxisCareWorkforceEnabled: 'TRUE' is disabled — exact case-sensitive match only", () => {
+  withWorkforceFlag("TRUE", () => {
+    assert.equal(isAxisCareWorkforceEnabled(), false);
+  });
+});
+
+test("isAxisCareWorkforceEnabled: exactly 'true' is enabled", () => {
+  withWorkforceFlag("true", () => {
+    assert.equal(isAxisCareWorkforceEnabled(), true);
+  });
+});
+
 // ─── Release-control flag: no client-side reader exists ─────────────────
 
 function listFilesRecursive(dir: string): string[] {
@@ -724,6 +837,22 @@ test("AXISCARE_SCHEDULE_ENABLED is never referenced under app/ or components/ (s
     offenders,
     [],
     `AXISCARE_SCHEDULE_ENABLED must only be read from lib/integrations/axiscare/config.ts, not: ${offenders.join(", ")}`
+  );
+});
+
+test("AXISCARE_WORKFORCE_ENABLED is never referenced under app/ or components/ (server-only flag, no client reader)", () => {
+  const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+  const candidateFiles = [
+    ...listFilesRecursive(path.join(repoRoot, "app")),
+    ...listFilesRecursive(path.join(repoRoot, "components")),
+  ];
+  const offenders = candidateFiles.filter((file) =>
+    fs.readFileSync(file, "utf8").includes("AXISCARE_WORKFORCE_ENABLED")
+  );
+  assert.deepEqual(
+    offenders,
+    [],
+    `AXISCARE_WORKFORCE_ENABLED must only be read from lib/integrations/axiscare/config.ts, not: ${offenders.join(", ")}`
   );
 });
 

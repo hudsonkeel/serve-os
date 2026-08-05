@@ -4,6 +4,12 @@ import {
 } from "@/lib/data/communityMetrics";
 import { PageContainer } from "@/components/PageContainer";
 import { ResidentsInbox } from "@/components/residents/ResidentsInbox";
+import { PeopleWeServeTabs } from "@/components/peopleWeServe/PeopleWeServeTabs";
+import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
+import { buildAskServeContext } from "@/lib/askServe/buildContext";
+import { PEOPLE_WE_SERVE_CONTEXT } from "@/lib/askServe/areaContexts";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,6 +28,8 @@ export default async function ResidentsPage({
   searchParams: Promise<{ tab?: string; wellnessDue?: string }>;
 }) {
   const community = await getCommunityMetrics();
+  const profile = await getCurrentAuthorizedUser();
+  const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
   const params = await searchParams;
   const initialTab = VALID_TABS.includes(params.tab as ResidentTabValue)
     ? (params.tab as ResidentTabValue)
@@ -32,7 +40,8 @@ export default async function ResidentsPage({
       : undefined;
 
   return (
-    <PageContainer title="Residents">
+    <PageContainer title="The People We Serve · Residents">
+      <PeopleWeServeTabs active="residents" />
       <div className="mb-6 flex items-baseline justify-between">
         <div>
           <h1 className="font-serif text-page-title font-light text-body">Residents</h1>
@@ -40,9 +49,22 @@ export default async function ResidentsPage({
             Manage resident records, service status, wellness needs, and operational details.
           </p>
         </div>
-        <span className="font-sans text-base font-medium text-muted">
-          {community.metrics.totalResidents} residents
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="font-sans text-base font-medium text-muted">
+            {community.metrics.totalResidents} residents
+          </span>
+          {askServeEnabled && (
+            <AskServeTrigger
+              context={buildAskServeContext(PEOPLE_WE_SERVE_CONTEXT, {
+                surface: "residents_list",
+                pageTitle: "The People We Serve · Residents",
+                subjectType: "resident_collection",
+                userRole: profile?.role ?? undefined,
+              })}
+              label="Ask Serve about these residents"
+            />
+          )}
+        </div>
       </div>
 
       {community.residentsError && (

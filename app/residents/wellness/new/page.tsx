@@ -16,7 +16,7 @@ export default async function RecordWellnessObservationPage() {
           href="/workspace"
           className="font-sans text-xs text-muted transition-colors hover:text-body"
         >
-          Back to Workspace
+          Back to Today&apos;s Work
         </Link>
       </div>
 

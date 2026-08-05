@@ -16,8 +16,14 @@ import { StartRelationshipCard } from "@/components/residents/StartRelationshipC
 import { getResidentTimeline } from "@/lib/data/residentTimeline";
 import { ResidentMemory } from "@/components/residents/ResidentMemory";
 import { Badge } from "@/components/ui/Badge";
+import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canEditResidentProfile } from "@/lib/auth/permissions";
+import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
+import { buildAskServeContext } from "@/lib/askServe/buildContext";
+import { PEOPLE_WE_SERVE_CONTEXT } from "@/lib/askServe/areaContexts";
+import { hasTodaysWorkOrigin } from "@/lib/workspace/originMarker";
+import { BackToTodaysWorkLink } from "@/components/workspace/BackToTodaysWorkLink";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -99,16 +105,20 @@ function PlaceholderSection({
 
 export default async function ResidentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { id } = await params;
+  const { from } = await searchParams;
   const record = await getCommunityResidentById(id);
 
   if (!record) notFound();
 
-  const currentUser = await getCurrentAuthorizedUser();
-  const canEditProfile = canEditResidentProfile(currentUser?.role);
+  const profile = await getCurrentAuthorizedUser();
+  const canEditProfile = canEditResidentProfile(profile?.role);
+  const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
 
   const connections = await getResidentConnections(id);
   const wellnessNotes = await getWellnessNotes(id);
@@ -130,13 +140,14 @@ export default async function ResidentDetailPage({
 
   return (
     <PageContainer title={record.residentName}>
-      <div className="mb-6">
+      <div className="mb-6 flex items-center gap-4">
         <Link
           href="/residents"
           className="inline-flex h-9 items-center font-sans text-sm font-medium text-navy transition-colors hover:text-navy-light"
         >
           ← Back to Residents
         </Link>
+        {hasTodaysWorkOrigin(from) && <BackToTodaysWorkLink />}
       </div>
 
       <div className="mb-8 flex items-start justify-between gap-6">
@@ -159,6 +170,20 @@ export default async function ResidentDetailPage({
             </span>
           </div>
         </div>
+        {askServeEnabled && (
+          <AskServeTrigger
+            context={buildAskServeContext(PEOPLE_WE_SERVE_CONTEXT, {
+              surface: "resident_detail",
+              route: `/residents/${id}`,
+              pageTitle: record.residentDisplayName,
+              subjectType: "resident",
+              subjectId: id,
+              subjectLabel: record.residentDisplayName,
+              userRole: profile?.role ?? undefined,
+            })}
+            label="Ask Serve about this person"
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
