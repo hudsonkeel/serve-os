@@ -2,22 +2,24 @@
 
 import { useActionState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { loginAction, type LoginState } from "@/lib/auth/actions";
+import { resolveNextDestination } from "@/lib/auth/nextDestination";
 
 const initialState: LoginState = {};
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [state, action, pending] = useActionState(loginAction, initialState);
 
   useEffect(() => {
     if (state.success) {
-      router.replace("/workspace");
+      router.replace(resolveNextDestination(searchParams.get("next")));
       router.refresh();
     }
-  }, [router, state.success]);
+  }, [router, searchParams, state.success]);
 
   return (
     <form action={action} className="space-y-4">
