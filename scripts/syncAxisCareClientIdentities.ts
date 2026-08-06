@@ -23,9 +23,33 @@ import {
   normalizeName,
   isKnownNonResidentAxisCareClient,
   type NormalizedResidentCandidate,
+  type ClientMatchBasis,
 } from "../lib/integrations/axiscare/clientIdentityMatching.ts";
 
 const ACTOR = "AxisCare Client Sync (automated, deterministic matches only)";
+
+// person_vendor_identity_links_match_method_check (20260808000000)
+// predates this script and already defines the real, live vocabulary —
+// 'verified_email'/'verified_phone'/'normalized_name_plus_attribute',
+// not this module's own "email"/"phone"/"name_and_..." basis names.
+// Live-confirmed: passing the basis name directly violates the
+// constraint (zero rows written, clean atomic rollback) — this maps into
+// the constraint's real allow-list rather than inventing new values.
+function toPersonVendorIdentityLinksMatchMethod(basis: ClientMatchBasis): string {
+  switch (basis) {
+    case "email":
+      return "verified_email";
+    case "phone":
+      return "verified_phone";
+    case "name_and_apartment":
+    case "name_and_community":
+      return "normalized_name_plus_attribute";
+    case "none":
+      // Unreachable — callers only invoke this for a resolved match
+      // (match.residentId is non-null), which "none" never produces.
+      throw new Error("toPersonVendorIdentityLinksMatchMethod called with basis 'none'");
+  }
+}
 
 // Only the fields this script actually reads — not a full AxisCare
 // client type (see lib/integrations/axiscare/types.ts's own note on why
@@ -89,10 +113,13 @@ async function main() {
       residents
     );
 
-    // Only deterministic, name-agreeing matches are processed here —
-    // exactly Stage A. Everything else (unmatched, or matched with
-    // requiresReview) is left untouched for the admin review queue.
-    if (!match.residentId || match.requiresReview) {
+    // Only exact email/phone matches with agreeing names are processed
+    // here — exactly Stage A as scoped for this run. name_and_apartment/
+    // name_and_community matches are deterministic too, but this run is
+    // deliberately narrower than the module's full matching order;
+    // everything else (unmatched, requiresReview, or a name+location-only
+    // basis) is left untouched for the admin review queue.
+    if (!match.residentId || match.requiresReview || (match.basis !== "email" && match.basis !== "phone")) {
       deferred++;
       continue;
     }
@@ -110,7 +137,7 @@ async function main() {
       .rpc("sync_axiscare_client_identity", {
         p_vendor_record_id: String(c.id),
         p_vendor_display_name: `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim(),
-        p_match_method: match.basis,
+        p_match_method: toPersonVendorIdentityLinksMatchMethod(match.basis),
         p_match_confidence: "high",
         p_candidate_subject_id: match.residentId,
         p_approved_source_data: approvedSourceData,
@@ -126,10 +153,23 @@ async function main() {
     const row = syncData as { action: string; link_id: string; resident_id: string };
 
     if (row.action === "proposed") {
+      // Two overloads of confirm_person_vendor_identity_link are live
+      // (20260808000000's 3-arg version and 20260811000000's 5-arg
+      // version, which adds p_link_role/p_rationale with defaults).
+      // Calling with only the 3 shared named params is ambiguous to
+      // PostgREST/Postgres overload resolution — live-confirmed via
+      // "Could not choose the best candidate function between...". All 5
+      // params must be passed explicitly to select the 5-arg overload
+      // unambiguously; p_link_role: "primary" with no p_rationale is the
+      // correct shape for this plain first-link flow (20260811000000's
+      // own comment: "the plain first-link-as-primary flow keeps its
+      // existing, no-rationale-required contract").
       const { error: confirmError } = await supabase.rpc("confirm_person_vendor_identity_link", {
         p_link_id: row.link_id,
         p_subject_id: match.residentId,
         p_actor: ACTOR,
+        p_link_role: "primary",
+        p_rationale: null,
       });
       if (confirmError) {
         errors++;
