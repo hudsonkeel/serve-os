@@ -12,6 +12,32 @@
 -- the kind of breaking-signature incident documented in
 -- docs/architecture/SERVE_OS_ARCHITECTURE_VALIDATION_REPORT.md's
 -- convert_external_prospect_to_new_resident finding. Purely additive.
+--
+-- SAFETY REVIEW (required before applying):
+--   - Forward-only: no DROP TABLE, DROP COLUMN, DELETE, TRUNCATE, or data
+--     mutation of any kind. The two constraint changes only WIDEN an
+--     existing allow-list (adds 'resident' alongside the existing
+--     'workforce_member'); every row that satisfied the old constraint
+--     still satisfies the new one.
+--   - The new function only ever inserts a 'proposed' row or updates a
+--     row it already owns (source_system='axiscare',
+--     subject_type='resident') — it cannot touch workforce_member rows,
+--     residents rows, or any row inserted by a human decision.
+--
+-- ROLLBACK (if ever needed — safe to run any time after this migration,
+-- even with resident-type rows already present, since it only removes
+-- the *capability* to link residents, not any resident/link data itself;
+-- rolling back with resident-type rows already inserted will leave those
+-- rows in place but orphaned from the narrower constraint, so drop them
+-- first if a full rollback is intended):
+--
+--   drop function if exists sync_axiscare_client_identity(text, text, text, text, uuid, jsonb);
+--   alter table person_vendor_identity_links drop constraint if exists person_vendor_identity_links_subject_type_check;
+--   alter table person_vendor_identity_links add constraint person_vendor_identity_links_subject_type_check
+--     check (subject_type in ('workforce_member'));
+--   alter table person_documents drop constraint if exists person_documents_subject_type_check;
+--   alter table person_documents add constraint person_documents_subject_type_check
+--     check (subject_type in ('workforce_member'));
 
 alter table person_vendor_identity_links drop constraint if exists person_vendor_identity_links_subject_type_check;
 alter table person_vendor_identity_links add constraint person_vendor_identity_links_subject_type_check

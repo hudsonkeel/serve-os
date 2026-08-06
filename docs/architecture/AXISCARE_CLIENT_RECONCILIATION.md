@@ -1,118 +1,108 @@
-# AxisCare Client Reconciliation — Dry-Run Report
+# AxisCare Client Reconciliation — Operational Reconciliation Report
 
 Post-Release Stabilization, AxisCare Operational Synchronization,
-Workstream 2. Read-only investigation against the live AxisCare API
-(`GET /api/clients`, 25 real records — AxisCare's actual current client
-list, not a synthetic sample) and the live `residents` table (331 rows),
-via service-role introspection. **No resident or client record was
-created, linked, or modified to produce this report.**
+Workstream 2 ("Operational Client Synchronization, Phase 1"). Read-only
+against the live AxisCare API (`GET /api/clients`, full pagination, 25
+real records — confirmed unchanged since the prior pass) and the live
+`residents` table (331 rows), using the same authenticated AxisCare
+client (`lib/integrations/axiscare/client.ts`) the now-working schedule
+integration uses. **No resident or client record has been created,
+linked, or modified — see the blocker below.**
 
-## Phase A — Real AxisCare client response shape
+## BLOCKER — Phase 4 cannot execute yet
 
-The previous `getClientSample()` discovery stub (`limit=1`, untyped
-`clients: unknown`) has never had a real record's shape inspected. It now
-has. Confirmed live fields on an AxisCare client record: `id` (integer),
-`firstName`/`lastName`/`goesBy`, `status: { active: boolean, label:
-string }`, `classes: [{ code, label }]`, `administrators`, `community: {
-id, name } | null`, `region`, `personalEmail`/`billingEmail`,
-`homePhone`/`mobilePhone`/`otherPhone`, `residentialAddress`/
-`billingAddress`, `startDate`, `effectiveEndDate`, `createdDate`,
-`conversionDate`, `externalId`, plus care-specific fields
-(`allergies`, `advanceDirective`, `dnr`, `triageLevel`, etc., mostly
-`null` in this sample). No `pg_catalog`-equivalent "last update
-timestamp" field was observed on the client object itself.
+`supabase/migrations/20260819000000_add_resident_axiscare_client_sync.sql`
+is not applied to the live database (confirmed fresh, moments before this
+report: `sync_axiscare_client_identity` does not exist in the live
+schema). Applying it requires executing DDL (`ALTER TABLE`,
+`CREATE FUNCTION`) against Postgres directly. I have no mechanism to do
+that — only the Supabase **data-layer** service-role key (PostgREST),
+which can read/write rows in already-existing tables and call
+already-existing functions, but cannot run DDL. I don't have a direct
+Postgres connection string or a Supabase account-level management token.
 
-## Phase B — Deterministic lifecycle mapping (implemented, code)
+**I checked whether there's a safe workaround using only existing,
+already-writable columns — there isn't.** All six Stage-A confirmed
+matches already have `residents.external_source_key` and `source_system`
+populated with real Watermere roster-CSV provenance (e.g.
+`"watermere-frisco-2402-cecilia-perry-253"` / `"Watermere resident roster
+CSV"`). Writing AxisCare data into those same columns would destroy that
+existing provenance — exactly the "never overwrite Serve-owned resident
+information" this task prohibits. This confirms the migration is a
+genuine, correctly-scoped prerequisite, not excess caution.
 
-`lib/integrations/axiscare/clientLifecycle.ts` (6/6 tests):
+**What's needed to unblock:** someone with Supabase SQL-editor or direct
+database access needs to run the migration file above (already reviewed
+below for safety and rollback). Once applied, `scripts/syncAxisCareClientIdentities.ts`
+(written, not yet run) executes Stage A exactly as specified and can be
+run immediately — no further code work is needed.
 
-| AxisCare state | Serve OS treatment |
-|---|---|
-| `status.active = true` | **Active Client** |
-| `status.active = false`, class code `WAF Prospect` | **Prospect** |
-| `status.active = false`, class code `WAF - Active No Visits` (AxisCare's own label: "WAF Signed Agreement / No Visits") | **Prospect** — signed on, not yet receiving service; this is a *pending*, not a *past*, relationship |
-| `status.active = false`, no prospect class, has contact info AND a `startDate` | **Inactive Client** — real evidence service actually began |
-| `status.active = false`, no prospect class, missing contact info or `startDate` | **Needs Review** — never assumed either way |
-| No AxisCare link at all | **Watermere Resident**, not a client (unchanged from today) |
+## Migration safety review (required before applying — now complete)
 
-**"On Hold" and "Former Client" were not carried forward.** Neither
-corresponds to any real AxisCare status/class value observed in this
-sample, and no Serve-specific business definition for either was found
-documented anywhere in the codebase — they were almost certainly an
-earlier, undocumented, arbitrary mapping of AxisCare data (which is the
-likely reason the counts Hud sees don't match AxisCare's real lists).
-Retired rather than kept.
+- **Forward-only:** confirmed — no `DROP TABLE`/`DROP COLUMN`/`DELETE`/`TRUNCATE` anywhere in the file.
+- **Matches live schema:** confirmed — `person_vendor_identity_links` and `person_documents` both exist live today with the exact `workforce_member`-only constraint this migration widens.
+- **No destructive statements:** confirmed — the two `alter table` statements only widen an existing allow-list; every row that satisfied the old constraint still satisfies the new one. The new function only ever inserts a `'proposed'` row it owns or updates a row it already owns (`source_system='axiscare'`, `subject_type='resident'`) — structurally cannot touch `workforce_member` rows or any human-entered decision.
+- **Rollback documented:** added directly to the migration file as an executable comment block (exact `DROP FUNCTION`/constraint-narrowing statements).
 
-## Phase C — Identity reconciliation (implemented, code)
+## Phase 1 — Real AxisCare client data (refreshed, current)
 
-`lib/integrations/axiscare/clientIdentityMatching.ts` (11/11 tests) —
-strict order: confirmed AxisCare ID link (none exist yet — no sync has
-ever run) → exact normalized email → exact normalized phone → exact
-name+apartment → exact name+community. A phone/email match whose name
-disagrees is returned with `requiresReview: true`, never silently
-accepted. Name-only matches are never returned as a match at all.
+25 live clients, same authenticated client used by the schedule feature. Full field capture per client: AxisCare ID, name, `status.active`/`status.label`, `classes[]`, `administrators[]` (6 of 25 populated, e.g. `elizabeth.butler@servecaregiving.com`), `community`, `personalEmail`/`billingEmail`, `homePhone`/`mobilePhone`/`otherPhone`, `startDate`, `effectiveEndDate` (only 1 of 25 has a value — Maryann Smith, `2027-05-28`). **No `externalStatus` field exists anywhere in the real AxisCare response** — confirmed by inspecting the full key union across all 25 records twice, in two separate sessions. If AxisCare exposes this concept, it is not present on the `/api/clients` list response.
 
-A short, explicit denylist (`isKnownNonResidentAxisCareClient`) excludes
-AxisCare rows confirmed, by direct inspection, to be placeholder/internal
-records, not people: **"Client Lead," "New Client," "Integration Test,"
-"Micah Test," "Serve Office,"** and the community's own umbrella record
-("Watermere at Frisco Community"). This is a short, reviewable list, not
-a name-pattern heuristic — chosen deliberately so a real resident whose
-name happens to contain a common word is never excluded by accident.
+## Phase 2 — Deterministic reconciliation (unchanged, already implemented and tested)
 
-## Phase D — Full dry-run classification (25 real AxisCare clients)
+`lib/integrations/axiscare/clientLifecycle.ts` (6 tests) and `clientIdentityMatching.ts` (11 tests) — see prior investigation for the full mapping table. Order: confirmed AxisCare ID link (none exist yet) → confirmed vendor identity link (n/a for residents yet) → email → phone → name+apartment → name+community → everything else is Needs Review. **Never** auto-matches on name alone.
 
-| AxisCare ID | Name | Status | Class | Proposed resident | Match basis | Proposed lifecycle | Action |
-|---|---|---|---|---|---|---|---|
-| 1 | Client Lead | Inactive | — | — | — | Excluded | No action — placeholder record |
-| 2 | Sarah Adams | Inactive | — | none found | — | Inactive Client | Needs review — real-looking record, unmatched |
-| 3 | Watermere at Frisco Community | Active | Watermere Frisco | — | — | Excluded | No action — community's own record, not a person |
-| 4 | Maryann Smith | Inactive | — | none found | — | Inactive Client | Needs review — unmatched |
-| 5 | Diane Vento | Inactive | — | none found | — | Inactive Client | Needs review — unmatched |
-| 6 | Jeremy Goldberg | Inactive | — | none found | — | Needs Review | Needs review — thin record (no contact info, no start date) |
-| 7 | Linda Kaplan | **Active** | Watermere Frisco | none found | — | Active Client | **Needs review — active client, unmatched** |
-| 8 | Hank Azeria | Inactive | — | none found | — | Needs Review | Needs review — thin record |
-| 9 | Elliott Goldberg | **Active** | CINCH, Watermere Frisco | none found | — | Active Client | **Needs review — active client, unmatched** |
-| 10 | Serve Office | Active | — | — | — | Excluded | No action — internal/admin record |
-| 11 | Michelle (Mick) Helsley | **Active** | CINCH, Watermere Frisco | none found | — | Active Client | **Needs review — active client, unmatched** |
-| 12 | Doris Kakazu | **Active** | CINCH, Watermere Frisco | none found | — | Active Client | **Needs review — active client, unmatched** |
-| 13 | Kathryn (Kathy) Morshed | **Active** | CINCH, Watermere Frisco | none found | — | Active Client | **Needs review — active client, unmatched** |
-| 14 | Integration Test | Inactive | CINCH | — | — | Excluded | No action — test record |
-| 15 | Micah Test | Inactive | — | — | — | Excluded | No action — test record |
-| 16 | John McKey | **Active** | CINCH, Watermere Frisco | none found | — | Active Client | **Needs review — active client, unmatched** |
-| 17 | Cecilia Perry | Active | Watermere Frisco | Cecilia Perry | phone (names agree) | Active Client | Propose link (pending human confirmation) |
-| 18 | New Client | Inactive | — | — | — | Excluded | No action — placeholder record |
-| 19 | Adrian Reyes | Inactive | WAF - Active No Visits | Adrian Reyes | phone (names agree) | Prospect | Propose link |
-| 20 | Delia Reyes | Inactive | WAF - Active No Visits | Delia Reyes | phone (names agree) | Prospect | Propose link |
-| 21 | Wilma Pinion | Inactive | WAF - Active No Visits | Lynell Pinion | phone, **name mismatch** | Prospect | **Needs review — confirm whether "Wilma" and "Lynell" Pinion are the same person before linking** |
-| 22 | Pamela Hatch | Inactive | WAF Prospect | Pamela Hatch | email (names agree) | Prospect | Propose link |
-| 23 | Robert Hatch | Inactive | WAF Prospect | Pamela Hatch (same resident as #22) | phone, **name mismatch + duplicate target** | Prospect | **Needs review — Robert shares a phone with Pamela's resident record; determine whether he needs his own resident record** |
-| 28 | Rubyetta Cain | Active | CINCH, Watermere Frisco | Rubyetta Cain | phone (names agree) | Active Client | Propose link |
-| 29 | Brenda Fritschen | Active | CINCH, Watermere Frisco | Brenda Fritschen | phone (names agree) | Active Client | Propose link |
+## Phase 3 — Full reconciliation table (all 25 live records, current)
+
+| AxisCare | Serve Resident | Confidence | Proposed Status | Action |
+|---|---|---|---|---|
+| #1 Client Lead | — | — | — | Exclude (placeholder) |
+| #2 Sarah Adams | — | — | Inactive Client | Needs review (unmatched) |
+| #3 Watermere at Frisco Community | — | — | — | Exclude (community's own record, not a person) |
+| #4 Maryann Smith | — | — | Inactive Client | Needs review (unmatched) |
+| #5 Diane Vento | — | — | Inactive Client | Needs review (unmatched) |
+| #6 Jeremy Goldberg | — | — | Needs Review | Needs review (thin record) |
+| #7 Linda Kaplan | — | — | **Active Client** | **Needs review (unmatched active client)** |
+| #8 Hank Azeria | — | — | Needs Review | Needs review (thin record) |
+| #9 Elliott Goldberg | — | — | **Active Client** | **Needs review (unmatched active client)** |
+| #10 Serve Office | — | — | — | Exclude (internal record) |
+| #11 Michelle (Mick) Helsley | — | — | **Active Client** | **Needs review (unmatched active client)** |
+| #12 Doris Kakazu | — | — | **Active Client** | **Needs review (unmatched active client)** |
+| #13 Kathryn (Kathy) Morshed | — | — | **Active Client** | **Needs review (unmatched active client)** |
+| #14 Integration Test | — | — | — | Exclude (test record) |
+| #15 Micah Test | — | — | — | Exclude (test record) |
+| #16 John McKey | — | — | **Active Client** | **Needs review (unmatched active client)** |
+| #17 Cecilia Perry | Cecilia Perry | Confirmed (phone) | Active Client | Link to resident |
+| #18 New Client | — | — | — | Exclude (placeholder) |
+| #19 Adrian Reyes | Adrian Reyes | Confirmed (phone) | Prospect | Link to resident |
+| #20 Delia Reyes | Delia Reyes | Confirmed (phone) | Prospect | Link to resident |
+| #21 Wilma Pinion | Lynell Pinion | Probable — name mismatch | Prospect | Needs review |
+| #22 Pamela Hatch | Pamela Hatch | Confirmed (email) | Prospect | Link to resident |
+| #23 Robert Hatch | Pamela Hatch (same as #22) | Probable — name mismatch + duplicate target | Prospect | Needs review |
+| #28 Rubyetta Cain | Rubyetta Cain | Confirmed (phone) | Active Client | Link to resident |
+| #29 Brenda Fritschen | Brenda Fritschen | Confirmed (phone) | Active Client | Link to resident |
 
 ## Totals
 
-- **Active clients (real):** 9 (11 observed with `status.active = true`, minus 2 excluded non-person records)
-- **Inactive clients (real):** 5
-- **Prospects:** 5
-- **Confirmed matches (name-agreeing email/phone):** 6 — Cecilia Perry, Adrian Reyes, Delia Reyes, Pamela Hatch, Rubyetta Cain, Brenda Fritschen
-- **Ambiguous matches (requires human review):** 2 — Wilma Pinion (→ possible Lynell Pinion), Robert Hatch (→ possible shared record with Pamela Hatch)
-- **Unmatched records (no resident found at all):** 11, of which **5 are currently-Active AxisCare clients** (Linda Kaplan, Elliott Goldberg, Michelle Helsley, Doris Kakazu, Kathryn Morshed, John McKey — six, not five; see table) — the highest-priority review group, since these are real, currently-active AxisCare clients Serve OS has no linked resident record for at all
-- **Duplicate resident candidates:** 1 pair (Pamela/Robert Hatch → same resident row)
-- **Excluded (not real people):** 6
+- **AxisCare Active count:** 11 raw / **9 real** (excludes Watermere at Frisco Community #3 and Serve Office #10)
+- **AxisCare Inactive count:** 14 raw / **8 real, non-prospect** minus classification: 3 Inactive Client (Sarah Adams, Maryann Smith, Diane Vento), 5 Prospect (Adrian, Delia, Wilma, Pamela, Robert), 2 Needs Review-thin (Jeremy, Hank), 4 excluded placeholders (Client Lead, Integration Test, Micah Test, New Client)
+- **Serve Active Clients (current, before any sync):** 0 — no resident has ever been linked to AxisCare
+- **Serve Inactive Clients (current):** 0
+- **Match percentage:** 6/25 = 24% confirmed, 2/25 = 8% probable/ambiguous, 11/25 = 44% unmatched (6 of which are currently-active AxisCare clients — the highest-priority gap), 6/25 = 24% excluded
+- **Remaining unmatched AxisCare clients:** Sarah Adams, Maryann Smith, Diane Vento, Jeremy Goldberg, Hank Azeria, Linda Kaplan, Elliott Goldberg, Michelle Helsley, Doris Kakazu, Kathryn Morshed, John McKey (11 total, 6 of them active)
+- **Remaining unmatched residents:** all 331 residents except the 6 confirmed + 2 ambiguous targets (325) — expected and correct: most Watermere residents are not AxisCare clients at all, and this reconciliation only ever links FROM AxisCare TO an existing resident, never the reverse
+- **Ambiguous identities:** 2 — Wilma Pinion (possible Lynell Pinion, phone match/name mismatch), Robert Hatch (possible shared record with Pamela Hatch, phone match/name mismatch + two AxisCare clients would map to the same resident)
 
-## What was implemented (non-destructive)
+## What was implemented this pass
 
-- `lib/integrations/axiscare/clientLifecycle.ts` + tests (Phase B, code).
-- `lib/integrations/axiscare/clientIdentityMatching.ts` + tests (Phase C, code).
-- `supabase/migrations/20260819000000_add_resident_axiscare_client_sync.sql` — extends `person_vendor_identity_links`/`person_documents`'s existing `subject_type` check constraint (currently `workforce_member`-only) to include `resident`, and adds `sync_axiscare_client_identity()`, a new function mirroring the already-in-production `sync_axiscare_vendor_identity()` exactly (same never-auto-confirm discipline) rather than changing that function's signature, since it already has a live production caller (`lib/workforce/axiscareCaregiverSync.ts`). **Not applied** to the live database.
-- `lib/data/residentAxisCareLinks.ts` — thin TypeScript wrapper calling the new RPC, mirroring `lib/data/personVendorIdentityLinks.ts`'s existing pattern exactly.
+- Rollback documentation added directly to the migration file.
+- `scripts/syncAxisCareClientIdentities.ts` — the exact Stage A execution script, ready to run the moment the migration is applied. Processes only deterministic, name-agreeing email/phone matches; defers everything else untouched.
+- This report, refreshed against current live data using the same authenticated AxisCare client the schedule feature uses (no new/duplicate integration path).
 
-## STOP — no bulk write performed
+## STOP — no production write performed
 
-Per the mandatory pause: this report and the code above are the complete
-deliverable for this phase. **No `person_vendor_identity_links` row was
-inserted, no resident record was created or modified, and no AxisCare
-data was written anywhere.** The 6 "Propose link" rows are only that —
-proposals — pending Hud's review of this table before any sync script is
-actually run against production.
+Six confirmed links, two review-queue proposals, and zero resident
+creations are the entire scope of what Stage A/B/C authorize — and none
+of it has executed, because the schema it depends on isn't live yet.
+This is not a policy choice; it's a hard capability limit for this
+session. The next action is entirely non-code: applying the migration.
