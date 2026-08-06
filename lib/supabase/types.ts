@@ -1309,13 +1309,42 @@ export interface ResidentWorkingNote {
 // factual, append-only, and system generated only (no manual entry in this
 // phase). See 20260716010000_create_resident_timeline.sql.
 
+// Must exactly match resident_timeline_event_type_check's live allow-list
+// — see supabase/migrations/20260818000000_add_resident_profile_update_event.sql
+// (corrected: the original version of this union omitted
+// "follow_up_updated", a value already present on live rows, which is
+// why that migration's first draft failed to apply). Covered by
+// lib/supabase/__tests__/residentTimelineEventType.test.ts — update both
+// together.
 export type ResidentTimelineEventType =
-  | "resident_created"
   | "current_needs_updated"
+  | "follow_up_updated"
+  | "resident_created"
   | "working_note_created"
   | "working_note_resolved"
   | "relationship_conversion"
   | "profile_updated";
+
+// Compiler-enforced exhaustiveness: TS rejects this array at build time
+// if it is missing any ResidentTimelineEventType member, and a literal
+// not assignable to ResidentTimelineEventType is a type error on its own
+// — so the array and the union can never silently diverge from each
+// other. lib/supabase/__tests__/residentTimelineEventType.test.ts pins
+// this array's contents against the migration's intended vocabulary,
+// covering the half type-checking alone can't: whether this list is
+// still correct, not just internally consistent.
+function exhaustiveArrayOf<T>() {
+  return <U extends readonly T[]>(...items: U & ([T] extends [U[number]] ? unknown : never)) => items;
+}
+export const RESIDENT_TIMELINE_EVENT_TYPES = exhaustiveArrayOf<ResidentTimelineEventType>()(
+  "current_needs_updated",
+  "follow_up_updated",
+  "resident_created",
+  "working_note_created",
+  "working_note_resolved",
+  "relationship_conversion",
+  "profile_updated"
+);
 
 export interface ResidentTimelineEvent {
   id: string;
