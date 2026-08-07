@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getAxisCareClientOperationalSummary } from "@/lib/data/axiscareClientOperationalSummary";
+import { getAxisCareLeadEvidence } from "@/lib/data/axiscareLeadEvidence";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canPerformReconciliationActions } from "@/lib/auth/permissions";
 import { PageContainer } from "@/components/PageContainer";
@@ -19,8 +20,13 @@ export const revalidate = 0;
 // independently, inside every server action in
 // lib/actions/reconciliation.ts).
 export default async function ReconciliationPage() {
-  const [summary, profile] = await Promise.all([getAxisCareClientOperationalSummary(), getCurrentAuthorizedUser()]);
+  const [summary, profile, leadEvidence] = await Promise.all([
+    getAxisCareClientOperationalSummary(),
+    getCurrentAuthorizedUser(),
+    getAxisCareLeadEvidence(),
+  ]);
   const canAct = canPerformReconciliationActions(profile?.role);
+  const leadEvidenceRows = leadEvidence.rows;
   const excludedRows = summary.rows.filter((row) => row.operationalBucket === "excluded");
   const ambiguousIdentityRows = summary.rows.filter(
     (row) => row.operationalBucket !== "excluded" && row.identityStatus === "needs_identity_review"
@@ -99,14 +105,52 @@ export default async function ReconciliationPage() {
         </section>
 
         <section>
-          <h2 className="mb-3 font-sans text-card-title font-semibold text-body">AxisCare Leads (new — unresolved)</h2>
-          <div className="rounded-lg border border-warning-text/30 bg-warning-surface px-4 py-3 font-sans text-sm text-warning-text">
-            AxisCare&rsquo;s Leads CRM layer is now in use (confirmed live: a reachable <code>/api/leads</code> resource
-            exists with real records). At least one known case shows the same person represented as both an AxisCare
-            Lead and an AxisCare Client (Bob Hatch: Lead #30 and Client #23; Pam Hatch: Lead #31 and Client #22) —
-            these have not been merged or altered. Lead ingestion and Lead↔Client identity reconciliation are not
-            yet built; this is a real gap requiring a business decision before any Lead data is surfaced or linked
-            here.
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-sans text-card-title font-semibold text-body">AxisCare Lead evidence</h2>
+            <span className="rounded-full bg-ivory-warm px-2.5 py-0.5 font-sans text-label font-semibold text-muted">
+              {leadEvidenceRows.length}
+            </span>
+          </div>
+          <p className="mb-3 font-sans text-sm text-muted">
+            Read-only, live from AxisCare&rsquo;s Leads CRM layer — a Lead is AxisCare vendor terminology for a Serve
+            Prospect, never a separate identity. Each Lead is matched against existing residents using the same
+            deterministic matcher used for AxisCare Clients; nothing here is auto-linked, auto-merged, or used to
+            create a new canonical person. Rows flagged below already have a separate AxisCare Client match for the
+            same resident — evidence to review, not a decision made for you.
+          </p>
+          <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
+            {leadEvidenceRows.length > 0 ? (
+              <div className="divide-y divide-ivory-border">
+                {leadEvidenceRows.map((lead) => (
+                  <div key={lead.leadId} className="px-6 py-5">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="font-sans text-sm text-muted">AxisCare Lead #{lead.leadId}</span>
+                      {lead.statusLabel && <span className="font-sans text-sm text-muted">· {lead.statusLabel}</span>}
+                    </div>
+                    <p className="font-sans text-card-title font-semibold text-body">{lead.name || "(no name on file)"}</p>
+                    {lead.residentMatch.residentId ? (
+                      <p className="mt-1 font-sans text-sm text-body">
+                        Possible match: {lead.residentMatch.residentName} (basis: {lead.residentMatch.basis}
+                        {lead.residentMatch.requiresReview ? ", needs review" : ""})
+                      </p>
+                    ) : (
+                      <p className="mt-1 font-sans text-sm text-muted">No Serve resident match found.</p>
+                    )}
+                    {lead.alsoHasAxisCareClientMatch && (
+                      <p className="mt-1 font-sans text-sm text-warning-text">
+                        This resident also has AxisCare Client #{lead.alsoHasAxisCareClientMatch.axiscareClientId} (
+                        {lead.alsoHasAxisCareClientMatch.identityStatus}) — same person represented in both AxisCare
+                        systems. Not merged automatically.
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="px-5 py-8">
+                <EmptyState description="No AxisCare Leads found." />
+              </div>
+            )}
           </div>
         </section>
 
