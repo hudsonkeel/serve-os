@@ -4,3 +4,21 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  # Netlify's secrets scanner treats every non-NEXT_PUBLIC_ env var as
+  # sensitive by default and flags its literal value anywhere in the
+  # deploy output — including safe, expected server-only SSR chunks
+  # (.next/server/chunks/ssr/*), which it does not distinguish from the
+  # browser-shipped client bundle (.next/static/*). Live-verified locally
+  # (clean `next build`, grepping the actual output): AXISCARE_API_BASE_URL
+  # and AXISCARE_SITE_NUMBER (the site number is embedded in the base
+  # URL's hostname — see .env.example's AXISCARE_API_BASE_URL comment)
+  # appear only in .next/server/chunks/ssr/*, never in .next/static/*, and
+  # are read exclusively by lib/integrations/axiscare/config.ts, which is
+  # `import "server-only"`-guarded (a Next.js build-time enforced
+  # guarantee, not just a convention). Neither value is a credential — a
+  # hostname and a numeric site ID, not a token/key. The real secrets
+  # (AXISCARE_API_TOKEN, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY) were
+  # verified absent from the entire build output and remain fully scanned
+  # — this omits only the two proven-non-secret, proven-server-only
+  # values, not scanning as a whole.
+  SECRETS_SCAN_OMIT_KEYS = "AXISCARE_API_BASE_URL,AXISCARE_SITE_NUMBER"
