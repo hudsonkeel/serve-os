@@ -1,39 +1,56 @@
 import Link from "next/link";
 
-export type PeopleWeServeView = "residents" | "clients" | "externalClients" | "relationships" | "reconciliation";
+// "relationships"/"externalClients" are accepted for backward
+// compatibility with app/relationships/*.tsx and
+// app/external-clients/page.tsx (kept fully functional at their
+// existing routes, no longer primary tabs — see the comment below) —
+// passing either simply renders the 4 primary tabs with none marked
+// active, rather than breaking those pages' compilation.
+export type PeopleWeServeView = "residents" | "clients" | "prospects" | "reconciliation" | "relationships" | "externalClients";
 
-// Ordering/composition rationale (People We Serve refactor):
+// Primary People We Serve navigation, per the corrected ontology:
+// Residents | Serve Clients | Prospects | Reconciliation.
+//
 // - Residents: the canonical community population.
 // - Serve Clients ("clients", was "AxisCare Clients" / /axiscare-clients,
-//   redirected — see app/axiscare-clients/page.tsx): real Serve clients,
-//   sourced from AxisCare (Serve's canonical external client
-//   repository), never described to the user as vendor-owned.
-// - External Clients: kept as its own tab, not folded into
-//   Reconciliation or removed — investigated directly
-//   (lib/data/externalClients.ts, lib/externalClients/search.ts) and
-//   confirmed to be a real, distinct business concept (people served
-//   outside a supported community, tracked through the Relationships
-//   CRM + a dedicated external_clients table), not implementation or
-//   reconciliation machinery kept around out of inertia.
-// - Relationships: the CRM/pipeline system.
+//   redirected): real Serve clients, sourced from AxisCare (Serve's
+//   canonical external client repository), never described to the user
+//   as vendor-owned.
+// - Prospects (was the "Relationships" tab — Relationships is no longer
+//   a competing primary destination now that its prospect-facing CRM
+//   functionality is reachable here): who Serve may go on to serve. The
+//   mature Relationships CRM engine (owner/stage/next action/touches/
+//   notes/service opportunity) is reused, not rebuilt or deleted — see
+//   app/prospects/page.tsx. Non-prospect relationships (referral
+//   partners, resident-linked active clients, etc.) remain reachable at
+//   /relationships, linked contextually from Prospects rather than
+//   competing for a nav slot.
 // - Reconciliation: vendor records that are not real Serve clients,
-//   ambiguous identity matches, and other admin/vendor cleanup — home
-//   for anything that isn't a settled, presentable Serve concept yet.
+//   ambiguous identity matches, and other admin/vendor cleanup.
+//
+// External Clients (people served outside a supported community) was
+// investigated directly and found to be a genuinely distinct business
+// entity — not AxisCare-derived, not reconciliation machinery — so it
+// is preserved, fully functional, at its existing route
+// (/external-clients) rather than deleted. It is intentionally not a
+// top-level tab here; it's reachable contextually (e.g. from
+// Prospects) pending a decision on whether "Non-Community/External"
+// should instead become a community-affiliation filter within Serve
+// Clients/Prospects (the community-context foundation added alongside
+// this navigation change already models "Non-Community/External" as
+// exactly that kind of state) rather than a separate population.
 const VIEWS: { value: PeopleWeServeView; label: string; href: string }[] = [
   { value: "residents", label: "Residents", href: "/residents" },
   { value: "clients", label: "Serve Clients", href: "/clients" },
-  { value: "externalClients", label: "External Clients", href: "/external-clients" },
-  { value: "relationships", label: "Relationships", href: "/relationships" },
+  { value: "prospects", label: "Prospects", href: "/prospects" },
   { value: "reconciliation", label: "Reconciliation", href: "/reconciliation" },
 ];
 
-// The People We Serve's shared view switcher — everything but Residents
-// is intentionally not a separate top-level sidebar entry; this is how
-// they stay reachable as clearly-labeled sub-areas instead. Styled
-// identically to components/relationships/RelationshipViewTabs.tsx (which
-// stays untouched and renders BELOW this one on every /relationships*
-// page, giving a two-level "The People We Serve > Relationships > Action
-// Board" hierarchy without a new breadcrumb component).
+// The People We Serve's shared view switcher — none of these are
+// separate top-level sidebar entries; this is how they stay reachable
+// as clearly-labeled sub-areas instead. Styled identically to
+// components/relationships/RelationshipViewTabs.tsx (which stays
+// untouched and renders BELOW this one on every /relationships* page).
 export function PeopleWeServeTabs({ active }: { active: PeopleWeServeView }) {
   return (
     <div className="mb-6 flex flex-wrap items-center gap-1 border-b border-ivory-border">
