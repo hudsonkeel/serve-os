@@ -52,6 +52,12 @@ export interface AxisCareClientOperationalRow {
   readonly statusActive: boolean;
   readonly statusLabel: string | null;
   readonly classes: readonly string[];
+  // Community affiliation — an independent dimension from lifecycle,
+  // identity, and disposition (see docs on the People We Serve
+  // community-context foundation). Never hardcoded; read directly from
+  // AxisCare's own community field for this record, whatever community
+  // that happens to be.
+  readonly communityName: string | null;
   readonly computedLifecycle: ServeClientLifecycle;
   readonly disposition: AxisCareClientDisposition | null;
   readonly dispositionRationale: string | null;
@@ -170,6 +176,7 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
       statusActive: !!c.status?.active,
       statusLabel: c.status?.label ?? null,
       classes: (c.classes ?? []).map((cl) => cl.code),
+      communityName: c.community?.name ?? null,
       computedLifecycle,
       disposition: dispositionRow?.disposition ?? null,
       dispositionRationale: dispositionRow?.rationale ?? null,

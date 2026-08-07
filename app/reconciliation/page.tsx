@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { getAxisCareClientOperationalSummary } from "@/lib/data/axiscareClientOperationalSummary";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canPerformReconciliationActions } from "@/lib/auth/permissions";
 import { PageContainer } from "@/components/PageContainer";
 import { PeopleWeServeTabs } from "@/components/peopleWeServe/PeopleWeServeTabs";
-import { AxisCareClientRow } from "@/components/peopleWeServe/AxisCareClientRow";
+import { ReconciliationRow } from "@/components/reconciliation/ReconciliationRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 export const dynamic = "force-dynamic";
@@ -12,9 +14,13 @@ export const revalidate = 0;
 // settled, presentable Serve concept — never rendered as an unusual
 // kind of Serve Client (see app/clients/page.tsx, which excludes these
 // rows entirely). Nothing on this page is auto-resolved; every action
-// here requires a human decision.
+// here requires a human decision, gated to admin/manager/executive —
+// same governance boundary as resident profile edits (enforced again,
+// independently, inside every server action in
+// lib/actions/reconciliation.ts).
 export default async function ReconciliationPage() {
-  const summary = await getAxisCareClientOperationalSummary();
+  const [summary, profile] = await Promise.all([getAxisCareClientOperationalSummary(), getCurrentAuthorizedUser()]);
+  const canAct = canPerformReconciliationActions(profile?.role);
   const excludedRows = summary.rows.filter((row) => row.operationalBucket === "excluded");
   const ambiguousIdentityRows = summary.rows.filter(
     (row) => row.operationalBucket !== "excluded" && row.identityStatus === "needs_identity_review"
@@ -28,6 +34,7 @@ export default async function ReconciliationPage() {
         <p className="mt-1 font-sans text-base text-muted">
           Vendor records that are not real Serve clients, ambiguous identity matches, and other admin/vendor
           cleanup. Nothing here is resolved automatically — every record requires a human decision.
+          {!canAct && " Viewing only — your role does not include reconciliation correction actions."}
         </p>
       </div>
 
@@ -50,7 +57,7 @@ export default async function ReconciliationPage() {
             {excludedRows.length > 0 ? (
               <div className="divide-y divide-ivory-border">
                 {excludedRows.map((row) => (
-                  <AxisCareClientRow key={row.axiscareId} row={row} />
+                  <ReconciliationRow key={row.axiscareId} row={row} canAct={canAct} showIdentityActions={false} />
                 ))}
               </div>
             ) : (
@@ -80,7 +87,7 @@ export default async function ReconciliationPage() {
             {ambiguousIdentityRows.length > 0 ? (
               <div className="divide-y divide-ivory-border">
                 {ambiguousIdentityRows.map((row) => (
-                  <AxisCareClientRow key={row.axiscareId} row={row} />
+                  <ReconciliationRow key={row.axiscareId} row={row} canAct={canAct} showIdentityActions={true} />
                 ))}
               </div>
             ) : (

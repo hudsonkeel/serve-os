@@ -23,43 +23,11 @@ import {
   normalizeName,
   normalizeLastName,
   isKnownNonResidentAxisCareClient,
+  toPersonVendorIdentityLinksMatchMethod,
   type NormalizedResidentCandidate,
-  type ClientMatchBasis,
 } from "../lib/integrations/axiscare/clientIdentityMatching.ts";
 
 const ACTOR = "AxisCare Client Sync (automated, deterministic matches only)";
-
-// person_vendor_identity_links_match_method_check (20260808000000)
-// predates this script and already defines the real, live vocabulary —
-// 'verified_email'/'verified_phone'/'normalized_name_plus_attribute',
-// not this module's own "email"/"phone"/"name_and_..." basis names.
-// Live-confirmed: passing the basis name directly violates the
-// constraint (zero rows written, clean atomic rollback) — this maps into
-// the constraint's real allow-list rather than inventing new values.
-function toPersonVendorIdentityLinksMatchMethod(basis: ClientMatchBasis): string {
-  switch (basis) {
-    case "email":
-      return "verified_email";
-    case "phone":
-      return "verified_phone";
-    case "name_and_apartment":
-    case "name_and_community":
-      return "normalized_name_plus_attribute";
-    case "surname_and_community":
-      // Pre-existing, previously-unused constraint vocabulary value —
-      // exactly the "name similarity, not exact, needs a human" case
-      // this basis represents. This script's own deferral condition
-      // below (basis must be "email" or "phone") means a
-      // surname_and_community match is never actually synced by this
-      // automated script — this case exists only so the switch stays
-      // exhaustive and compiler-checked against ClientMatchBasis.
-      return "name_similarity_pending_review";
-    case "none":
-      // Unreachable — callers only invoke this for a resolved match
-      // (match.residentId is non-null), which "none" never produces.
-      throw new Error("toPersonVendorIdentityLinksMatchMethod called with basis 'none'");
-  }
-}
 
 // Only the fields this script actually reads — not a full AxisCare
 // client type (see lib/integrations/axiscare/types.ts's own note on why

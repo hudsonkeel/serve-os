@@ -7,6 +7,8 @@
 // exact name+community. Fuzzy/household evidence is never auto-matched
 // here — it is surfaced as "needs_review" for a human.
 
+import type { VendorIdentityMatchMethod } from "../../supabase/types.ts";
+
 export interface NormalizedResidentCandidate {
   readonly id: string;
   readonly displayName: string;
@@ -64,6 +66,35 @@ export function normalizeName(firstName: string, lastName: string): string {
 
 export function normalizeLastName(lastName: string): string {
   return lastName.trim().toLowerCase();
+}
+
+// person_vendor_identity_links_match_method_check
+// (supabase/migrations/20260808000000_create_workforce_intelligence_platform.sql)
+// defines the real, live database vocabulary —
+// 'verified_email'/'verified_phone'/'normalized_name_plus_attribute'/
+// 'name_similarity_pending_review' (VendorIdentityMatchMethod in
+// lib/supabase/types.ts) — not this module's own
+// "email"/"phone"/"name_and_..."/"surname_and_..." basis names.
+// Live-confirmed: passing a ClientMatchBasis value directly violates the
+// constraint. Shared by scripts/syncAxisCareClientIdentities.ts and any
+// server action that resolves a reconciliation decision, so the mapping
+// exists exactly once.
+export function toPersonVendorIdentityLinksMatchMethod(basis: ClientMatchBasis): VendorIdentityMatchMethod {
+  switch (basis) {
+    case "email":
+      return "verified_email";
+    case "phone":
+      return "verified_phone";
+    case "name_and_apartment":
+    case "name_and_community":
+      return "normalized_name_plus_attribute";
+    case "surname_and_community":
+      return "name_similarity_pending_review";
+    case "none":
+      // Unreachable — callers only invoke this for a resolved match
+      // (match.residentId is non-null), which "none" never produces.
+      throw new Error("toPersonVendorIdentityLinksMatchMethod called with basis 'none'");
+  }
 }
 
 // A small, explicit denylist of AxisCare client names observed live to be
