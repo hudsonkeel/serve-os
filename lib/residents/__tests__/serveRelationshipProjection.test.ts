@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { projectServeRelationship, type ServeRelationshipProjectionInput } from "../serveRelationshipProjection.ts";
+import {
+  projectServeRelationship,
+  applyServeRelationshipCorrection,
+  type ServeRelationshipProjectionInput,
+  type ServeRelationshipCorrection,
+} from "../serveRelationshipProjection.ts";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -140,6 +145,74 @@ test("delivery system is 'cinch' when only staged CINCH evidence exists, 'none' 
   assert.equal(cinchOnly.deliverySystem, "cinch");
   const neither = projectServeRelationship(BASE);
   assert.equal(neither.deliverySystem, "none");
+});
+
+// ─── applyServeRelationshipCorrection ──────────────────────────────────
+
+test("no correction: the natural projection passes through unchanged", () => {
+  const natural = projectServeRelationship({
+    ...BASE,
+    axiscareMatch: { axiscareId: "1", operationalBucket: "active_client", identityStatus: "confirmed" },
+  });
+  const result = applyServeRelationshipCorrection(natural, null);
+  assert.equal(result.relationship, "active_client");
+  assert.equal(result.relationshipSource, "axiscare");
+  assert.equal(result.correction, null);
+  assert.equal(result.hasConflict, false);
+});
+
+test("a correction overrides the natural projection and is sourced as human_correction", () => {
+  const natural = projectServeRelationship({
+    ...BASE,
+    axiscareMatch: { axiscareId: "1", operationalBucket: "inactive_client", identityStatus: "confirmed" },
+  });
+  const correction: ServeRelationshipCorrection = {
+    newValue: "active_client",
+    previousValue: "inactive_client",
+    actor: "Elizabeth",
+    rationale: "Confirmed with the family this is an active client despite AxisCare showing inactive.",
+    createdAt: "2026-08-08T00:00:00.000Z",
+  };
+  const result = applyServeRelationshipCorrection(natural, correction);
+  assert.equal(result.relationship, "active_client");
+  assert.equal(result.relationshipSource, "human_correction");
+  assert.equal(result.correction, correction);
+});
+
+test("REGRESSION: a correction wins even when later vendor evidence disagrees, and the disagreement is surfaced as a conflict, not silently resolved either direction", () => {
+  // Natural (uncorrected) projection now says inactive_client (new
+  // AxisCare evidence), but a human previously corrected this resident
+  // to active_client.
+  const natural = projectServeRelationship({
+    ...BASE,
+    axiscareMatch: { axiscareId: "1", operationalBucket: "inactive_client", identityStatus: "confirmed" },
+  });
+  const correction: ServeRelationshipCorrection = {
+    newValue: "active_client",
+    previousValue: "prospect",
+    actor: "Elizabeth",
+    rationale: "Reviewed and confirmed active with the family directly.",
+    createdAt: "2026-08-08T00:00:00.000Z",
+  };
+  const result = applyServeRelationshipCorrection(natural, correction);
+  assert.equal(result.relationship, "active_client", "the correction must still win for display");
+  assert.equal(result.hasConflict, true, "the disagreement must be surfaced, not silently dropped");
+});
+
+test("a correction that still agrees with the current natural projection has no conflict", () => {
+  const natural = projectServeRelationship({
+    ...BASE,
+    axiscareMatch: { axiscareId: "1", operationalBucket: "active_client", identityStatus: "confirmed" },
+  });
+  const correction: ServeRelationshipCorrection = {
+    newValue: "active_client",
+    previousValue: "needs_review",
+    actor: "Elizabeth",
+    rationale: "Confirmed active.",
+    createdAt: "2026-08-08T00:00:00.000Z",
+  };
+  const result = applyServeRelationshipCorrection(natural, correction);
+  assert.equal(result.hasConflict, false);
 });
 
 let passed = 0;

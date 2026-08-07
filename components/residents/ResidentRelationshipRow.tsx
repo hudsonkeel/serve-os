@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { ServeRelationshipCorrectionControl } from "./ServeRelationshipCorrectionControl";
 import type { EnrichedResidentRecord } from "@/lib/data/residentServeRelationships";
 import type { ServeRelationship, ServeDeliverySystem } from "@/lib/residents/serveRelationshipProjection";
 import type { AxisCareIdentityStatus } from "@/lib/integrations/axiscare/clientOperationalStatus";
@@ -48,9 +49,10 @@ function shortDate(iso: string | null) {
 
 interface ResidentRelationshipRowProps {
   record: EnrichedResidentRecord;
+  canCorrect: boolean;
 }
 
-export function ResidentRelationshipRow({ record }: ResidentRelationshipRowProps) {
+export function ResidentRelationshipRow({ record, canCorrect }: ResidentRelationshipRowProps) {
   const { base, projection, axiscareMatch } = record;
   const deliveryLabel = DELIVERY_LABELS[projection.deliverySystem];
 
@@ -71,6 +73,8 @@ export function ResidentRelationshipRow({ record }: ResidentRelationshipRowProps
       <div className="pointer-events-none relative z-[1] min-w-0 flex-1">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <Badge tone={RELATIONSHIP_TONES[projection.relationship]}>{RELATIONSHIP_LABELS[projection.relationship]}</Badge>
+          {projection.correction && <Badge tone="blue">Corrected</Badge>}
+          {projection.hasConflict && <Badge tone="danger">Vendor evidence disagrees</Badge>}
           {projection.onHold && <Badge tone="warning">On Hold</Badge>}
           {base.wellnessWatch && (
             <Badge tone={base.wellnessWatch.hasOverdue ? "danger" : "warning"}>
@@ -103,6 +107,19 @@ export function ResidentRelationshipRow({ record }: ResidentRelationshipRowProps
           <p className="mt-1 font-sans text-sm text-muted">
             Stage: {projection.prospectStage.replace(/_/g, " ")}
           </p>
+        )}
+
+        {projection.correction && (
+          <p className="mt-1 font-sans text-sm text-muted">
+            Corrected by {projection.correction.actor}: &ldquo;{projection.correction.rationale}&rdquo;
+            {projection.hasConflict && " — current vendor evidence now disagrees with this correction."}
+          </p>
+        )}
+
+        {canCorrect && (
+          <div className="mt-2">
+            <ServeRelationshipCorrectionControl residentId={base.id} currentValue={projection.relationship} />
+          </div>
         )}
       </div>
 

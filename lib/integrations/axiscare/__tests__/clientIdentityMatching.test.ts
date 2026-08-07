@@ -54,8 +54,8 @@ test("isKnownNonResidentAxisCareClient flags observed placeholder names", () => 
   assert.equal(isKnownNonResidentAxisCareClient("jane doe"), false);
 });
 
-test("matches on exact email", () => {
-  const residents = [resident({ id: "r-1", normalizedEmail: "jane@example.com" })];
+test("matches on exact email when names agree — no review needed", () => {
+  const residents = [resident({ id: "r-1", normalizedEmail: "jane@example.com", normalizedName: "jane doe" })];
   const result = matchAxisCareClientToResident(
     { normalizedEmail: "jane@example.com", normalizedPhones: [], normalizedName: "jane doe", unitNumber: null, communityName: null },
     residents
@@ -63,6 +63,44 @@ test("matches on exact email", () => {
   assert.equal(result.residentId, "r-1");
   assert.equal(result.basis, "email");
   assert.equal(result.requiresReview, false);
+});
+
+test("REGRESSION (Bob Hatch / Pamela Hatch, shared household email): an email match with a materially disagreeing name is flagged for review, never a clean candidate match", () => {
+  const residents = [
+    resident({ id: "pamela-hatch", displayName: "Pamela Hatch", normalizedEmail: "hatch.pam@bobnpam.com", normalizedName: "pamela hatch" }),
+  ];
+  const result = matchAxisCareClientToResident(
+    { normalizedEmail: "hatch.pam@bobnpam.com", normalizedPhones: [], normalizedName: "bob hatch", unitNumber: null, communityName: null },
+    residents
+  );
+  assert.equal(result.residentId, "pamela-hatch");
+  assert.equal(result.basis, "email");
+  assert.equal(result.requiresReview, true);
+  assert.ok(result.reviewReason?.includes("Pamela Hatch"));
+  assert.ok(result.reviewReason?.toLowerCase().includes("household"));
+});
+
+test("REGRESSION (reverse direction): Pamela Hatch does not resolve to a clean candidate match against Bob Hatch's contact info for the same reason", () => {
+  const residents = [
+    resident({ id: "bob-hatch", displayName: "Bob Hatch", normalizedEmail: "hatch.bob@bobnpam.com", normalizedName: "bob hatch" }),
+  ];
+  const result = matchAxisCareClientToResident(
+    { normalizedEmail: "hatch.bob@bobnpam.com", normalizedPhones: [], normalizedName: "pamela hatch", unitNumber: null, communityName: null },
+    residents
+  );
+  assert.equal(result.residentId, "bob-hatch");
+  assert.equal(result.basis, "email");
+  assert.equal(result.requiresReview, true);
+});
+
+test("REGRESSION: legitimate nickname/spelling cases (Wilma/Lynell Pinion via shared phone) still surface as a reviewable match, not silently dropped to 'none'", () => {
+  const residents = [resident({ id: "r-1", displayName: "Lynell Pinion", normalizedPhones: ["5125551234"], normalizedName: "lynell pinion" })];
+  const result = matchAxisCareClientToResident(
+    { normalizedEmail: null, normalizedPhones: ["5125551234"], normalizedName: "wilma pinion", unitNumber: null, communityName: null },
+    residents
+  );
+  assert.equal(result.residentId, "r-1");
+  assert.equal(result.requiresReview, true);
 });
 
 test("matches on exact phone when names agree — no review needed", () => {

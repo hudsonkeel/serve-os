@@ -13,16 +13,18 @@ import {
   type ResidentTabValue,
 } from "./communityMetrics";
 import { getAxisCareClientOperationalSummary, type AxisCareClientOperationalRow } from "./axiscareClientOperationalSummary";
+import { getLatestServeRelationshipCorrections } from "./residentServeRelationshipCorrections";
 import {
   projectServeRelationship,
+  applyServeRelationshipCorrection,
   type ServeRelationship,
-  type ServeRelationshipProjection,
+  type ServeRelationshipProjectionWithCorrection,
   type AxisCareRelationshipMatch,
 } from "@/lib/residents/serveRelationshipProjection";
 
 export interface EnrichedResidentRecord {
   readonly base: CommunityResidentRecord;
-  readonly projection: ServeRelationshipProjection;
+  readonly projection: ServeRelationshipProjectionWithCorrection;
   readonly axiscareMatch: AxisCareRelationshipMatch | null;
 }
 
@@ -88,9 +90,10 @@ function buildResidentAxisCareMatches(
 }
 
 export async function getResidentServeRelationships(): Promise<ResidentServeRelationshipsData> {
-  const [community, axiscareSummary] = await Promise.all([
+  const [community, axiscareSummary, corrections] = await Promise.all([
     getCommunityMetrics(),
     getAxisCareClientOperationalSummary(),
+    getLatestServeRelationshipCorrections(),
   ]);
 
   const axiscareMatchesByResident = buildResidentAxisCareMatches(axiscareSummary.rows);
@@ -106,7 +109,7 @@ export async function getResidentServeRelationships(): Promise<ResidentServeRela
   const records: EnrichedResidentRecord[] = community.residentRecords.map((base) => {
     const axiscareMatch = axiscareMatchesByResident.get(base.id) ?? null;
 
-    const projection = projectServeRelationship({
+    const naturalProjection = projectServeRelationship({
       legacyResidentStatus: base.serveRelationshipStatus,
       activeRelationships: base.activeRelationships.map((r) => ({
         relationshipType: r.relationshipType,
@@ -116,6 +119,14 @@ export async function getResidentServeRelationships(): Promise<ResidentServeRela
       axiscareMatch,
       hasCinchEvidence: base.sourceCinchStatus !== null,
     });
+
+    // A reviewed human correction, when one exists, takes precedence
+    // for display over the naturally-computed value — but disagreement
+    // from newer evidence is surfaced (projection.hasConflict), never
+    // silently resolved. See serveRelationshipProjection.ts's own
+    // comment on why this must never be used to mask a known software
+    // defect in the projection logic itself.
+    const projection = applyServeRelationshipCorrection(naturalProjection, corrections.get(base.id) ?? null);
 
     relationshipCounts[projection.relationship] += 1;
 

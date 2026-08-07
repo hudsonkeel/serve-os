@@ -129,7 +129,23 @@ export function matchAxisCareClientToResident(
   if (client.normalizedEmail) {
     const byEmail = residents.find((r) => r.normalizedEmail === client.normalizedEmail);
     if (byEmail) {
-      return { residentId: byEmail.id, basis: "email", requiresReview: false, reviewReason: null };
+      // A shared email address is real evidence a household exists, not
+      // by itself evidence that this AxisCare record and this resident
+      // are the SAME person — spouses/household members routinely share
+      // one email on file (live-confirmed: AxisCare Lead "Bob Hatch"
+      // shares resident Pamela Hatch's email on file). Same discipline
+      // already applied to phone below: a name disagreement here is
+      // surfaced for human review, never silently accepted as a
+      // same-person confirmation.
+      const namesAgree = byEmail.normalizedName === client.normalizedName;
+      return {
+        residentId: byEmail.id,
+        basis: "email",
+        requiresReview: !namesAgree,
+        reviewReason: namesAgree
+          ? null
+          : `Email matches resident "${byEmail.displayName}", but the AxisCare client name ("${client.normalizedName}") does not match — this may be shared household/family contact information rather than the same person. Confirm before accepting.`,
+      };
     }
   }
 

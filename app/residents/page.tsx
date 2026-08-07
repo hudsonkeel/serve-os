@@ -7,6 +7,7 @@ import { ResidentsInbox } from "@/components/residents/ResidentsInbox";
 import { PeopleWeServeTabs } from "@/components/peopleWeServe/PeopleWeServeTabs";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canEditResidentProfile } from "@/lib/auth/permissions";
 import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
 import { buildAskServeContext } from "@/lib/askServe/buildContext";
 import { PEOPLE_WE_SERVE_CONTEXT } from "@/lib/askServe/areaContexts";
@@ -31,6 +32,7 @@ export default async function ResidentsPage({
   const community = await getResidentServeRelationships();
   const profile = await getCurrentAuthorizedUser();
   const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
+  const canCorrect = canEditResidentProfile(profile?.role);
   const params = await searchParams;
   const initialTab = VALID_TABS.includes(params.tab as ResidentRelationshipTabValue)
     ? (params.tab as ResidentRelationshipTabValue)
@@ -79,6 +81,7 @@ export default async function ResidentsPage({
         relationshipCounts={community.relationshipCounts}
         initialTab={initialTab}
         initialWellnessDue={initialWellnessDue}
+        canCorrect={canCorrect}
       />
     </PageContainer>
   );

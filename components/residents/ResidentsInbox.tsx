@@ -51,6 +51,7 @@ interface ResidentsInboxProps {
   relationshipCounts: Record<ServeRelationship, number>;
   initialTab?: ResidentRelationshipTabValue;
   initialWellnessDue?: WellnessDueFilter;
+  canCorrect: boolean;
 }
 
 export function ResidentsInbox({
@@ -58,6 +59,7 @@ export function ResidentsInbox({
   relationshipCounts,
   initialTab = "all",
   initialWellnessDue,
+  canCorrect,
 }: ResidentsInboxProps) {
   const [activeTab, setActiveTab] = useState<ResidentRelationshipTabValue>(initialTab);
   const [search, setSearch] = useState("");
@@ -184,7 +186,7 @@ export function ResidentsInbox({
         {visible.length > 0 ? (
           <div className="divide-y divide-ivory-border">
             {visible.map((record) => (
-              <ResidentRelationshipRow key={record.base.id} record={record} />
+              <ResidentRelationshipRow key={record.base.id} record={record} canCorrect={canCorrect} />
             ))}
           </div>
         ) : (

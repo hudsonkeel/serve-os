@@ -24,6 +24,7 @@ import { classifyAxisCareClientLifecycle, type ServeClientLifecycle } from "../i
 import {
   resolveAxisCareClientOperationalBucket,
   resolveAxisCareIdentityStatus,
+  resolveAxisCareResidentMatch,
   type AxisCareClientOperationalBucket,
   type AxisCareIdentityStatus,
 } from "../integrations/axiscare/clientOperationalStatus.ts";
@@ -160,13 +161,13 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
       residents
     );
     const existingLink = existingLinks.get(axiscareId) ?? null;
-    const residentId = existingLink?.subject_id ?? match.residentId;
+    const resolved = resolveAxisCareResidentMatch(match, existingLink);
 
     const residentMatch = {
-      residentId,
-      residentName: residentId ? (residentNamesById.get(residentId) ?? null) : null,
-      basis: match.basis,
-      requiresReview: match.requiresReview,
+      residentId: resolved.residentId,
+      residentName: resolved.residentId ? (residentNamesById.get(resolved.residentId) ?? null) : null,
+      basis: resolved.basis,
+      requiresReview: resolved.requiresReview,
       confirmedLinkStatus: existingLink?.status ?? null,
     };
 

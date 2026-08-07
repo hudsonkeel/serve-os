@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { resolveAxisCareClientOperationalBucket, resolveAxisCareIdentityStatus } from "../clientOperationalStatus.ts";
+import {
+  resolveAxisCareClientOperationalBucket,
+  resolveAxisCareIdentityStatus,
+  resolveAxisCareResidentMatch,
+} from "../clientOperationalStatus.ts";
+import type { ClientMatchResult } from "../clientIdentityMatching.ts";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -56,6 +61,37 @@ test("a clean deterministic match with no confirmed link yet is a candidate", ()
     resolveAxisCareIdentityStatus({ residentId: "r1", requiresReview: false, confirmedLinkStatus: null }),
     "candidate"
   );
+});
+
+const FRESH_MATCH: ClientMatchResult = { residentId: "fresh-resident", basis: "phone", requiresReview: false, reviewReason: null };
+
+test("REGRESSION: a confirmed identity link always wins over a fresh deterministic recomputation, even if the fresh match now disagrees", () => {
+  const conflictingFreshMatch: ClientMatchResult = { residentId: "someone-else", basis: "email", requiresReview: false, reviewReason: null };
+  const result = resolveAxisCareResidentMatch(conflictingFreshMatch, { subject_id: "confirmed-resident", status: "confirmed" });
+  assert.equal(result.residentId, "confirmed-resident");
+  assert.equal(result.requiresReview, false);
+});
+
+test("REGRESSION: a rejected identity decision never resurfaces its rejected candidate as an open match", () => {
+  const result = resolveAxisCareResidentMatch(FRESH_MATCH, { subject_id: "fresh-resident", status: "rejected" });
+  assert.equal(result.residentId, null);
+  assert.equal(result.basis, "none");
+  assert.equal(result.requiresReview, false);
+});
+
+test("a proposed (not yet decided) link uses the fresh deterministic computation, not the originally-proposed candidate", () => {
+  const result = resolveAxisCareResidentMatch(FRESH_MATCH, { subject_id: "originally-proposed-resident", status: "proposed" });
+  assert.equal(result.residentId, "fresh-resident");
+});
+
+test("a deferred (review later) link uses the fresh deterministic computation — deferring is not a rejection", () => {
+  const result = resolveAxisCareResidentMatch(FRESH_MATCH, { subject_id: "deferred-resident", status: "deferred" });
+  assert.equal(result.residentId, "fresh-resident");
+});
+
+test("no existing link at all uses the fresh deterministic computation", () => {
+  const result = resolveAxisCareResidentMatch(FRESH_MATCH, null);
+  assert.equal(result.residentId, "fresh-resident");
 });
 
 let passed = 0;

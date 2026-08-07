@@ -10,6 +10,7 @@
 import type { ServeClientLifecycle } from "./clientLifecycle.ts";
 import type { AxisCareClientDisposition } from "./clientDisposition.ts";
 import { isExcludedFromLifecycleCounts } from "./clientDisposition.ts";
+import type { ClientMatchBasis, ClientMatchResult } from "./clientIdentityMatching.ts";
 
 export type AxisCareClientOperationalBucket = ServeClientLifecycle | "excluded";
 
@@ -50,4 +51,34 @@ export function resolveAxisCareIdentityStatus(residentMatch: {
     return "needs_identity_review";
   }
   return "candidate";
+}
+
+export interface ResolvedResidentMatch {
+  readonly residentId: string | null;
+  readonly basis: ClientMatchBasis;
+  readonly requiresReview: boolean;
+}
+
+// A confirmed human decision always wins over a fresh deterministic
+// recomputation of the same evidence — even if the underlying AxisCare
+// data has since changed in a way that would no longer deterministically
+// match, a confirmed link stays confirmed (a later, real disagreement
+// is a reconciliation question, not something this function silently
+// resolves). A rejected decision must never resurface its rejected
+// candidate as if still open for review — the fresh match is
+// suppressed entirely here, not just re-displayed with a stale "needs
+// review" flag. Any other state (proposed, deferred, or no link at
+// all) uses the current deterministic computation, since a human
+// hasn't made a final call yet and the freshest evidence should win.
+export function resolveAxisCareResidentMatch(
+  freshMatch: ClientMatchResult,
+  existingLink: { readonly subject_id: string | null; readonly status: string } | null
+): ResolvedResidentMatch {
+  if (existingLink?.status === "confirmed") {
+    return { residentId: existingLink.subject_id, basis: freshMatch.basis, requiresReview: false };
+  }
+  if (existingLink?.status === "rejected") {
+    return { residentId: null, basis: "none", requiresReview: false };
+  }
+  return { residentId: freshMatch.residentId, basis: freshMatch.basis, requiresReview: freshMatch.requiresReview };
 }

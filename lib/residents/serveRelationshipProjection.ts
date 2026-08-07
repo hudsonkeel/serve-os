@@ -27,7 +27,7 @@ export type ServeRelationship =
   | "no_current_relationship"
   | "needs_review";
 
-export type ServeRelationshipSource = "axiscare" | "crm_relationship" | "legacy_resident_status" | "none";
+export type ServeRelationshipSource = "axiscare" | "crm_relationship" | "legacy_resident_status" | "none" | "human_correction";
 
 export type ServeDeliverySystem = "axiscare" | "cinch" | "both" | "none";
 
@@ -170,5 +170,53 @@ export function projectServeRelationship(input: ServeRelationshipProjectionInput
     onHold,
     prospectStage: relationship === "prospect" ? firstProspectStage(input.activeRelationships) : null,
     deliverySystem,
+  };
+}
+
+// ─── Governed human correction ("fix incorrect stuff") ────────────────
+//
+// A reviewed human correction represents durable Serve canonical
+// truth and takes precedence over the naturally-computed projection
+// above — but later, DIFFERENT vendor/CRM evidence must never silently
+// overwrite it. Instead, the correction still wins for display, and
+// the disagreement is surfaced as a real conflict for reconciliation,
+// never silently resolved either direction. This is intentionally not
+// a way to mask a known software defect in the projection logic itself
+// (e.g. the AxisCare matching gaps found and fixed this session) — a
+// defect should be fixed at its source, not papered over with a
+// standing correction.
+export interface ServeRelationshipCorrection {
+  readonly newValue: ServeRelationship;
+  readonly previousValue: ServeRelationship | null;
+  readonly actor: string;
+  readonly rationale: string;
+  readonly createdAt: string;
+}
+
+export interface ServeRelationshipProjectionWithCorrection extends ServeRelationshipProjection {
+  readonly correction: ServeRelationshipCorrection | null;
+  // True only when a correction exists AND the underlying,
+  // uncorrected projection currently computes a DIFFERENT value than
+  // what the human corrected it to — i.e. new evidence disagrees with
+  // the reviewed truth. The correction still wins for display; this
+  // flag exists purely so the disagreement can be surfaced, not acted
+  // on automatically.
+  readonly hasConflict: boolean;
+}
+
+export function applyServeRelationshipCorrection(
+  naturalProjection: ServeRelationshipProjection,
+  correction: ServeRelationshipCorrection | null
+): ServeRelationshipProjectionWithCorrection {
+  if (!correction) {
+    return { ...naturalProjection, correction: null, hasConflict: false };
+  }
+
+  return {
+    ...naturalProjection,
+    relationship: correction.newValue,
+    relationshipSource: "human_correction",
+    correction,
+    hasConflict: naturalProjection.relationship !== correction.newValue,
   };
 }
