@@ -21,6 +21,7 @@ import {
   normalizeEmail,
   normalizePhone,
   normalizeName,
+  normalizeLastName,
   isKnownNonResidentAxisCareClient,
   type NormalizedResidentCandidate,
   type ClientMatchBasis,
@@ -44,6 +45,15 @@ function toPersonVendorIdentityLinksMatchMethod(basis: ClientMatchBasis): string
     case "name_and_apartment":
     case "name_and_community":
       return "normalized_name_plus_attribute";
+    case "surname_and_community":
+      // Pre-existing, previously-unused constraint vocabulary value —
+      // exactly the "name similarity, not exact, needs a human" case
+      // this basis represents. This script's own deferral condition
+      // below (basis must be "email" or "phone") means a
+      // surname_and_community match is never actually synced by this
+      // automated script — this case exists only so the switch stays
+      // exhaustive and compiler-checked against ClientMatchBasis.
+      return "name_similarity_pending_review";
     case "none":
       // Unreachable — callers only invoke this for a resolved match
       // (match.residentId is non-null), which "none" never produces.
@@ -88,6 +98,7 @@ async function main() {
     normalizedEmail: normalizeEmail(r.email),
     normalizedPhones: [r.phone, r.phone_raw].map(normalizePhone).filter((p): p is string => p !== null),
     normalizedName: normalizeName(r.first_name ?? "", r.last_name ?? ""),
+    normalizedLastName: r.last_name ? normalizeLastName(r.last_name) : null,
     unitNumber: r.unit_number,
     communityName: r.community_name,
   }));
@@ -109,7 +120,14 @@ async function main() {
     const phones = [c.homePhone, c.mobilePhone, c.otherPhone].map(normalizePhone).filter((p): p is string => p !== null);
 
     const match = matchAxisCareClientToResident(
-      { normalizedEmail: email, normalizedPhones: phones, normalizedName, unitNumber: null, communityName: c.community?.name ?? null },
+      {
+        normalizedEmail: email,
+        normalizedPhones: phones,
+        normalizedName,
+        normalizedLastName: c.lastName ? normalizeLastName(c.lastName) : null,
+        unitNumber: null,
+        communityName: c.community?.name ?? null,
+      },
       residents
     );
 

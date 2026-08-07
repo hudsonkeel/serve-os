@@ -13,6 +13,10 @@ export interface NormalizedResidentCandidate {
   readonly normalizedEmail: string | null;
   readonly normalizedPhones: readonly string[];
   readonly normalizedName: string;
+  // Optional — only populated by callers that want the
+  // surname_and_community review tier below. Existing callers that omit
+  // it are unaffected; that tier simply never fires for them.
+  readonly normalizedLastName?: string | null;
   readonly unitNumber: string | null;
   readonly communityName: string | null;
 }
@@ -22,6 +26,7 @@ export type ClientMatchBasis =
   | "phone"
   | "name_and_apartment"
   | "name_and_community"
+  | "surname_and_community"
   | "none";
 
 export interface ClientMatchResult {
@@ -45,7 +50,20 @@ export function normalizePhone(phone: string | null | undefined): string | null 
 }
 
 export function normalizeName(firstName: string, lastName: string): string {
-  return `${firstName} ${lastName}`.trim().toLowerCase().replace(/\s+/g, " ");
+  const combined = `${firstName} ${lastName}`;
+  // AxisCare sometimes embeds a nickname directly in firstName instead of
+  // its own dedicated goesBy field — live-confirmed on two real records
+  // ("Michelle (Mick)" Helsley, AxisCare #11; "Kathryn (Kathy)" Morshed,
+  // AxisCare #13 — both with goesBy left empty). Stripping any
+  // parenthetical annotation here is safe for Serve resident names too,
+  // which are built from separate first_name/last_name columns and never
+  // contain one.
+  const withoutParenthetical = combined.replace(/\([^)]*\)/g, " ");
+  return withoutParenthetical.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function normalizeLastName(lastName: string): string {
+  return lastName.trim().toLowerCase();
 }
 
 // A small, explicit denylist of AxisCare client names observed live to be
@@ -71,6 +89,7 @@ export function matchAxisCareClientToResident(
     readonly normalizedEmail: string | null;
     readonly normalizedPhones: readonly string[];
     readonly normalizedName: string;
+    readonly normalizedLastName?: string | null;
     readonly unitNumber: string | null;
     readonly communityName: string | null;
   },
@@ -113,6 +132,28 @@ export function matchAxisCareClientToResident(
     );
     if (byNameAndCommunity) {
       return { residentId: byNameAndCommunity.id, basis: "name_and_community", requiresReview: false, reviewReason: null };
+    }
+
+    // Last name + community match exactly but the full name doesn't —
+    // e.g. a spelling variant ("Michelle" vs "Michele") that survives
+    // normalizeName()'s parenthetical-stripping. Never auto-matched:
+    // always surfaced for human review, exactly like a phone match whose
+    // name disagrees.
+    if (client.normalizedLastName) {
+      const bySurnameAndCommunity = residents.find(
+        (r) =>
+          r.normalizedLastName &&
+          r.normalizedLastName === client.normalizedLastName &&
+          r.communityName === client.communityName
+      );
+      if (bySurnameAndCommunity) {
+        return {
+          residentId: bySurnameAndCommunity.id,
+          basis: "surname_and_community",
+          requiresReview: true,
+          reviewReason: `Last name and community match resident "${bySurnameAndCommunity.displayName}", but the full name ("${client.normalizedName}") does not exactly match — confirm whether this is a spelling or nickname variant of the same person before accepting.`,
+        };
+      }
     }
   }
 

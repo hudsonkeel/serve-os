@@ -15,6 +15,7 @@ import {
   normalizeEmail,
   normalizePhone,
   normalizeName,
+  normalizeLastName,
   isKnownNonResidentAxisCareClient,
   type NormalizedResidentCandidate,
   type ClientMatchBasis,
@@ -94,6 +95,7 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
     normalizedEmail: normalizeEmail(r.email),
     normalizedPhones: [r.phone, r.phone_raw].map(normalizePhone).filter((p): p is string => p !== null),
     normalizedName: normalizeName(r.first_name ?? "", r.last_name ?? ""),
+    normalizedLastName: r.last_name ? normalizeLastName(r.last_name) : null,
     unitNumber: r.unit_number,
     communityName: r.community_name,
   }));
@@ -141,7 +143,14 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
     counts[operationalBucket] += 1;
 
     const match = matchAxisCareClientToResident(
-      { normalizedEmail: email, normalizedPhones: phones, normalizedName, unitNumber: null, communityName: c.community?.name ?? null },
+      {
+        normalizedEmail: email,
+        normalizedPhones: phones,
+        normalizedName,
+        normalizedLastName: c.lastName ? normalizeLastName(c.lastName) : null,
+        unitNumber: null,
+        communityName: c.community?.name ?? null,
+      },
       residents
     );
     const existingLink = existingLinks.get(axiscareId) ?? null;

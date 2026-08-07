@@ -43,6 +43,11 @@ test("normalizeName joins and lowercases", () => {
   assert.equal(normalizeName("Jane", "Doe"), "jane doe");
 });
 
+test("REGRESSION (Michele Helsley / Kathryn Morshed): normalizeName strips a parenthetical nickname AxisCare embeds in firstName", () => {
+  assert.equal(normalizeName("Michelle (Mick)", "Helsley"), "michelle helsley");
+  assert.equal(normalizeName("Kathryn (Kathy)", "Morshed"), "kathryn morshed");
+});
+
 test("isKnownNonResidentAxisCareClient flags observed placeholder names", () => {
   assert.equal(isKnownNonResidentAxisCareClient("integration test"), true);
   assert.equal(isKnownNonResidentAxisCareClient("client lead"), true);
@@ -107,6 +112,57 @@ test("name alone, with no other corroborating evidence, never auto-matches", () 
   const residents = [resident({ id: "r-1", normalizedName: "jane doe" })];
   const result = matchAxisCareClientToResident(
     { normalizedEmail: null, normalizedPhones: [], normalizedName: "jane doe", unitNumber: null, communityName: null },
+    residents
+  );
+  assert.equal(result.residentId, null);
+  assert.equal(result.basis, "none");
+});
+
+test("REGRESSION (Kathryn Morshed, AxisCare #13): exact last name + community match, after the parenthetical nickname is stripped, matches cleanly with no review needed", () => {
+  const residents = [
+    resident({ id: "r-1", displayName: "Kathryn Morshed", normalizedName: "kathryn morshed", normalizedLastName: "morshed", communityName: "Watermere at Frisco" }),
+  ];
+  const result = matchAxisCareClientToResident(
+    {
+      normalizedEmail: null,
+      normalizedPhones: [],
+      normalizedName: normalizeName("Kathryn (Kathy)", "Morshed"),
+      normalizedLastName: "morshed",
+      unitNumber: null,
+      communityName: "Watermere at Frisco",
+    },
+    residents
+  );
+  assert.equal(result.residentId, "r-1");
+  assert.equal(result.basis, "name_and_community");
+  assert.equal(result.requiresReview, false);
+});
+
+test("REGRESSION (Michele Helsley, AxisCare #11): last name + community match, but full name still disagrees (Michelle vs Michele) — surfaced for review, not silently accepted, and not left fully unmatched", () => {
+  const residents = [
+    resident({ id: "r-1", displayName: "Michele Helsley", normalizedName: "michele helsley", normalizedLastName: "helsley", communityName: "Watermere at Frisco" }),
+  ];
+  const result = matchAxisCareClientToResident(
+    {
+      normalizedEmail: null,
+      normalizedPhones: [],
+      normalizedName: normalizeName("Michelle (Mick)", "Helsley"),
+      normalizedLastName: "helsley",
+      unitNumber: null,
+      communityName: "Watermere at Frisco",
+    },
+    residents
+  );
+  assert.equal(result.residentId, "r-1");
+  assert.equal(result.basis, "surname_and_community");
+  assert.equal(result.requiresReview, true);
+  assert.ok(result.reviewReason?.includes("Michele Helsley"));
+});
+
+test("surname_and_community never fires when normalizedLastName is omitted (existing callers unaffected)", () => {
+  const residents = [resident({ id: "r-1", normalizedName: "jane smith", communityName: "Watermere at Frisco" })];
+  const result = matchAxisCareClientToResident(
+    { normalizedEmail: null, normalizedPhones: [], normalizedName: "jane doe", unitNumber: null, communityName: "Watermere at Frisco" },
     residents
   );
   assert.equal(result.residentId, null);
