@@ -19,6 +19,17 @@
   # hostname and a numeric site ID, not a token/key. The real secrets
   # (AXISCARE_API_TOKEN, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY) were
   # verified absent from the entire build output and remain fully scanned
-  # — this omits only the two proven-non-secret, proven-server-only
-  # values, not scanning as a whole.
-  SECRETS_SCAN_OMIT_KEYS = "AXISCARE_API_BASE_URL,AXISCARE_SITE_NUMBER"
+  # — this omits only the proven-non-secret, proven-server-only
+  # values below, not scanning as a whole.
+  #
+  # SERVE_NOTIFICATION_REPLY_TO added after the c9f941e Deploy Preview
+  # log identified it as the one remaining finding, flagged at
+  # docs/architecture/AXISCARE_CLIENT_RECONCILIATION.md:49. Confirmed
+  # from source (lib/notifications/channels/email.ts:40,48) that this
+  # variable is used exclusively as an outbound email's `reply_to`
+  # header via Resend's API — a plain email address for reply routing,
+  # never passed to any auth call, never a token/key/credential. The
+  # doc line documents that same real, non-secret staff email address
+  # as a live-data example of AxisCare's `administrators[]` field — a
+  # coincidental reuse of a real address, not a leaked credential.
+  SECRETS_SCAN_OMIT_KEYS = "AXISCARE_API_BASE_URL,AXISCARE_SITE_NUMBER,SERVE_NOTIFICATION_REPLY_TO"
