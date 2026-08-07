@@ -16,7 +16,7 @@
     "test:scheduling": "node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/dateTime.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/status.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/normalize.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/todaysSchedule.test.ts && node --experimental-strip-types --conditions=react-server lib/scheduling/__tests__/format.test.ts",
     "test:intelligence": "node --experimental-strip-types --conditions=react-server lib/intelligence/core/__tests__/boundaries.test.ts",
     "test:residentCurrentNeeds": "node --experimental-strip-types --conditions=react-server lib/residentCurrentNeeds/__tests__/validation.test.ts",
-    "test:residents": "node --experimental-strip-types --conditions=react-server lib/residents/__tests__/search.test.ts",
+    "test:residents": "node --experimental-strip-types --conditions=react-server lib/residents/__tests__/search.test.ts && node --experimental-strip-types --conditions=react-server lib/residents/__tests__/serveRelationshipProjection.test.ts",
     "test:residentWorkingNotes": "node --experimental-strip-types --conditions=react-server lib/residentWorkingNotes/__tests__/validation.test.ts",
     "test:residentTimeline": "node --experimental-strip-types --conditions=react-server lib/residentTimeline/__tests__/grouping.test.ts",
     "test:gettingToKnow": "node --experimental-strip-types --conditions=react-server lib/gettingToKnow/__tests__/mapping.test.ts",

@@ -7,7 +7,14 @@ import { AxisCareClientRow } from "./AxisCareClientRow";
 import type { AxisCareClientOperationalSummary } from "@/lib/data/axiscareClientOperationalSummary";
 import type { AxisCareClientOperationalBucket } from "@/lib/integrations/axiscare/clientOperationalStatus";
 
-type TabValue = "all" | AxisCareClientOperationalBucket;
+// Serve Clients — the product surface for real Serve clients sourced
+// from AxisCare (Serve OS's canonical external client repository).
+// Excluded records (disposition-driven — e.g. a related person
+// mistakenly created as a client) are never a kind of Serve Client, so
+// they are filtered out here entirely rather than shown as a de-
+// emphasized tab; they live in Reconciliation instead (/reconciliation),
+// alongside other vendor-record and identity-review problems.
+type TabValue = "all" | Exclude<AxisCareClientOperationalBucket, "excluded">;
 
 const TABS: { value: TabValue; label: string }[] = [
   { value: "all", label: "All" },
@@ -15,7 +22,6 @@ const TABS: { value: TabValue; label: string }[] = [
   { value: "inactive_client", label: "Inactive Clients" },
   { value: "prospect", label: "Prospects" },
   { value: "needs_review", label: "Needs Review" },
-  { value: "excluded", label: "Excluded" },
 ];
 
 function matchesSearch(name: string, axiscareId: string, query: string): boolean {
@@ -30,18 +36,19 @@ export function AxisCareClientRoster({ summary }: AxisCareClientRosterProps) {
   const [activeTab, setActiveTab] = useState<TabValue>("all");
   const [search, setSearch] = useState("");
 
+  const clientRows = useMemo(() => summary.rows.filter((row) => row.operationalBucket !== "excluded"), [summary.rows]);
+
   const tabCounts: Record<TabValue, number> = {
-    all: summary.rows.length,
+    all: clientRows.length,
     active_client: summary.counts.active_client,
     inactive_client: summary.counts.inactive_client,
     prospect: summary.counts.prospect,
     needs_review: summary.counts.needs_review,
-    excluded: summary.counts.excluded,
   };
 
   const tabFiltered = useMemo(
-    () => (activeTab === "all" ? summary.rows : summary.rows.filter((row) => row.operationalBucket === activeTab)),
-    [summary.rows, activeTab]
+    () => (activeTab === "all" ? clientRows : clientRows.filter((row) => row.operationalBucket === activeTab)),
+    [clientRows, activeTab]
   );
 
   const trimmedQuery = search.trim().toLowerCase();
@@ -59,7 +66,7 @@ export function AxisCareClientRoster({ summary }: AxisCareClientRosterProps) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name or AxisCare ID..."
-          aria-label="Search AxisCare clients"
+          aria-label="Search Serve Clients"
           className="h-12 w-full max-w-md rounded-lg border border-ivory-border bg-surface pl-11 pr-4 font-sans text-base text-body outline-none transition-colors placeholder:text-subtle focus:border-gold/60 focus:ring-2 focus:ring-gold/20"
         />
       </div>
@@ -67,18 +74,13 @@ export function AxisCareClientRoster({ summary }: AxisCareClientRosterProps) {
       <div className="flex flex-wrap items-center gap-1 border-b border-ivory-border">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.value;
-          const isExcludedTab = tab.value === "excluded";
           return (
             <button
               key={tab.value}
               type="button"
               onClick={() => setActiveTab(tab.value)}
               className={`flex min-h-[44px] items-center gap-2 border-b-2 px-4 py-2.5 font-sans text-button font-medium transition-colors ${
-                isActive
-                  ? "border-b-navy text-navy"
-                  : isExcludedTab
-                    ? "border-b-transparent text-subtle hover:text-muted"
-                    : "border-b-transparent text-muted hover:text-body"
+                isActive ? "border-b-navy text-navy" : "border-b-transparent text-muted hover:text-body"
               }`}
             >
               {tab.label}
@@ -94,15 +96,6 @@ export function AxisCareClientRoster({ summary }: AxisCareClientRosterProps) {
         })}
       </div>
 
-      {activeTab === "excluded" && (
-        <div className="rounded-lg border border-ivory-border bg-ivory px-4 py-3 font-sans text-sm text-muted">
-          These AxisCare records have been reviewed and marked as not representing a true operational client
-          (e.g. a related person, an administrative/community record, or a test record). They are excluded from
-          Active, Inactive, and Prospect counts but are kept visible here, with the reviewer&rsquo;s rationale, rather
-          than deleted.
-        </div>
-      )}
-
       <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
         {visible.length > 0 ? (
           <div className="divide-y divide-ivory-border">
@@ -114,11 +107,7 @@ export function AxisCareClientRoster({ summary }: AxisCareClientRosterProps) {
           <div className="px-5 py-14">
             <EmptyState
               title={trimmedQuery ? "No matches found" : undefined}
-              description={
-                trimmedQuery
-                  ? `No AxisCare clients match "${search.trim()}."`
-                  : "No AxisCare clients in this view."
-              }
+              description={trimmedQuery ? `No Serve Clients match "${search.trim()}."` : "No Serve Clients in this view."}
             />
           </div>
         )}
