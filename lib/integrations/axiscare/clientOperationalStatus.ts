@@ -28,3 +28,26 @@ export function resolveAxisCareClientOperationalBucket(
   }
   return computedLifecycle;
 }
+
+// Identity confidence is a separate dimension from the operational
+// bucket above — never used to decide whether a record counts as a
+// real Active/Inactive/Prospect client, only to describe how sure Serve
+// is about *which* resident (if any) this AxisCare record refers to.
+export type AxisCareIdentityStatus = "confirmed" | "candidate" | "needs_identity_review" | "unmatched";
+
+export function resolveAxisCareIdentityStatus(residentMatch: {
+  readonly residentId: string | null;
+  readonly requiresReview: boolean;
+  readonly confirmedLinkStatus: string | null;
+}): AxisCareIdentityStatus {
+  if (residentMatch.confirmedLinkStatus === "confirmed") {
+    return "confirmed";
+  }
+  if (residentMatch.residentId === null) {
+    return "unmatched";
+  }
+  if (residentMatch.requiresReview) {
+    return "needs_identity_review";
+  }
+  return "candidate";
+}

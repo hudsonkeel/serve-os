@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolveAxisCareClientOperationalBucket } from "../clientOperationalStatus.ts";
+import { resolveAxisCareClientOperationalBucket, resolveAxisCareIdentityStatus } from "../clientOperationalStatus.ts";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -28,6 +28,34 @@ test("non_client_related_person disposition always excludes, regardless of compu
 test("administrative_record and test_placeholder dispositions always exclude", () => {
   assert.equal(resolveAxisCareClientOperationalBucket("active_client", "administrative_record"), "excluded");
   assert.equal(resolveAxisCareClientOperationalBucket("prospect", "test_placeholder"), "excluded");
+});
+
+test("confirmed link status always wins, regardless of residentId/requiresReview", () => {
+  assert.equal(
+    resolveAxisCareIdentityStatus({ residentId: "r1", requiresReview: false, confirmedLinkStatus: "confirmed" }),
+    "confirmed"
+  );
+});
+
+test("no resident match at all is unmatched", () => {
+  assert.equal(
+    resolveAxisCareIdentityStatus({ residentId: null, requiresReview: false, confirmedLinkStatus: null }),
+    "unmatched"
+  );
+});
+
+test("a resident match that requires review is needs_identity_review, not confirmed or unmatched", () => {
+  assert.equal(
+    resolveAxisCareIdentityStatus({ residentId: "r1", requiresReview: true, confirmedLinkStatus: null }),
+    "needs_identity_review"
+  );
+});
+
+test("a clean deterministic match with no confirmed link yet is a candidate", () => {
+  assert.equal(
+    resolveAxisCareIdentityStatus({ residentId: "r1", requiresReview: false, confirmedLinkStatus: null }),
+    "candidate"
+  );
 });
 
 let passed = 0;

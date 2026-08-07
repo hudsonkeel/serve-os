@@ -1,11 +1,12 @@
 import Link from "next/link";
 
-export type PeopleWeServeView = "residents" | "relationships" | "externalClients";
+export type PeopleWeServeView = "residents" | "relationships" | "externalClients" | "axiscareClients";
 
 const VIEWS: { value: PeopleWeServeView; label: string; href: string }[] = [
   { value: "residents", label: "Residents", href: "/residents" },
   { value: "relationships", label: "Relationships", href: "/relationships" },
   { value: "externalClients", label: "External Clients", href: "/external-clients" },
+  { value: "axiscareClients", label: "AxisCare Clients", href: "/axiscare-clients" },
 ];
 
 // The People We Serve's shared view switcher — Relationships and External

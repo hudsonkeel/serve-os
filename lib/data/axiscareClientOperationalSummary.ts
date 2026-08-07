@@ -22,7 +22,9 @@ import {
 import { classifyAxisCareClientLifecycle, type ServeClientLifecycle } from "../integrations/axiscare/clientLifecycle.ts";
 import {
   resolveAxisCareClientOperationalBucket,
+  resolveAxisCareIdentityStatus,
   type AxisCareClientOperationalBucket,
+  type AxisCareIdentityStatus,
 } from "../integrations/axiscare/clientOperationalStatus.ts";
 import type { AxisCareClientDisposition } from "../integrations/axiscare/clientDisposition.ts";
 import { getAxisCareClientDispositions } from "./axiscareClientDispositions.ts";
@@ -58,8 +60,10 @@ export interface AxisCareClientOperationalRow {
   // independent exclusion mechanisms that combine, never overriding
   // each other.
   readonly exclusionReason: string | null;
+  readonly identityStatus: AxisCareIdentityStatus;
   readonly residentMatch: {
     readonly residentId: string | null;
+    readonly residentName: string | null;
     readonly basis: ClientMatchBasis;
     readonly requiresReview: boolean;
     readonly confirmedLinkStatus: string | null;
@@ -97,6 +101,7 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
   const existingLinks = new Map(
     (existingLinksRaw ?? []).map((l) => [String(l.vendor_record_id), l as { subject_id: string | null; status: string }])
   );
+  const residentNamesById = new Map(residents.map((r) => [r.id, r.displayName]));
 
   const counts: Record<AxisCareClientOperationalBucket, number> = {
     active_client: 0,
@@ -140,6 +145,15 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
       residents
     );
     const existingLink = existingLinks.get(axiscareId) ?? null;
+    const residentId = existingLink?.subject_id ?? match.residentId;
+
+    const residentMatch = {
+      residentId,
+      residentName: residentId ? (residentNamesById.get(residentId) ?? null) : null,
+      basis: match.basis,
+      requiresReview: match.requiresReview,
+      confirmedLinkStatus: existingLink?.status ?? null,
+    };
 
     return {
       axiscareId,
@@ -152,12 +166,8 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
       dispositionRationale: dispositionRow?.rationale ?? null,
       operationalBucket,
       exclusionReason,
-      residentMatch: {
-        residentId: existingLink?.subject_id ?? match.residentId,
-        basis: match.basis,
-        requiresReview: match.requiresReview,
-        confirmedLinkStatus: existingLink?.status ?? null,
-      },
+      identityStatus: resolveAxisCareIdentityStatus(residentMatch),
+      residentMatch,
     };
   });
 
