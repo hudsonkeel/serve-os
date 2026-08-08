@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Check, Minus } from "lucide-react";
-import { RecruitingLead, RecruitingLeadStatus } from "@/lib/supabase/types";
+import { RecruitingLeadStatus } from "@/lib/supabase/types";
+import type { EnrichedRecruitingLead } from "@/lib/data/recruitingLeads";
 import { RecruitingStatusBadge } from "./RecruitingStatusBadge";
 import { RecruitingWorkflowActions } from "./RecruitingWorkflowActions";
 import {
@@ -59,7 +60,8 @@ function formatDate(iso: string) {
   });
 }
 
-function RecruitingRow({ lead }: { lead: RecruitingLead }) {
+function RecruitingRow({ entry }: { entry: EnrichedRecruitingLead }) {
+  const { lead, effectiveStatus, isDerivedFromWorkforceLink } = entry;
   const name = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "Unknown";
   const location = lead.zip_code ?? lead.city_state ?? "—";
 
@@ -91,7 +93,10 @@ function RecruitingRow({ lead }: { lead: RecruitingLead }) {
       <p className="truncate font-sans text-xs text-body">{lead.email ?? "—"}</p>
       <p className="font-sans text-xs text-body">{location}</p>
       <div>
-        <RecruitingStatusBadge status={lead.status} />
+        <RecruitingStatusBadge status={effectiveStatus} />
+        {isDerivedFromWorkforceLink && (
+          <p className="mt-0.5 font-sans text-[10px] text-muted">Active workforce member</p>
+        )}
       </div>
       <div className="flex items-center">{apploiCell}</div>
       <div>
@@ -102,7 +107,7 @@ function RecruitingRow({ lead }: { lead: RecruitingLead }) {
   );
 }
 
-export function RecruitingInbox({ leads }: { leads: RecruitingLead[] }) {
+export function RecruitingInbox({ leads }: { leads: EnrichedRecruitingLead[] }) {
   const [activeFilter, setActiveFilter] = useState<FilterValue>("all");
 
   // "All" means the operational pipeline, not literally every row —
@@ -163,8 +168,8 @@ export function RecruitingInbox({ leads }: { leads: RecruitingLead[] }) {
         {/* Rows */}
         {visible.length > 0 ? (
           <div className="min-w-max divide-y divide-ivory-border">
-            {visible.map((lead) => (
-              <RecruitingRow key={lead.id} lead={lead} />
+            {visible.map((entry) => (
+              <RecruitingRow key={entry.lead.id} entry={entry} />
             ))}
           </div>
         ) : (
