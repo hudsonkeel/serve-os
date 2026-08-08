@@ -1,4 +1,4 @@
-import { getRecruitingLeads } from "@/lib/data/recruitingLeads";
+import { getEnrichedRecruitingLeads } from "@/lib/data/recruitingLeads";
 import { PageContainer } from "@/components/PageContainer";
 import { RecruitingInbox } from "@/components/recruiting/RecruitingInbox";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function RecruitingPage() {
-  const [{ leads, error }, profile] = await Promise.all([getRecruitingLeads(), getCurrentAuthorizedUser()]);
+  const [{ leads, error }, profile] = await Promise.all([getEnrichedRecruitingLeads(), getCurrentAuthorizedUser()]);
   const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
 
   return (

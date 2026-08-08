@@ -3,7 +3,8 @@ import {
   countRecruitingLeadsByFilter,
   filterRecruitingLeadsForPipeline,
 } from "../pipelineFilters.ts";
-import type { RecruitingLead } from "@/lib/supabase/types";
+import type { RecruitingLead, RecruitingLeadStatus } from "@/lib/supabase/types";
+import type { EnrichedRecruitingLead } from "@/lib/data/recruitingLeads";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -41,33 +42,48 @@ function lead(overrides: Partial<RecruitingLead>): RecruitingLead {
   } as RecruitingLead;
 }
 
+// effectiveStatus defaults to the underlying lead's stored status
+// (i.e. no workforce-link override) unless explicitly overridden —
+// most tests in this file don't care about the derivation, only about
+// filter/count behavior over whatever effectiveStatus already is.
+function entry(overrides: Partial<RecruitingLead> & { effectiveStatus?: RecruitingLeadStatus }): EnrichedRecruitingLead {
+  const { effectiveStatus, ...leadOverrides } = overrides;
+  const l = lead(leadOverrides);
+  return {
+    lead: l,
+    effectiveStatus: effectiveStatus ?? l.status,
+    isDerivedFromWorkforceLink: false,
+    linkedWorkforceMemberId: null,
+  };
+}
+
 const sample = [
-  lead({ id: "a", status: "new" }),
-  lead({ id: "b", status: "in_review" }),
-  lead({ id: "c", status: "archived" }),
-  lead({ id: "d", status: "archived" }),
-  lead({ id: "e", status: "hired" }),
-  lead({ id: "f", status: "not_a_fit" }),
+  entry({ id: "a", status: "new" }),
+  entry({ id: "b", status: "in_review" }),
+  entry({ id: "c", status: "archived" }),
+  entry({ id: "d", status: "archived" }),
+  entry({ id: "e", status: "hired" }),
+  entry({ id: "f", status: "not_a_fit" }),
 ];
 
 test("'all' (Active Pipeline) excludes every terminal status: archived, hired, not_a_fit", () => {
   const result = filterRecruitingLeadsForPipeline(sample, "all");
   assert.equal(result.length, 2);
-  assert.ok(result.every((l) => ["new", "in_review"].includes(l.status)));
+  assert.ok(result.every((e) => ["new", "in_review"].includes(e.effectiveStatus)));
 });
 
 test("an explicit status filter, including every terminal one, returns exactly that status", () => {
   const archived = filterRecruitingLeadsForPipeline(sample, "archived");
   assert.equal(archived.length, 2);
-  assert.ok(archived.every((l) => l.status === "archived"));
+  assert.ok(archived.every((e) => e.effectiveStatus === "archived"));
 
   const hired = filterRecruitingLeadsForPipeline(sample, "hired");
   assert.equal(hired.length, 1);
-  assert.equal(hired[0].id, "e");
+  assert.equal(hired[0].lead.id, "e");
 
   const notAFit = filterRecruitingLeadsForPipeline(sample, "not_a_fit");
   assert.equal(notAFit.length, 1);
-  assert.equal(notAFit[0].id, "f");
+  assert.equal(notAFit[0].lead.id, "f");
 });
 
 test("an empty list produces an empty result for every filter", () => {
@@ -93,6 +109,37 @@ test("counts and filtered results stay consistent with each other", () => {
   const counts = countRecruitingLeadsByFilter(sample);
   const visible = filterRecruitingLeadsForPipeline(sample, "all");
   assert.equal(counts.all, visible.length);
+});
+
+// ─── REGRESSION (Alma Owolabi general case): effectiveStatus, not raw
+// stored status, drives pipeline filtering ─────────────────────────────
+
+test("REGRESSION: a stored in_review lead whose effectiveStatus is derived hired (confirmed active workforce link) no longer appears in Active Pipeline", () => {
+  const almaLikeSample = [
+    entry({ id: "alma", status: "in_review", effectiveStatus: "hired" }),
+    entry({ id: "other", status: "in_review" }),
+  ];
+  const activePipeline = filterRecruitingLeadsForPipeline(almaLikeSample, "all");
+  assert.equal(activePipeline.length, 1);
+  assert.equal(activePipeline[0].lead.id, "other");
+
+  const hiredTab = filterRecruitingLeadsForPipeline(almaLikeSample, "hired");
+  assert.equal(hiredTab.length, 1);
+  assert.equal(hiredTab[0].lead.id, "alma");
+});
+
+test("REGRESSION: an unresolved candidate (no workforce link) remains visible in Active Pipeline", () => {
+  const unresolvedSample = [entry({ id: "unresolved", status: "in_review" })];
+  const activePipeline = filterRecruitingLeadsForPipeline(unresolvedSample, "all");
+  assert.equal(activePipeline.length, 1);
+  assert.equal(activePipeline[0].lead.id, "unresolved");
+});
+
+test("REGRESSION: an archived/closed candidate does not reappear in Active Pipeline counts", () => {
+  const archivedSample = [entry({ id: "closed", status: "archived" })];
+  const counts = countRecruitingLeadsByFilter(archivedSample);
+  assert.equal(counts.all ?? 0, 0);
+  assert.equal(counts.archived, 1);
 });
 
 let passed = 0;
