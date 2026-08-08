@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { getAxisCareClientOperationalSummary } from "@/lib/data/axiscareClientOperationalSummary";
 import { getAxisCareLeadEvidence } from "@/lib/data/axiscareLeadEvidence";
-import { getRecruitingWorkforceReviewQueue } from "@/lib/data/recruitingWorkforceReview";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canPerformReconciliationActions } from "@/lib/auth/permissions";
 import { PageContainer } from "@/components/PageContainer";
 import { PeopleWeServeTabs } from "@/components/peopleWeServe/PeopleWeServeTabs";
 import { ReconciliationRow } from "@/components/reconciliation/ReconciliationRow";
-import { RecruitingWorkforceLinkActions } from "@/components/reconciliation/RecruitingWorkforceLinkActions";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 export const dynamic = "force-dynamic";
@@ -22,11 +20,10 @@ export const revalidate = 0;
 // independently, inside every server action in
 // lib/actions/reconciliation.ts).
 export default async function ReconciliationPage() {
-  const [summary, profile, leadEvidence, recruitingWorkforceCandidates] = await Promise.all([
+  const [summary, profile, leadEvidence] = await Promise.all([
     getAxisCareClientOperationalSummary(),
     getCurrentAuthorizedUser(),
     getAxisCareLeadEvidence(),
-    getRecruitingWorkforceReviewQueue(),
   ]);
   const canAct = canPerformReconciliationActions(profile?.role);
   const leadEvidenceRows = leadEvidence.rows;
@@ -158,72 +155,6 @@ export default async function ReconciliationPage() {
         </section>
 
         <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-sans text-card-title font-semibold text-body">Recruiting ↔ Workforce identity</h2>
-            <span className="rounded-full bg-ivory-warm px-2.5 py-0.5 font-sans text-label font-semibold text-muted">
-              {recruitingWorkforceCandidates.length}
-            </span>
-          </div>
-          <p className="mb-3 font-sans text-sm text-muted">
-            Recruiting leads still showing as active pipeline work whose name resembles an existing workforce
-            member — a recruiting record that was likely never closed out after the person was actually hired.
-            Never auto-linked: the deterministic matcher only resolves on an exact email/phone match against an
-            already-active workforce member, so most pairs here need a human to actually look at both records
-            before confirming.
-          </p>
-          <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
-            {recruitingWorkforceCandidates.length > 0 ? (
-              <div className="divide-y divide-ivory-border">
-                {recruitingWorkforceCandidates.map((pair) => {
-                  const leadName = [pair.lead.first_name, pair.lead.last_name].filter(Boolean).join(" ") || "(no name)";
-                  return (
-                    <div key={`${pair.lead.id}:${pair.workforceMember.id}`} className="px-6 py-6">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">
-                            Recruiting Lead
-                          </p>
-                          <p className="mt-1 font-sans text-card-title font-semibold text-body">{leadName}</p>
-                          <p className="font-sans text-sm text-muted">
-                            Status: {pair.lead.status} · {pair.lead.email ?? "no email"} · {pair.lead.phone ?? "no phone"}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">
-                            Workforce Member
-                          </p>
-                          <p className="mt-1 font-sans text-card-title font-semibold text-body">
-                            {pair.workforceMember.display_name}
-                          </p>
-                          <p className="font-sans text-sm text-muted">
-                            Lifecycle: {pair.workforceLifecycleStatus ?? "unknown"} · {pair.workforceMember.primary_email ?? "no email"} ·{" "}
-                            {pair.workforceMember.primary_phone ?? "no phone"}
-                          </p>
-                        </div>
-                      </div>
-                      <p className="mt-2 font-sans text-sm text-muted">
-                        Match engine: {pair.resolution.basis ?? "no exact match"} — {pair.resolution.reason}
-                      </p>
-                      {canAct && (
-                        <RecruitingWorkforceLinkActions
-                          recruitingLeadId={pair.lead.id}
-                          workforceMemberId={pair.workforceMember.id}
-                          matchBasis={pair.resolution.basis}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="px-5 py-8">
-                <EmptyState description="No recruiting/workforce candidate pairs need review." />
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section>
           <h2 className="mb-3 font-sans text-card-title font-semibold text-body">Other reconciliation queues</h2>
           <div className="flex flex-wrap gap-3">
             <Link
@@ -237,6 +168,12 @@ export default async function ReconciliationPage() {
               className="rounded-lg border border-ivory-border bg-surface px-4 py-3 font-sans text-sm font-medium text-navy shadow-card hover:bg-ivory"
             >
               Resident Data Integrity — import/data-handling defects →
+            </Link>
+            <Link
+              href="/workforce/identity-review"
+              className="rounded-lg border border-ivory-border bg-surface px-4 py-3 font-sans text-sm font-medium text-navy shadow-card hover:bg-ivory"
+            >
+              Workforce Identity Review — AxisCare caregiver &amp; recruiting/workforce identity review →
             </Link>
           </div>
         </section>

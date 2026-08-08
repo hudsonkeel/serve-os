@@ -25,7 +25,7 @@ async function requireRecruitingLinkActor(): Promise<{ actor: string } | { error
 
 function revalidateRecruitingViews() {
   revalidatePath("/recruiting");
-  revalidatePath("/reconciliation");
+  revalidatePath("/workforce/identity-review");
 }
 
 export async function confirmRecruitingWorkforceLink(input: {
