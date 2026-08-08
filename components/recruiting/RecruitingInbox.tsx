@@ -6,6 +6,10 @@ import { Check, Minus } from "lucide-react";
 import { RecruitingLead, RecruitingLeadStatus } from "@/lib/supabase/types";
 import { RecruitingStatusBadge } from "./RecruitingStatusBadge";
 import { RecruitingWorkflowActions } from "./RecruitingWorkflowActions";
+import {
+  countRecruitingLeadsByFilter,
+  filterRecruitingLeadsForPipeline,
+} from "@/lib/recruitingLeads/pipelineFilters";
 
 type FilterValue = "all" | RecruitingLeadStatus;
 
@@ -21,7 +25,7 @@ const FILTER_ORDER: FilterValue[] = [
 ];
 
 const FILTER_LABELS: Record<FilterValue, string> = {
-  all:       "All",
+  all:       "Active Pipeline",
   new:       "New",
   contacted: "Contacted",
   in_review: "In Review",
@@ -101,14 +105,15 @@ function RecruitingRow({ lead }: { lead: RecruitingLead }) {
 export function RecruitingInbox({ leads }: { leads: RecruitingLead[] }) {
   const [activeFilter, setActiveFilter] = useState<FilterValue>("all");
 
-  const counts = leads.reduce<Partial<Record<FilterValue, number>>>((acc, l) => {
-    acc.all = (acc.all ?? 0) + 1;
-    acc[l.status] = (acc[l.status] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  const visible =
-    activeFilter === "all" ? leads : leads.filter((l) => l.status === activeFilter);
+  // "All" means the operational pipeline, not literally every row —
+  // archived records are excluded from both the default view and its
+  // count so a stale/test candidate never inflates what looks like real
+  // pipeline volume. "Archived" remains its own explicit tab (below) —
+  // nothing is hidden, only kept off the default surface. See
+  // docs/architecture/HIRING_PIPELINE_AUDIT.md and
+  // lib/recruitingLeads/pipelineFilters.ts.
+  const counts = countRecruitingLeadsByFilter(leads);
+  const visible = filterRecruitingLeadsForPipeline(leads, activeFilter);
 
   return (
     <div className="space-y-4">

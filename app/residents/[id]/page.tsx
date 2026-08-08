@@ -18,6 +18,7 @@ import { ResidentMemory } from "@/components/residents/ResidentMemory";
 import { Badge } from "@/components/ui/Badge";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canEditResidentProfile } from "@/lib/auth/permissions";
 import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
 import { buildAskServeContext } from "@/lib/askServe/buildContext";
 import { PEOPLE_WE_SERVE_CONTEXT } from "@/lib/askServe/areaContexts";
@@ -116,6 +117,7 @@ export default async function ResidentDetailPage({
   if (!record) notFound();
 
   const profile = await getCurrentAuthorizedUser();
+  const canEditProfile = canEditResidentProfile(profile?.role);
   const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
 
   const connections = await getResidentConnections(id);
@@ -189,6 +191,7 @@ export default async function ResidentDetailPage({
           <Section title="Resident Profile">
             <ResidentProfileCard
               residentId={id}
+              canEdit={canEditProfile}
               fullName={record.residentName}
               location={location}
               residentType={record.residentType}
@@ -196,6 +199,8 @@ export default async function ResidentDetailPage({
               serviceModel={record.importedServiceModel}
               residentStatus={resident.status}
               needsReview={record.needsReview}
+              sourceSystem={resident.source_system}
+              lastSyncedAt={record.updatedAt ?? record.createdAt}
               initialPreferredName={connections.profile?.preferred_name ?? ""}
               initialEmail={resident.email ?? ""}
               initialPhone={resident.phone ?? ""}
@@ -248,6 +253,7 @@ export default async function ResidentDetailPage({
           <Section title="Family Contacts">
             <FamilyContactsCard
               residentId={id}
+              canEdit={canEditProfile}
               initialContactName={contactName === "-" ? "" : contactName}
               initialRelationship={resident.family_contact_relationship ?? ""}
               initialPhone={record.phone ?? ""}

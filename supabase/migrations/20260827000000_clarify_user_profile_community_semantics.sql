@@ -1,0 +1,57 @@
+-- Clarifies the durable meaning of user_profiles.community_id
+-- (20260824000000_add_user_profile_community_assignment.sql, already
+-- applied to the live database — this migration does not touch that
+-- one, does not roll back any schema, and does not alter any data;
+-- it only replaces the column comment with a more explicit one).
+--
+-- Assessment (per explicit request to determine the safest durable
+-- meaning for this already-live field, not to redesign it):
+--
+-- user_profiles.community_id is safe to keep as a DEFAULT / HOME /
+-- PRIMARY community indicator — useful for initial UI context, a
+-- sensible landing/default filter, and "this person's primary
+-- operational assignment where one exists." It is NOT safe, and must
+-- never become, the mechanism that decides what community data a user
+-- is actually allowed to see. Confirmed directly (repo-wide grep, this
+-- stabilization pass): zero RLS policies exist anywhere in this
+-- codebase, and every server-side read/write authenticates with
+-- SUPABASE_SERVICE_ROLE_KEY, which bypasses RLS unconditionally
+-- regardless of any policy that might exist later. Real authorization,
+-- when built, must live in application-layer query scoping, not in a
+-- single nullable column read as if it were a permission check.
+--
+-- A single community_id column also cannot correctly represent the
+-- full target model on its own: single-community operational users,
+-- multi-community/regional users (one-to-many), and corporate/
+-- admin/executive users with All Communities access are three
+-- genuinely different shapes. This column is intentionally left as a
+-- narrow, honest piece of that future picture (a default/primary
+-- assignment) rather than stretched to pretend it already models
+-- one-to-many membership or role-based scope — see this migration's
+-- "Future authorization architecture" note below for what that
+-- actually requires.
+--
+-- No production code reads this column today (verified: grepped
+-- lib/auth/profiles.ts's live query, the only place user_profiles is
+-- read for authentication — it selects exactly email, full_name, role,
+-- status; community_id is not requested). lib/auth/communityScope.ts's
+-- resolveDefaultCommunityScope() is ready to consume it once wired in,
+-- but wiring it into the live auth query is deliberately still not
+-- done in this pass — the "duty" of this column (default/home
+-- community for UI context) does not yet have a UI consumer, so there
+-- is no live behavior to change or verify here.
+--
+-- Future authorization architecture required (not built in this
+-- migration, per explicit instruction not to build the full system in
+-- this stabilization pass): a normalized user_profile_communities
+-- join table (user_profile_id, community_id, role_or_scope, is_primary)
+-- supporting one-to-many membership; a distinct
+-- "all_communities"/corporate-scope representation (e.g. a boolean
+-- flag or a role-derived capability, not a row per community); and,
+-- critically, application-layer query scoping in lib/data/*.ts driven
+-- by that membership model — RLS policies alone would not enforce
+-- anything given the service-role bypass documented above, so
+-- enforcement must be added where queries are actually issued, not
+-- assumed to arrive "for free" once policies exist.
+comment on column user_profiles.community_id is
+  'Default/home/primary community for this staff member, used for initial UI context and sensible default filtering only. NOT an authorization boundary -- do not use this column, alone or in a query filter, to decide what community data a user may see. No RLS policy or application-layer enforcement reads this column today (verified: zero "create policy" statements exist anywhere in this codebase, and all server access uses the service-role key, which bypasses RLS unconditionally). Does not model one-to-many community membership, regional/multi-community scope, or corporate All-Communities access -- a future normalized user_profile_communities table is required for real authorization; see supabase/migrations/20260827000000_clarify_user_profile_community_semantics.sql for the full assessment.';

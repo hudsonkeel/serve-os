@@ -20,8 +20,11 @@ import type { CurrentUserDisplay } from "@/lib/auth/display";
 // the whole resident/client relationship realm, Workforce covering the
 // full lifecycle of people who may/do/did serve. See DECISION_LOG.md
 // ("Serve OS navigation shell") for the retirement of "The People Who
-// Serve" as a separate destination and why there is no standalone
-// Dashboard in this release.
+// Serve" as a separate destination. "How We're Doing" still isn't a
+// second, competing operational home — it moved from the app's literal
+// root URL to /dashboard so / could become the universal authenticated
+// landing redirect to Today's Work (see the Post-Release Stabilization
+// decision log entry); the destination itself is unchanged.
 //
 // Relationships and External Clients remain fully functional at their
 // existing routes — they're reached from within The People We Serve, not
@@ -43,7 +46,7 @@ const sections = [
   {
     heading: "Understand",
     items: [
-      { icon: LayoutDashboard, label: "How We're Doing", href: "/" },
+      { icon: LayoutDashboard, label: "How We're Doing", href: "/dashboard" },
       { icon: BarChart2, label: "Community Outlook", href: "/community-intelligence" },
     ],
   },
@@ -58,14 +61,15 @@ const comingSoonNav = [
 export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
   const pathname = usePathname();
 
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+  const isActive = (href: string) => pathname.startsWith(href);
 
   return (
     <aside className="fixed left-0 top-0 z-30 flex h-screen w-64 flex-col bg-navy shadow-sidebar">
       {/* ─── Logo ─── */}
       <div className="border-b border-white/8 px-6 py-4">
-        <Logo width={120} />
+        <Link href="/workspace" aria-label="Go to Today's Work">
+          <Logo width={120} />
+        </Link>
       </div>
 
       {/* ─── Navigation ─── */}

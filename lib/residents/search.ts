@@ -3,6 +3,13 @@ import type {
   ResidentTabValue,
 } from "@/lib/data/communityMetrics";
 import type { ServeRelationshipStatus } from "@/lib/supabase/types";
+// Type-only — safe from a client-bundled file even though the concrete
+// module (lib/data/residentServeRelationships.ts) is `server-only`;
+// type imports are erased at compile time and never bundled.
+import type {
+  EnrichedResidentRecord,
+  ResidentRelationshipTabValue,
+} from "@/lib/data/residentServeRelationships";
 
 // Pure resident search/grouping logic for the Residents directory
 // (components/residents/ResidentsInbox.tsx) — kept separate from the
@@ -140,4 +147,17 @@ export function buildBlendedGroups(
 
 export function countGroupRecords(groups: ResidentSearchGroup[]): number {
   return groups.reduce((total, group) => total + group.records.length, 0);
+}
+
+// The primary filter for the relationship-aware Residents directory
+// (components/residents/ResidentsInbox.tsx) — deliberately does not
+// permanently split "All Residents" into sub-groups; it only narrows
+// which residents are shown. See serveRelationshipProjection.ts for how
+// each record's relationship value was derived.
+export function filterByRelationshipTab(
+  records: readonly EnrichedResidentRecord[],
+  tab: ResidentRelationshipTabValue
+): EnrichedResidentRecord[] {
+  if (tab === "all") return [...records];
+  return records.filter((record) => record.projection.relationship === tab);
 }

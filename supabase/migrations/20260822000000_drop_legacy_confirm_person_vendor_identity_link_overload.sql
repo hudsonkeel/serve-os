@@ -1,0 +1,75 @@
+-- Post-Release Stabilization — removes the 3-argument overload of
+-- confirm_person_vendor_identity_link(uuid, uuid, text), superseded by
+-- the 5-argument overload from 20260811000000
+-- (uuid, uuid, text, text, text).
+--
+-- Two independent problems were found with this overload while running
+-- the resident AxisCare sync against live data (20260821000000):
+--
+-- 1. PostgREST/Postgres cannot choose between it and the 5-arg overload
+--    when called with only the 3 shared named params (both are valid
+--    candidates once p_link_role/p_rationale default) — a real,
+--    live-confirmed ambiguity error.
+-- 2. Independent of (1): this overload's own UPDATE never sets
+--    link_role, so it always violates
+--    person_vendor_identity_links_link_role_status_check (status =
+--    'confirmed' requires link_role is not null) — it cannot succeed on
+--    its own terms, not even when called unambiguously.
+--
+-- 20260821000000 fixed this overload's subject_type handling without
+-- addressing either problem, since at the time the link_role gap
+-- (found by a subsequent review) hadn't surfaced yet, and the ambiguity
+-- was worked around by having every caller pass all 5 arguments rather
+-- than by removing the 3-arg form outright.
+--
+-- Confirmed via full-codebase grep: zero application callers use the
+-- 3-argument form. Both real call sites
+-- (lib/data/personVendorIdentityLinks.ts,
+-- scripts/syncAxisCareClientIdentities.ts) already call exclusively
+-- with all 5 named arguments. Correcting the 3-arg overload instead of
+-- removing it (e.g. hardcoding link_role = 'primary' inside it) would
+-- simply resurrect the ambiguity in (1) for any future caller that
+-- happens to pass only 3 named params — removing it is the fix that
+-- can't regress.
+--
+-- Forward-only in effect (a function drop, no table/data change) but
+-- technically reducible: the rollback recreates the exact, still-broken
+-- 3-arg overload byte-for-byte, should a rollback ever be required for
+-- an unrelated reason.
+--
+-- ROLLBACK:
+--
+--   create or replace function confirm_person_vendor_identity_link(
+--     p_link_id uuid,
+--     p_subject_id uuid,
+--     p_actor text
+--   )
+--   returns void
+--   language plpgsql
+--   set search_path = public
+--   as $$
+--   declare
+--     v_subject_type text;
+--   begin
+--     if p_actor is null or length(trim(p_actor)) = 0 then
+--       raise exception 'An authenticated actor is required to confirm an identity link';
+--     end if;
+--     select subject_type into v_subject_type
+--     from person_vendor_identity_links
+--     where id = p_link_id and status = 'proposed';
+--     if not found then
+--       raise exception 'Identity link % is not in a proposed state', p_link_id;
+--     end if;
+--     perform assert_valid_person_subject(v_subject_type, p_subject_id);
+--     update person_vendor_identity_links
+--     set subject_id = p_subject_id, status = 'confirmed', resolved_by = p_actor, resolved_at = now()
+--     where id = p_link_id and status = 'proposed';
+--     if not found then
+--       raise exception 'Identity link % is not in a proposed state', p_link_id;
+--     end if;
+--   end;
+--   $$;
+--   revoke execute on function confirm_person_vendor_identity_link(uuid, uuid, text) from public;
+--   grant execute on function confirm_person_vendor_identity_link(uuid, uuid, text) to service_role;
+
+drop function if exists confirm_person_vendor_identity_link(uuid, uuid, text);

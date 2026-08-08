@@ -1,12 +1,13 @@
 import {
-  getCommunityMetrics,
-  ResidentTabValue,
-} from "@/lib/data/communityMetrics";
+  getResidentServeRelationships,
+  type ResidentRelationshipTabValue,
+} from "@/lib/data/residentServeRelationships";
 import { PageContainer } from "@/components/PageContainer";
 import { ResidentsInbox } from "@/components/residents/ResidentsInbox";
 import { PeopleWeServeTabs } from "@/components/peopleWeServe/PeopleWeServeTabs";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canEditResidentProfile } from "@/lib/auth/permissions";
 import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
 import { buildAskServeContext } from "@/lib/askServe/buildContext";
 import { PEOPLE_WE_SERVE_CONTEXT } from "@/lib/askServe/areaContexts";
@@ -14,12 +15,13 @@ import { PEOPLE_WE_SERVE_CONTEXT } from "@/lib/askServe/areaContexts";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const VALID_TABS: ResidentTabValue[] = [
+const VALID_TABS: ResidentRelationshipTabValue[] = [
   "all",
-  "active_clients",
-  "hold",
-  "former_clients",
-  "wellness_watch",
+  "active_client",
+  "prospect",
+  "inactive_client",
+  "no_current_relationship",
+  "needs_review",
 ];
 
 export default async function ResidentsPage({
@@ -27,12 +29,13 @@ export default async function ResidentsPage({
 }: {
   searchParams: Promise<{ tab?: string; wellnessDue?: string }>;
 }) {
-  const community = await getCommunityMetrics();
+  const community = await getResidentServeRelationships();
   const profile = await getCurrentAuthorizedUser();
   const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
+  const canCorrect = canEditResidentProfile(profile?.role);
   const params = await searchParams;
-  const initialTab = VALID_TABS.includes(params.tab as ResidentTabValue)
-    ? (params.tab as ResidentTabValue)
+  const initialTab = VALID_TABS.includes(params.tab as ResidentRelationshipTabValue)
+    ? (params.tab as ResidentRelationshipTabValue)
     : "all";
   const initialWellnessDue =
     params.wellnessDue === "now" || params.wellnessDue === "week"
@@ -51,7 +54,7 @@ export default async function ResidentsPage({
         </div>
         <div className="flex items-center gap-4">
           <span className="font-sans text-base font-medium text-muted">
-            {community.metrics.totalResidents} residents
+            {community.totalResidents} residents
           </span>
           {askServeEnabled && (
             <AskServeTrigger
@@ -74,10 +77,11 @@ export default async function ResidentsPage({
       )}
 
       <ResidentsInbox
-        records={community.residentRecords}
-        tabCounts={community.residentTabCounts}
+        records={community.records}
+        relationshipCounts={community.relationshipCounts}
         initialTab={initialTab}
         initialWellnessDue={initialWellnessDue}
+        canCorrect={canCorrect}
       />
     </PageContainer>
   );

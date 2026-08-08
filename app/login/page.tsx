@@ -3,17 +3,23 @@ import { redirect } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { resolveNextDestination } from "@/lib/auth/nextDestination";
 
 export const metadata: Metadata = {
   title: "Login | Serve OS",
   description: "Sign in to Serve OS.",
 };
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string }>;
+}) {
   const user = await getCurrentAuthorizedUser();
 
   if (user) {
-    redirect("/workspace");
+    const { next } = await searchParams;
+    redirect(resolveNextDestination(next));
   }
 
   return (

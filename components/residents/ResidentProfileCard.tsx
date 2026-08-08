@@ -27,11 +27,24 @@ function formatDateDisplay(value: string): string {
   });
 }
 
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
+function ReadOnlyField({
+  label,
+  value,
+  sourceLabel,
+}: {
+  label: string;
+  value: string;
+  sourceLabel?: string;
+}) {
   return (
     <div>
       <p className="font-sans text-label font-semibold uppercase tracking-widest text-muted">
         {label}
+        {sourceLabel && (
+          <span className="ml-1.5 font-normal normal-case tracking-normal text-subtle">
+            · {sourceLabel}
+          </span>
+        )}
       </p>
       <p className="mt-0.5 font-sans text-sm text-body">{value}</p>
     </div>
@@ -69,6 +82,11 @@ function EditableField({
 
 interface ResidentProfileCardProps {
   residentId: string;
+  // Server-computed (lib/auth/permissions.ts#canEditResidentProfile) —
+  // admin/manager/executive only. The client never makes this decision
+  // itself; it only renders what the server already decided. The server
+  // action re-checks this independently regardless.
+  canEdit: boolean;
   fullName: string;
   location: string;
   residentType: string | null;
@@ -76,6 +94,11 @@ interface ResidentProfileCardProps {
   serviceModel: string | null;
   residentStatus: string | null;
   needsReview: string | null;
+  // Roster-derived provenance — never a live AxisCare API sync (see
+  // docs/architecture/RESIDENT_STATUS_GOVERNANCE.md). Shown so staff never
+  // mistake a system-of-record value for something they just edited.
+  sourceSystem: string | null;
+  lastSyncedAt: string | null;
   initialPreferredName: string;
   initialEmail: string;
   initialPhone: string;
@@ -85,8 +108,14 @@ interface ResidentProfileCardProps {
   initialMobility: string;
 }
 
+function formatSyncTimestamp(value: string | null): string {
+  if (!value) return "-";
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export function ResidentProfileCard({
   residentId,
+  canEdit,
   fullName,
   location,
   residentType,
@@ -94,6 +123,8 @@ export function ResidentProfileCard({
   serviceModel,
   residentStatus,
   needsReview,
+  sourceSystem,
+  lastSyncedAt,
   initialPreferredName,
   initialEmail,
   initialPhone,
@@ -170,13 +201,15 @@ export function ResidentProfileCard({
     return (
       <div>
         <div className="mb-4 flex items-center justify-end">
-          <button
-            type="button"
-            onClick={handleEdit}
-            className="font-sans text-sm font-medium text-muted transition-colors hover:text-body"
-          >
-            Edit
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={handleEdit}
+              className="font-sans text-sm font-medium text-muted transition-colors hover:text-body"
+            >
+              Edit
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-x-8 gap-y-4">
           <ReadOnlyField label="Full Name" value={fullName} />
@@ -184,13 +217,21 @@ export function ResidentProfileCard({
           <ReadOnlyField label="Resident Email" value={initialEmail || "-"} />
           <ReadOnlyField label="Resident Phone" value={initialPhone || "-"} />
           <ReadOnlyField label="Location" value={location || "-"} />
-          <ReadOnlyField label="Resident Type" value={titleCase(residentType)} />
+          <ReadOnlyField
+            label="Resident Type"
+            value={titleCase(residentType)}
+            sourceLabel={sourceSystem ? `from ${titleCase(sourceSystem)}` : undefined}
+          />
           <ReadOnlyField
             label="Serve Relationship Status"
             value={serveRelationshipLabel}
           />
           <ReadOnlyField label="Service Model" value={titleCase(serviceModel)} />
-          <ReadOnlyField label="Resident Status" value={titleCase(residentStatus)} />
+          <ReadOnlyField
+            label="Resident Status"
+            value={titleCase(residentStatus)}
+            sourceLabel={sourceSystem ? `from ${titleCase(sourceSystem)}` : undefined}
+          />
           <ReadOnlyField
             label="Date of Birth"
             value={formatDateDisplay(initialDobValue)}
@@ -205,6 +246,7 @@ export function ResidentProfileCard({
             value={initialPreferredLanguage || "-"}
           />
           <ReadOnlyField label="Needs Review" value={titleCase(needsReview)} />
+          <ReadOnlyField label="Last Synced" value={formatSyncTimestamp(lastSyncedAt)} />
         </div>
       </div>
     );

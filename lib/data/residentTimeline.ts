@@ -64,3 +64,35 @@ export async function getResidentTimeline(
     toResidentTimelineEvent
   );
 }
+
+// Best-effort audit entry for a governed profile edit
+// (lib/actions/residents.ts). Never blocks or fails the save itself — a
+// timeline-write failure is logged and swallowed, since the profile
+// update has already succeeded by the time this runs. `formSection`
+// names which editable group was saved (the form submits its full field
+// set regardless of which values actually changed, so this records scope
+// — "which section" — not a computed field-level diff).
+export async function logResidentProfileUpdated(
+  residentId: string,
+  actor: string,
+  formSection: string
+): Promise<void> {
+  const supabase = createServerClient();
+  const { error } = await supabase.from("resident_timeline").insert({
+    resident_id: residentId,
+    event_type: "profile_updated",
+    event_title: "Profile updated",
+    event_description: `${formSection} saved by ${actor}`,
+    source: "serve_os_manual",
+    created_by: actor,
+    system_generated: false,
+  });
+
+  if (error) {
+    console.error("[residentTimeline:logResidentProfileUpdated:error]", {
+      residentId,
+      message: error.message,
+      code: error.code,
+    });
+  }
+}
