@@ -1563,6 +1563,7 @@ export interface RelationshipTouch {
   created_at: string;
   source_type: string;
   source_record_id: string | null;
+  structured_summary: string | null;
 }
 
 export type RelationshipActionType =
@@ -1870,4 +1871,169 @@ export interface RelationshipConversion {
   conversion_note: string | null;
   converted_by: string;
   converted_at: string;
+}
+
+// ─── Recruiting Lead Collector Evidence (validation-only addition — see
+// docs/architecture/SERVE_OS_ARCHITECTURE_VALIDATION_REPORT.md Phase 3;
+// hand-written against live schema, following this file's existing
+// convention, not committed as part of this validation pass) ───────────
+
+export type CollectorSourceSystem = "apploi" | "viventium";
+export type CollectorRunStatus = "in_progress" | "success" | "failed" | "partial";
+export type CollectorMatchStatus = "found" | "not_found" | "ambiguous_multiple_matches" | "search_incomplete";
+
+export interface RecruitingLeadCollectorRun {
+  id: string;
+  recruiting_lead_id: string;
+  source_system: CollectorSourceSystem;
+  initiated_by: string;
+  started_at: string;
+  completed_at: string | null;
+  status: CollectorRunStatus;
+  match_status: CollectorMatchStatus | null;
+  error_category: string | null;
+  flight_marker: string | null;
+  created_at: string;
+}
+
+export type ObservationVisibility =
+  | "directly_observed"
+  | "not_visible"
+  | "not_applicable"
+  | "ambiguous"
+  | "unknown";
+export type ObservationExtractionConfidence = "high" | "medium" | "low";
+export type ObservationMatchMethod = "data_attribute" | "aria_role" | "text_content" | "positional" | "manual";
+export type ObservationSensitivity = "standard" | "sensitive";
+export type ObservationCollectionMethod = "automatic_dom" | "guided_manual";
+
+export interface RecruitingLeadObservation {
+  id: string;
+  collector_run_id: string;
+  recruiting_lead_id: string;
+  observation_key: string;
+  raw_label: string | null;
+  normalized_value: string | null;
+  visibility: ObservationVisibility;
+  observed_at: string;
+  created_at: string;
+  source_system: CollectorSourceSystem;
+  source_record_id: string | null;
+  collected_at: string;
+  source_location: string | null;
+  extractor_version: string | null;
+  extraction_confidence: ObservationExtractionConfidence | null;
+  match_method: ObservationMatchMethod | null;
+  failure_reason: string | null;
+  sensitivity: ObservationSensitivity;
+  collection_method: ObservationCollectionMethod;
+}
+
+export type RuleTriggerType = "event" | "state" | "time";
+
+export interface RecruitingLeadRule {
+  id: string;
+  domain: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  created_at: string;
+}
+
+export interface RecruitingLeadRuleVersion {
+  id: string;
+  rule_id: string;
+  version: number;
+  trigger_type: RuleTriggerType;
+  parameters: Record<string, unknown>;
+  logic_reference: string | null;
+  effective_from: string;
+  effective_to: string | null;
+  changelog_note: string | null;
+}
+
+export type InferenceStrength = "strong" | "moderate" | "weak";
+
+export interface RecruitingLeadInference {
+  id: string;
+  recruiting_lead_id: string;
+  rule_version_id: string;
+  signal_key: string;
+  explanation: string;
+  strength: InferenceStrength;
+  unresolved_alternatives: readonly string[] | null;
+  evidence_needed_to_resolve: string | null;
+  computed_at: string;
+  created_at: string;
+}
+
+export interface RecruitingLeadVendorIdentity {
+  id: string;
+  recruiting_lead_id: string;
+  source_system: CollectorSourceSystem;
+  vendor_record_id: string;
+  vendor_display_name: string | null;
+  match_method: string;
+  match_confidence: "high" | "medium" | "low";
+  is_human_confirmed: boolean;
+  linked_by: string | null;
+  linked_at: string | null;
+}
+
+export interface RecruitingLeadHumanConfirmation {
+  id: string;
+  recruiting_lead_id: string;
+  confirmation_key: string;
+  confirmed_value: Record<string, unknown>;
+  rationale: string | null;
+  actor: string;
+  confirmed_at: string;
+  created_at: string;
+}
+
+export type DesiredStateEvaluationStatus = "satisfied" | "blocked" | "unknown" | "in_progress" | "not_applicable";
+
+export interface RecruitingLeadDesiredStateEvaluation {
+  id: string;
+  recruiting_lead_id: string;
+  desired_state_key: string;
+  rule_version_id: string | null;
+  status: DesiredStateEvaluationStatus;
+  gaps: readonly unknown[] | null;
+  unknown_evidence: readonly unknown[] | null;
+  explanation: string;
+  evaluated_at: string;
+  created_at: string;
+}
+
+// ─── Relationship Interaction Suggestions (validation-only addition — see
+// docs/architecture/SERVE_OS_ARCHITECTURE_VALIDATION_REPORT.md Phase 3) ──
+
+export type RelationshipInteractionSuggestionType =
+  | "summary"
+  | "commitment"
+  | "open_loop"
+  | "next_action"
+  | "working_note"
+  | "service_opportunity"
+  | "stage_change"
+  | "resident_need";
+
+export type RelationshipInteractionSuggestionStatus = "pending" | "approved" | "dismissed";
+
+export interface RelationshipInteractionSuggestion {
+  id: string;
+  relationship_id: string;
+  source_interaction_id: string;
+  suggestion_type: RelationshipInteractionSuggestionType;
+  payload: Record<string, unknown>;
+  rationale: string | null;
+  status: RelationshipInteractionSuggestionStatus;
+  edited_payload: Record<string, unknown> | null;
+  resulting_record_table: string | null;
+  resulting_record_id: string | null;
+  created_by: string;
+  created_at: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
 }
