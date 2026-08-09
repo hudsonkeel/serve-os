@@ -32,6 +32,25 @@ export function filterRecruitingLeadsForPipeline(
   return leads.filter((entry) => entry.effectiveStatus === filter);
 }
 
+// The tabs actually exposed on the Recruiting work surface — a stricter
+// subset of every valid RecruitingPipelineFilter value. "Hired" is
+// deliberately excluded: once a lead reaches it, the canonical
+// operational record of that person moves to Workforce, and a
+// permanent "Hired" bucket here would just be a second, competing home
+// for the same fact (see docs/architecture/RECRUITING_WORKFORCE_RECONCILIATION.md).
+// The stored/effective status value "hired" itself is untouched and
+// still fully filterable via filterRecruitingLeadsForPipeline — this
+// list only controls which filters get a clickable tab in the UI.
+export const PIPELINE_FILTER_TABS: readonly RecruitingPipelineFilter[] = [
+  "all",
+  "new",
+  "contacted",
+  "in_review",
+  "applied",
+  "not_a_fit",
+  "archived",
+];
+
 export function countRecruitingLeadsByFilter(
   leads: readonly EnrichedRecruitingLead[]
 ): Partial<Record<RecruitingPipelineFilter, number>> {

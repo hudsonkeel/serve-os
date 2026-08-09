@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   countRecruitingLeadsByFilter,
   filterRecruitingLeadsForPipeline,
+  PIPELINE_FILTER_TABS,
 } from "../pipelineFilters.ts";
 import type { RecruitingLead, RecruitingLeadStatus } from "@/lib/supabase/types";
 import type { EnrichedRecruitingLead } from "@/lib/data/recruitingLeads";
@@ -140,6 +141,37 @@ test("REGRESSION: an archived/closed candidate does not reappear in Active Pipel
   const counts = countRecruitingLeadsByFilter(archivedSample);
   assert.equal(counts.all ?? 0, 0);
   assert.equal(counts.archived, 1);
+});
+
+// ─── "Hired is a terminal transition, not a pipeline population": Hired
+// has no tab on the normal Recruiting work surface, but the underlying
+// status/filter capability is untouched ──────────────────────────────
+
+test("PIPELINE_FILTER_TABS (the exposed Recruiting UI tabs) excludes 'hired'", () => {
+  assert.ok(!PIPELINE_FILTER_TABS.includes("hired"), "'hired' must not be an exposed pipeline tab");
+});
+
+test("PIPELINE_FILTER_TABS still exposes every other terminal status as its own tab", () => {
+  assert.ok(PIPELINE_FILTER_TABS.includes("archived"));
+  assert.ok(PIPELINE_FILTER_TABS.includes("not_a_fit"));
+  assert.ok(PIPELINE_FILTER_TABS.includes("all"));
+});
+
+test("'hired' remains a fully valid, directly filterable stored/effective status even with no UI tab (e.g. lead detail page, admin lookup)", () => {
+  const hired = filterRecruitingLeadsForPipeline(sample, "hired");
+  assert.equal(hired.length, 1);
+  assert.equal(hired[0].lead.id, "e");
+});
+
+test("REGRESSION (Alma Owolabi, terminal-transition case): once effectiveStatus is hired, the record is absent from Active Pipeline and every exposed tab's default rendering, but its stored status is untouched (never rewritten to archived)", () => {
+  const almaHired = entry({ id: "alma", status: "hired", effectiveStatus: "hired" });
+  const activePipeline = filterRecruitingLeadsForPipeline([almaHired], "all");
+  assert.equal(activePipeline.length, 0);
+  assert.equal(almaHired.lead.status, "hired");
+  for (const tab of PIPELINE_FILTER_TABS) {
+    const visible = filterRecruitingLeadsForPipeline([almaHired], tab);
+    assert.equal(visible.length, 0, `Alma (hired) must not appear under exposed tab "${tab}"`);
+  }
 });
 
 let passed = 0;

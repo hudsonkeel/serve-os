@@ -10,21 +10,15 @@ import { RecruitingWorkflowActions } from "./RecruitingWorkflowActions";
 import {
   countRecruitingLeadsByFilter,
   filterRecruitingLeadsForPipeline,
+  PIPELINE_FILTER_TABS,
 } from "@/lib/recruitingLeads/pipelineFilters";
 
 type FilterValue = "all" | RecruitingLeadStatus;
 
-const FILTER_ORDER: FilterValue[] = [
-  "all",
-  "new",
-  "contacted",
-  "in_review",
-  "applied",
-  "not_a_fit",
-  "hired",
-  "archived",
-];
-
+// "Hired" intentionally has no tab here — see PIPELINE_FILTER_TABS.
+// FILTER_LABELS still carries a "hired" entry only because FilterValue
+// (which mirrors every RecruitingLeadStatus) requires it for type
+// completeness; it's never rendered as a tab.
 const FILTER_LABELS: Record<FilterValue, string> = {
   all:       "Active Pipeline",
   new:       "New",
@@ -124,7 +118,7 @@ export function RecruitingInbox({ leads }: { leads: EnrichedRecruitingLead[] }) 
     <div className="space-y-4">
       {/* Status filter tabs */}
       <div className="flex flex-wrap gap-1.5">
-        {FILTER_ORDER.map((value) => {
+        {PIPELINE_FILTER_TABS.map((value) => {
           const isActive = activeFilter === value;
           const count = counts[value] ?? 0;
           return (
