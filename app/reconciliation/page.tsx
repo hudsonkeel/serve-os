@@ -169,6 +169,12 @@ export default async function ReconciliationPage() {
             >
               Resident Data Integrity — import/data-handling defects →
             </Link>
+            <Link
+              href="/workforce/identity-review"
+              className="rounded-lg border border-ivory-border bg-surface px-4 py-3 font-sans text-sm font-medium text-navy shadow-card hover:bg-ivory"
+            >
+              Workforce Identity Review — AxisCare caregiver &amp; recruiting/workforce identity review →
+            </Link>
           </div>
         </section>
       </div>

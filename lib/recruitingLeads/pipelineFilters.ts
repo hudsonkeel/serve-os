@@ -1,4 +1,5 @@
-import type { RecruitingLead, RecruitingLeadStatus } from "@/lib/supabase/types";
+import type { RecruitingLeadStatus } from "@/lib/supabase/types";
+import type { EnrichedRecruitingLead } from "@/lib/data/recruitingLeads";
 
 export type RecruitingPipelineFilter = "all" | RecruitingLeadStatus;
 
@@ -14,24 +15,50 @@ const TERMINAL_STATUSES: ReadonlySet<RecruitingLeadStatus> = new Set(["archived"
 // both the default list and its count so a resolved candidate never
 // inflates what looks like active pipeline volume. Every terminal status
 // remains fully visible and countable via its own explicit tab.
+//
+// Filters on effectiveStatus, never the raw stored lead.status — a
+// recruiting lead confirmed-linked to an active workforce member is
+// effectively "hired" regardless of what its stored status still says
+// (see lib/recruitingLeads/pipelineStatus.ts). This is what keeps a
+// hired person out of Active Pipeline even if the one-time status write
+// that should have happened at hire time never did.
 export function filterRecruitingLeadsForPipeline(
-  leads: readonly RecruitingLead[],
+  leads: readonly EnrichedRecruitingLead[],
   filter: RecruitingPipelineFilter
-): RecruitingLead[] {
+): EnrichedRecruitingLead[] {
   if (filter === "all") {
-    return leads.filter((lead) => !TERMINAL_STATUSES.has(lead.status));
+    return leads.filter((entry) => !TERMINAL_STATUSES.has(entry.effectiveStatus));
   }
-  return leads.filter((lead) => lead.status === filter);
+  return leads.filter((entry) => entry.effectiveStatus === filter);
 }
 
+// The tabs actually exposed on the Recruiting work surface — a stricter
+// subset of every valid RecruitingPipelineFilter value. "Hired" is
+// deliberately excluded: once a lead reaches it, the canonical
+// operational record of that person moves to Workforce, and a
+// permanent "Hired" bucket here would just be a second, competing home
+// for the same fact (see docs/architecture/RECRUITING_WORKFORCE_RECONCILIATION.md).
+// The stored/effective status value "hired" itself is untouched and
+// still fully filterable via filterRecruitingLeadsForPipeline — this
+// list only controls which filters get a clickable tab in the UI.
+export const PIPELINE_FILTER_TABS: readonly RecruitingPipelineFilter[] = [
+  "all",
+  "new",
+  "contacted",
+  "in_review",
+  "applied",
+  "not_a_fit",
+  "archived",
+];
+
 export function countRecruitingLeadsByFilter(
-  leads: readonly RecruitingLead[]
+  leads: readonly EnrichedRecruitingLead[]
 ): Partial<Record<RecruitingPipelineFilter, number>> {
-  return leads.reduce<Partial<Record<RecruitingPipelineFilter, number>>>((acc, lead) => {
-    if (!TERMINAL_STATUSES.has(lead.status)) {
+  return leads.reduce<Partial<Record<RecruitingPipelineFilter, number>>>((acc, entry) => {
+    if (!TERMINAL_STATUSES.has(entry.effectiveStatus)) {
       acc.all = (acc.all ?? 0) + 1;
     }
-    acc[lead.status] = (acc[lead.status] ?? 0) + 1;
+    acc[entry.effectiveStatus] = (acc[entry.effectiveStatus] ?? 0) + 1;
     return acc;
   }, {});
 }

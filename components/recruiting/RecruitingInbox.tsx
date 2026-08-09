@@ -3,27 +3,22 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Check, Minus } from "lucide-react";
-import { RecruitingLead, RecruitingLeadStatus } from "@/lib/supabase/types";
+import { RecruitingLeadStatus } from "@/lib/supabase/types";
+import type { EnrichedRecruitingLead } from "@/lib/data/recruitingLeads";
 import { RecruitingStatusBadge } from "./RecruitingStatusBadge";
 import { RecruitingWorkflowActions } from "./RecruitingWorkflowActions";
 import {
   countRecruitingLeadsByFilter,
   filterRecruitingLeadsForPipeline,
+  PIPELINE_FILTER_TABS,
 } from "@/lib/recruitingLeads/pipelineFilters";
 
 type FilterValue = "all" | RecruitingLeadStatus;
 
-const FILTER_ORDER: FilterValue[] = [
-  "all",
-  "new",
-  "contacted",
-  "in_review",
-  "applied",
-  "not_a_fit",
-  "hired",
-  "archived",
-];
-
+// "Hired" intentionally has no tab here — see PIPELINE_FILTER_TABS.
+// FILTER_LABELS still carries a "hired" entry only because FilterValue
+// (which mirrors every RecruitingLeadStatus) requires it for type
+// completeness; it's never rendered as a tab.
 const FILTER_LABELS: Record<FilterValue, string> = {
   all:       "Active Pipeline",
   new:       "New",
@@ -59,7 +54,8 @@ function formatDate(iso: string) {
   });
 }
 
-function RecruitingRow({ lead }: { lead: RecruitingLead }) {
+function RecruitingRow({ entry }: { entry: EnrichedRecruitingLead }) {
+  const { lead, effectiveStatus, isDerivedFromWorkforceLink } = entry;
   const name = [lead.first_name, lead.last_name].filter(Boolean).join(" ") || "Unknown";
   const location = lead.zip_code ?? lead.city_state ?? "—";
 
@@ -91,7 +87,10 @@ function RecruitingRow({ lead }: { lead: RecruitingLead }) {
       <p className="truncate font-sans text-xs text-body">{lead.email ?? "—"}</p>
       <p className="font-sans text-xs text-body">{location}</p>
       <div>
-        <RecruitingStatusBadge status={lead.status} />
+        <RecruitingStatusBadge status={effectiveStatus} />
+        {isDerivedFromWorkforceLink && (
+          <p className="mt-0.5 font-sans text-[10px] text-muted">Active workforce member</p>
+        )}
       </div>
       <div className="flex items-center">{apploiCell}</div>
       <div>
@@ -102,7 +101,7 @@ function RecruitingRow({ lead }: { lead: RecruitingLead }) {
   );
 }
 
-export function RecruitingInbox({ leads }: { leads: RecruitingLead[] }) {
+export function RecruitingInbox({ leads }: { leads: EnrichedRecruitingLead[] }) {
   const [activeFilter, setActiveFilter] = useState<FilterValue>("all");
 
   // "All" means the operational pipeline, not literally every row —
@@ -119,7 +118,7 @@ export function RecruitingInbox({ leads }: { leads: RecruitingLead[] }) {
     <div className="space-y-4">
       {/* Status filter tabs */}
       <div className="flex flex-wrap gap-1.5">
-        {FILTER_ORDER.map((value) => {
+        {PIPELINE_FILTER_TABS.map((value) => {
           const isActive = activeFilter === value;
           const count = counts[value] ?? 0;
           return (
@@ -163,8 +162,8 @@ export function RecruitingInbox({ leads }: { leads: RecruitingLead[] }) {
         {/* Rows */}
         {visible.length > 0 ? (
           <div className="min-w-max divide-y divide-ivory-border">
-            {visible.map((lead) => (
-              <RecruitingRow key={lead.id} lead={lead} />
+            {visible.map((entry) => (
+              <RecruitingRow key={entry.lead.id} entry={entry} />
             ))}
           </div>
         ) : (
