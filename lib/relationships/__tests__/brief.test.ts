@@ -64,6 +64,7 @@ function makeInteraction(overrides: Partial<RelationshipTouch> = {}): Relationsh
     touch_type: "call",
     occurred_at: "2026-07-15T15:00:00.000Z",
     summary: "Spoke with Cary about possible recurring visits.",
+    structured_summary: null,
     interaction_result: "connected",
     outcome: null,
     contact_name: "Cary Smith",

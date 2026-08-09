@@ -36,10 +36,96 @@ reconciliation pass:
 
 | Endpoint | Live status | Result |
 |---|---|---|
-| Visits | HTTP 200 | 11 records, envelope `results.visits`, array shape |
-| Schedules | HTTP 200 (after correction) | 9 records, envelope `results.schedules`, array shape |
+| Visits | HTTP 200 | 14 records (this pass), envelope `results.visits`, array shape |
+| Schedules | HTTP 200 (after correction) | 15 records (this pass), envelope `results.schedules`, array shape |
 | Clients | HTTP 200 | 1 record, envelope `results.clients`; exposes extensive sensitive fields — see "Client Privacy Policy" |
 | Caregivers | HTTP 200 | Envelope `results.caregivers` is an **object keyed by caregiver ID**, not an array |
+| Applicants | HTTP 200 | 6 records, envelope `results.applicants` — **keyed by applicant ID, not an array**, despite the published OpenAPI spec typing it as an array (see "Applicants — Spec vs. Live Discrepancy" below) |
+| Organizations | HTTP 200 | 1 record, envelope `results.organizations`, array shape (matches spec) |
+| ADLs | HTTP 200 | 1 record, envelope `results.data` (not `results.adls`), array shape |
+| ADL Categories | **HTTP 403** | Token lacks the required scope — see "Known Permission Gaps" below |
+| Tagging Categories | HTTP 200 | 16 records, envelope `results.categories` (not `results.taggingCategories`), array shape, no pagination |
+| Expiring Tokens | HTTP 200 | 0 records — no tokens currently expiring within 30 days; see "Token Expiration Monitoring" below |
+
+## Public OpenAPI Specification (newly identified)
+
+AxisCare publishes a public, machine-readable OpenAPI 3.1 specification —
+previously unknown to this integration (earlier passes worked from a
+contract "supplied directly by Hud... outside this filesystem context").
+It's served as a [Stoplight Elements](https://stoplight.io/open-source/elements)
+page at <https://static.axiscare.com/api/documentation.html>, which loads
+the underlying spec client-side from
+`https://static.axiscare.com/api/stoplight/reference/api.yaml` (version
+`2025-06-25`), with individual schema components (e.g. `Applicant.yaml`,
+`Caregiver.yaml`) served as sibling files under
+`https://static.axiscare.com/api/stoplight/<ComponentName>.yaml`. This spec
+documents every endpoint referenced anywhere in this integration, including
+the six added this pass (Applicants, Organizations, ADLs, ADL Categories,
+Tagging Categories, Expiring Tokens), plus write endpoints this integration
+deliberately never calls (e.g. `POST /api/applicants`,
+`POST /api/organizations`). Useful as a reference for future work, but see
+the discrepancy noted immediately below — the spec is not perfectly
+reliable on response *shape*, only on paths/parameters/field names, so live
+verification remains necessary before trusting any new endpoint's runtime
+behavior.
+
+## Applicants — Spec vs. Live Discrepancy
+
+The published spec types `GET /api/applicants`' `results.applicants` as a
+JSON `array`. The live response (6 real applicant records) instead returns
+an **object keyed by applicant ID** — the same keyed-object shape
+previously confirmed for Caregivers, and the second confirmed instance of
+this pattern. `applicants.ts`/`discovery.ts` handle this correctly today
+only because `normalizeCollection()` already classifies shape at runtime
+rather than trusting a fixed type — the same safety net that made the
+original Caregivers discrepancy a non-issue. **Working hypothesis, not yet
+proven:** AxisCare may key any person-record collection by ID at runtime
+regardless of what its own spec declares, whenever records are naturally
+ID-addressable. Treat every future new endpoint's declared array/object
+shape in the spec as unconfirmed until live-verified, exactly as this
+integration has always treated shape — the spec upgrades "guess" to
+"documented assumption," not to "confirmed."
+
+## Known Permission Gaps
+
+`GET /api/adls` succeeds (HTTP 200) with the current token, but
+`GET /api/adls/categories` returns **HTTP 403 — "You don't have permission
+to view this resource"** — a distinct, narrower scope from general ADLs
+read access that the current AxisCare token does not carry. Practical
+effect: each ADL record's `categoryId` (an integer) can be read, but the
+human-readable category name it refers to (e.g. `ACTIVITY`) cannot be
+resolved via the API today. If a future feature needs ADL category labels,
+this scope must be added to the token in the AxisCare admin console first —
+not something this codebase can work around. Similarly, `Expiring Tokens`
+requires its own **Expiring Tokens** read scope (present on the current
+token, confirmed by the successful HTTP 200 below) — worth noting as a
+reminder that AxisCare scopes are per-endpoint-family, not all-or-nothing.
+
+## Workforce Intelligence Caregiver Sync (new)
+
+`lib/integrations/axiscare/caregivers.ts` now also exports `getAllCaregivers()` —
+a bounded, paginated fetch of the full active caregiver roster (limit=100/page,
+max 20 pages, max 2000 total records — a safety net, not an expected ceiling
+for a home-care agency's roster), reusing `normalizeCollection()` and
+`validateNextPageUrl()` rather than duplicating that logic. It powers
+`lib/workforce/axiscareCaregiverSync.ts`, gated behind its own release flag,
+`AXISCARE_WORKFORCE_ENABLED` — same discipline as `AXISCARE_SCHEDULE_ENABLED`
+(server-only, independent of credentials, exact `"true"` match only, default
+disabled). See `supabase/migrations/20260808000000_create_workforce_intelligence_platform.sql`
+and `docs/intelligence/SERVE_HUMAN_LIFECYCLE_ONTOLOGY.md` for the full design.
+
+## Token Expiration Monitoring
+
+`GET /api/tokens/expiring` (added this pass, `expiringTokens.ts`) is the
+vendor-confirmed way to answer "when does our AxisCare token expire" — it
+returns any active token (by name, never by value) expiring within the
+next 30 days. The live call returned zero results, meaning **no token on
+this AxisCare account is currently within 30 days of expiring** — this
+should be treated as the authoritative signal going forward, not the
+hand-set `AXISCARE_TOKEN_EXPIRES_AT` value that has appeared in local
+`.env.local` files without ever being read by any code. If integration
+health monitoring is built later, it should poll this endpoint rather than
+rely on a manually maintained expiration date.
 
 Nothing about either run was logged or printed beyond sanitized metadata
 (status codes, envelope key names, record counts) — no client/caregiver
@@ -208,6 +294,12 @@ In priority order, each a thin read-only wrapper over `axisCareGet()`:
 | 2 | Schedules | `/api/schedules` | `lib/integrations/axiscare/schedules.ts` | Sends `startDate`/`endDate` both set to today, Central Time, same as Visits — corrected from a prior bare request that returned HTTP 422 | HTTP 200, 9 records (verified live this pass) |
 | 3 | Clients | `/api/clients` | `lib/integrations/axiscare/clients.ts` | `limit=1`; no `requestedSensitiveFields` sent | HTTP 200, 1 record |
 | 4 | Caregivers | `/api/caregivers` | `lib/integrations/axiscare/caregivers.ts` | `limit=1`; no `requestedSensitiveFields` sent | HTTP 200, keyed-object envelope |
+| 5 | Applicants | `/api/applicants` | `lib/integrations/axiscare/applicants.ts` | No `limit` parameter exists for this endpoint per the spec; bare request, no `requestedSensitiveFields` sent | HTTP 200, 6 records, keyed-object envelope (spec says array — see discrepancy note above) |
+| 6 | Organizations | `/api/organizations` | `lib/integrations/axiscare/organizations.ts` | `limit=1` | HTTP 200, 1 record, array envelope |
+| 7 | ADLs | `/api/adls` | `lib/integrations/axiscare/adls.ts` | `limit=1` | HTTP 200, 1 record, array envelope (`results.data`) |
+| 8 | ADL Categories | `/api/adls/categories` | `lib/integrations/axiscare/adls.ts` | No parameters | HTTP 403 — token lacks this scope |
+| 9 | Tagging Categories | `/api/taggingCategories` | `lib/integrations/axiscare/taggingCategories.ts` | No parameters | HTTP 200, 16 records, array envelope (`results.categories`) |
+| 10 | Expiring Tokens | `/api/tokens/expiring` | `lib/integrations/axiscare/expiringTokens.ts` | `limit=5` | HTTP 200, 0 records |
 
 None of these depend on already knowing a real client/caregiver/schedule
 ID, and none retrieve unlimited history. `schedules.ts` deliberately does
@@ -236,6 +328,12 @@ resource name — not a bare top-level array:
 | Schedules | `results.schedules` | **Array** | `results.nextPage` | Live-verified: HTTP 200, 9 records (this pass) |
 | Clients | `results.clients` | **Array** | `results.nextPage` | Live-verified: HTTP 200, 1 record |
 | Caregivers | `results.caregivers` | **Object keyed by caregiver ID** | `results.nextPage` | Live-verified — see "Caregiver Keyed-Object Behavior" below |
+| Applicants | `results.applicants` | **Object keyed by applicant ID** | `results.nextPage` | Live-verified this pass; spec says array — see "Applicants — Spec vs. Live Discrepancy" above |
+| Organizations | `results.organizations` | Array | `results.nextPage` | Live-verified this pass: HTTP 200, 1 record |
+| ADLs | `results.data` | Array | `results.nextPage` | Live-verified this pass: HTTP 200, 1 record. Note the non-standard envelope key (`data`, not `adls`) |
+| ADL Categories | `results.data` | Unverified | None documented | HTTP 403 with current token — shape not observable yet |
+| Tagging Categories | `results.categories` | Array | None documented | Live-verified this pass: HTTP 200, 16 records. Non-standard envelope key (`categories`, not `taggingCategories`), no pagination |
+| Expiring Tokens | `results.expiringTokens` | Array (empty this pass) | `results.nextPage` | Live-verified this pass: HTTP 200, 0 records |
 
 `errors` (an array) sits alongside `results` at the top level on every
 endpoint; `success` may also appear (live-observed on caregivers, along

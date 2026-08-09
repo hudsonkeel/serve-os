@@ -36,6 +36,18 @@
 //                   resident_id + source + the title appearing in
 //                   event_title, since resident_timeline has no
 //                   source_record_id column to join on precisely).
+//   npm run cleanup:test-data -- --flight-marker=<value> [--dry-run]
+//
+// --flight-marker=<value>
+//                   Removes recruiting_lead_observations and
+//                   recruiting_lead_collector_runs rows whose flight_marker
+//                   exactly matches <value> — see
+//                   docs/architecture/RECRUITING_LEAD_FLIGHT_PLAN.md §8 and
+//                   lib/recruiting/flightMarker.ts. Idempotent: matching a
+//                   marker with zero remaining rows is a no-op, not an
+//                   error. NEVER deletes the recruiting_leads row itself —
+//                   there is no code path here capable of it; the lead is
+//                   real, pre-existing, and untouched by this cleanup.
 // --dry-run         Prints what would be deleted without deleting it.
 //
 // Never touches the residents table under any code path.
@@ -46,6 +58,7 @@ const dryRun = args.includes("--dry-run");
 const markerArg = args.find((a) => a.startsWith("--marker="));
 const legacyDoris = args.includes("--legacy-doris");
 const wellnessTitleArg = args.find((a) => a.startsWith("--wellness-title="));
+const flightMarkerArg = args.find((a) => a.startsWith("--flight-marker="));
 
 const supabase = createServerClient();
 
@@ -97,6 +110,10 @@ async function cleanupRelationshipsByIds(relationshipIds: readonly string[]): Pr
   await deleteByColumnIn("relationship_insights", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_commitments", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_open_loops", "relationship_id", relationshipIds);
+  // Interaction Suggestion Review — same provenance-protection rationale
+  // (source_interaction_id has no "on delete" clause), must also be
+  // deleted before relationship_touches.
+  await deleteByColumnIn("relationship_interaction_suggestions", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_actions", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_touches", "relationship_id", relationshipIds);
   await deleteByColumnIn("relationship_stage_history", "relationship_id", relationshipIds);
@@ -299,12 +316,50 @@ async function cleanupWellnessFollowUpByTitle(title: string): Promise<void> {
   }
 }
 
+async function cleanupByFlightMarker(marker: string): Promise<void> {
+  console.log(`\n=== Cleaning up by flight_marker = "${marker}" ${dryRun ? "(dry run)" : ""} ===`);
+
+  const { data, error } = await supabase
+    .from("recruiting_lead_collector_runs")
+    .select("id")
+    .eq("flight_marker", marker);
+  if (error) throw new Error(`Lookup by flight_marker failed: ${error.message}`);
+
+  const runIds = (data ?? []).map((r) => r.id as string);
+  if (runIds.length === 0) {
+    console.log("No collector runs matched this flight_marker — nothing to clean up (idempotent no-op).");
+    return;
+  }
+  console.log(`Collector runs to remove: ${runIds.join(", ")}`);
+
+  await deleteByColumnIn("recruiting_lead_observations", "collector_run_id", runIds);
+  await deleteByColumnIn("recruiting_lead_collector_runs", "id", runIds);
+
+  if (!dryRun) {
+    const { count } = await supabase
+      .from("recruiting_lead_collector_runs")
+      .select("*", { count: "exact", head: true })
+      .eq("flight_marker", marker);
+    console.log(`\nVerification: ${count ?? 0} collector runs remain with this flight_marker (expect 0).`);
+    console.log("The underlying recruiting_leads row was never touched by this cleanup.");
+  }
+}
+
 async function main() {
-  if (!legacyDoris && !markerArg && !wellnessTitleArg) {
+  if (!legacyDoris && !markerArg && !wellnessTitleArg && !flightMarkerArg) {
     console.error(
-      "Usage: npm run cleanup:test-data -- --legacy-doris | --marker=<value> | --wellness-title=<title> [--dry-run]"
+      "Usage: npm run cleanup:test-data -- --legacy-doris | --marker=<value> | --wellness-title=<title> | --flight-marker=<value> [--dry-run]"
     );
     process.exit(1);
+  }
+
+  if (flightMarkerArg) {
+    const marker = flightMarkerArg.slice("--flight-marker=".length);
+    if (!marker) {
+      console.error("--flight-marker requires a value, e.g. --flight-marker=\"__SERVE_FLIGHT__ recruiting-lead-<id> 20260720T190000Z-abcd\"");
+      process.exit(1);
+    }
+    await cleanupByFlightMarker(marker);
   }
 
   if (legacyDoris) {

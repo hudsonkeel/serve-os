@@ -190,3 +190,131 @@ export interface AxisCareCaregiversResponse {
   success?: boolean;
   [key: string]: unknown;
 }
+
+// ─── Endpoints below: spec-confirmed via AxisCare's public OpenAPI
+// specification (static.axiscare.com/api/stoplight/reference/api.yaml,
+// version 2025-06-25), fetched directly — not yet live-verified against
+// this site's actual data until a discovery run succeeds. Envelope shapes
+// (results.<resource>, results.nextPage, errors) come straight from that
+// spec's documented response schema, same discipline as visits/schedules/
+// clients/caregivers above. Record-level shapes stay loosely typed with an
+// index signature, matching this file's existing convention.
+
+// Per the Applicant.yaml component schema: SSN appears in the schema even
+// though this integration never requests requestedSensitiveFields — same
+// privacy posture as AxisCareRawClient above. Applicants are pre-hire
+// candidates in AxisCare, not yet Serve caregivers.
+export interface AxisCareRawApplicant {
+  id?: string | number;
+  [key: string]: unknown;
+}
+
+export interface AxisCareApplicantsResponse {
+  results?: {
+    applicants?: unknown;
+    applicantsNotFound?: unknown;
+    nextPage?: string | number | null;
+    [key: string]: unknown;
+  };
+  errors?: unknown[];
+  success?: boolean;
+  [key: string]: unknown;
+}
+
+// AxisCare's "Organizations" are external referral/partner organizations
+// (e.g. hospitals) tracked in AxisCare, per the spec's example payload —
+// not Serve's own multi-site/agency configuration. Confirm this reading
+// against a live sample before building any UI on top of it.
+export interface AxisCareRawOrganization {
+  id?: string | number;
+  [key: string]: unknown;
+}
+
+export interface AxisCareOrganizationsResponse {
+  results?: {
+    organizations?: unknown;
+    organizationsNotFound?: unknown;
+    nextPage?: string | number | null;
+    [key: string]: unknown;
+  };
+  errors?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface AxisCareRawAdl {
+  id?: string | number;
+  [key: string]: unknown;
+}
+
+// Per the spec: results.data (not results.adls) — deliberately different
+// envelope key from every other endpoint in this file, confirmed directly
+// against the OpenAPI schema and its worked example.
+export interface AxisCareAdlsResponse {
+  results?: {
+    data?: unknown;
+    nextPage?: string | null;
+    [key: string]: unknown;
+  };
+  success?: boolean;
+  errors?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface AxisCareRawAdlCategory {
+  id?: string | number;
+  [key: string]: unknown;
+}
+
+// No pagination field in the spec for this endpoint — it returns the full
+// category list in one response.
+export interface AxisCareAdlCategoriesResponse {
+  results?: {
+    data?: unknown;
+    [key: string]: unknown;
+  };
+  success?: boolean;
+  errors?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface AxisCareRawTaggingCategory {
+  id?: string | number;
+  [key: string]: unknown;
+}
+
+// Envelope key is results.categories, not results.taggingCategories — and
+// no pagination field per the spec (returns the full list in one response).
+export interface AxisCareTaggingCategoriesResponse {
+  results?: {
+    categories?: unknown;
+    [key: string]: unknown;
+  };
+  success?: boolean;
+  errors?: unknown[];
+  [key: string]: unknown;
+}
+
+// Not a caregiver/client/applicant resource — this endpoint reports the
+// agency's own API tokens that are about to expire. Directly relevant to
+// the AXISCARE_TOKEN_EXPIRES_AT integration-health question: this endpoint
+// is how that expiration should actually be confirmed, rather than a
+// hand-maintained env var.
+export interface AxisCareRawExpiringToken {
+  name?: string;
+  expirationDate?: string;
+  [key: string]: unknown;
+}
+
+// Cursor pagination here uses an opaque nextPageToken (per the spec: "Do
+// not construct this value manually"), distinct from every other
+// endpoint's startAfterId-based cursor — validateNextPageUrl()-style
+// hostname/path validation still applies if this is ever paginated.
+export interface AxisCareExpiringTokensResponse {
+  results?: {
+    expiringTokens?: unknown;
+    nextPage?: string | null;
+    [key: string]: unknown;
+  };
+  errors?: unknown[];
+  [key: string]: unknown;
+}

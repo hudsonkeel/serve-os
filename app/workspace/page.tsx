@@ -24,6 +24,12 @@ import {
 import { buildCurrentUserDisplay } from "@/lib/auth/display";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { getCentralTimeGreeting } from "@/lib/utils/date";
+import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
+import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
+import { buildAskServeContext } from "@/lib/askServe/buildContext";
+import { TODAY_WORK_CONTEXT } from "@/lib/askServe/areaContexts";
+import { getTodaysWorkItems } from "@/lib/data/todaysWork";
+import { TodaysWorkView } from "@/components/workspace/TodaysWorkView";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -74,9 +80,10 @@ const workspaceSections = [
     items: careDeliveryWorkflows,
   },
   {
-    // Recruiting no longer has a permanent sidebar item — it is primarily
-    // operational work, surfaced here as the Workspace action entry point.
-    // /recruiting remains the deep management route (see
+    // Recruiting also has a permanent sidebar entry ("The People Who
+    // Serve", /recruiting) as of the human-centered navigation redesign —
+    // this Workspace entry point stays as the day-to-day operational
+    // shortcut into the same route (see
     // docs/architecture/SERVE_OS_NAVIGATION_MODEL.md).
     title: "Recruiting & Hiring",
     items: [
@@ -145,7 +152,7 @@ const workspaceSections = [
       },
       {
         icon: LayoutDashboard,
-        title: "Dashboard",
+        title: "How We're Doing",
         description: "Open the executive intelligence dashboard.",
         poweredBy: "Serve OS",
         href: "/",
@@ -163,14 +170,16 @@ const workspaceSections = [
 ];
 
 export default async function WorkspacePage() {
-  const [profile, community, recruiting, schedule] = await Promise.all([
+  const [profile, community, recruiting, schedule, workItems] = await Promise.all([
     getCurrentAuthorizedUser(),
     getCommunityMetrics(),
     getRecruitingLeads(),
     getAxisCareTodaysSchedule(),
+    getTodaysWorkItems(),
   ]);
   const currentUser = buildCurrentUserDisplay(profile);
   const greeting = getCentralTimeGreeting();
+  const askServeEnabled = isContextualAskServeEnabled(currentUser.role);
 
   const recruitingReviewCount = recruiting.leads.filter((lead) =>
     ["new", "in_review"].includes(lead.status)
@@ -210,33 +219,49 @@ export default async function WorkspacePage() {
     },
     {
       label: "Payroll",
-      value: 0,
-      description: "Reminders connected later",
+      value: null,
+      description: "Additional AxisCare integration in progress",
       href: workspaceUrls.viventium,
       external: true,
     },
   ];
 
   return (
-    <PageContainer title="Workspace">
-      <div className="mb-8">
-        <p className="mb-2 font-sans text-label font-semibold uppercase tracking-[0.2em] text-gold-dark">
-          Workspace
-        </p>
-        <h1 className="font-serif text-page-title font-light leading-tight text-body">
-          {greeting}, {currentUser.shortName}.
-        </h1>
-        <p className="mt-2 max-w-2xl font-sans text-base leading-relaxed text-body">
-          Start here for today&apos;s work, priorities, schedules, and operational
-          workflows.
-        </p>
+    <PageContainer title="Today's Work">
+      <div className="mb-8 flex items-start justify-between gap-6">
+        <div>
+          <p className="mb-2 font-sans text-label font-semibold uppercase tracking-[0.2em] text-gold-dark">
+            Today&apos;s Work
+          </p>
+          <h1 className="font-serif text-page-title font-light leading-tight text-body">
+            {greeting}, {currentUser.shortName}.
+          </h1>
+          <p className="mt-2 max-w-2xl font-sans text-base leading-relaxed text-body">
+            Start here for today&apos;s work, priorities, schedules, and operational
+            workflows.
+          </p>
+        </div>
+        {askServeEnabled && (
+          <AskServeTrigger
+            context={buildAskServeContext(TODAY_WORK_CONTEXT, {
+              userRole: currentUser.role ?? undefined,
+              // Reflects the continuity view's default filter (see
+              // components/workspace/TodaysWorkView.tsx) — the initial
+              // view, not necessarily a live-synced client tab; matches
+              // the same initial-value-only convention already used by
+              // app/residents/page.tsx's tab filters.
+              visibleFilters: { workFilter: "all" },
+            })}
+            label="Ask Serve about today's work"
+          />
+        )}
       </div>
 
       <div className="divide-y divide-ivory-border border-t border-ivory-border">
         <section className="pb-10">
           <div className="mb-5 flex items-baseline justify-between">
-            <h2 className="font-serif text-section-title font-light text-body">Today&apos;s Work</h2>
-            <p className="font-sans text-sm text-muted">Personalized tasks will deepen here over time.</p>
+            <h2 className="font-serif text-section-title font-light text-body">Operational Summary</h2>
+            <p className="font-sans text-sm text-muted">Where to look — see Needs Attention below for exactly what to do.</p>
           </div>
           <div className="grid grid-cols-6 gap-4">
             {todaysWork.map((item) => (
@@ -250,15 +275,31 @@ export default async function WorkspacePage() {
                 <p className="font-sans text-label font-semibold uppercase tracking-widest text-muted">
                   {item.label}
                 </p>
-                <p className="mt-3 font-serif text-4xl font-semibold leading-none tracking-tight text-body">
-                  {item.value}
-                </p>
-                <p className="mt-2 font-sans text-sm leading-relaxed text-muted">
-                  {item.description}
-                </p>
+                {item.value === null ? (
+                  <p className="mt-3 font-sans text-sm leading-snug text-muted">{item.description}</p>
+                ) : (
+                  <>
+                    <p className="mt-3 font-serif text-4xl font-semibold leading-none tracking-tight text-body">
+                      {item.value}
+                    </p>
+                    <p className="mt-2 font-sans text-sm leading-relaxed text-muted">
+                      {item.description}
+                    </p>
+                  </>
+                )}
               </a>
             ))}
           </div>
+        </section>
+
+        <section className="py-10">
+          <div className="mb-5">
+            <h2 className="font-serif text-section-title font-light text-body">What Exactly Should I Do?</h2>
+            <p className="font-sans text-sm text-muted">
+              Real, individually-addressable work — every item links back to its source and explains why it&apos;s here.
+            </p>
+          </div>
+          <TodaysWorkView items={workItems} currentUser={{ email: currentUser.email, fullName: currentUser.fullName }} />
         </section>
 
         <TodaysSchedulePanel result={schedule} />

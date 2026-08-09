@@ -257,6 +257,140 @@ export async function getWellnessFollowUpDashboardCounts(): Promise<WellnessFoll
   return { dueOrOverdue, dueThisWeek };
 }
 
+function residentDisplayName(row: {
+  first_name: string | null;
+  last_name: string | null;
+  display_name: string | null;
+  full_name: string | null;
+}): string {
+  const fromParts = [row.first_name, row.last_name].filter(Boolean).join(" ");
+  return fromParts || row.display_name || row.full_name || "Unnamed Resident";
+}
+
+// App-wide list of individual open/in_progress follow-ups (not a summary —
+// see getWellnessWatchSummaryByResident() above for the per-resident
+// summary Map). This is the one genuinely new bulk query Today's Work
+// needed: every existing bulk function here returns counts or a summary,
+// never the individual rows. Two bulk queries (follow-ups, residents)
+// rather than N+1 — same shape as
+// lib/data/relationships.ts#getRelationshipWorkspaceRows()'s resident-name
+// join.
+export interface OpenWellnessFollowUpWithResident extends ResidentWellnessFollowUp {
+  residentDisplayName: string;
+}
+
+export async function getAllOpenWellnessFollowUps(): Promise<OpenWellnessFollowUpWithResident[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("resident_wellness_follow_ups")
+    .select("*")
+    .in("status", ["open", "in_progress"]);
+
+  if (error) {
+    console.error("[wellnessFollowUps:getAllOpenWellnessFollowUps:error]", {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
+    return [];
+  }
+
+  const rows = data ?? [];
+  const residentIds = [...new Set(rows.map((r) => r.resident_id))];
+  const residentNames = new Map<string, string>();
+
+  if (residentIds.length > 0) {
+    const { data: residentRows, error: residentError } = await supabase
+      .from("residents")
+      .select("id, first_name, last_name, display_name, full_name")
+      .in("id", residentIds);
+
+    if (residentError) {
+      console.error("[wellnessFollowUps:getAllOpenWellnessFollowUps:residents:error]", {
+        message: residentError.message,
+        code: residentError.code,
+      });
+    } else {
+      for (const row of residentRows ?? []) {
+        residentNames.set(row.id, residentDisplayName(row));
+      }
+    }
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    residentDisplayName: residentNames.get(row.resident_id) ?? "Unnamed Resident",
+  }));
+}
+
+export interface RecentlyCompletedWellnessFollowUp {
+  id: string;
+  residentId: string;
+  residentDisplayName: string;
+  title: string;
+  completedAt: string;
+  completedBy: string | null;
+}
+
+// Exact mirror of lib/data/relationships.ts#getRecentlyCompletedActions()'s
+// shape/signature/day-window/limit convention, for Recently Completed
+// parity across both task-bearing sources.
+export async function getRecentlyCompletedWellnessFollowUps(
+  days = 7,
+  limit = 25
+): Promise<RecentlyCompletedWellnessFollowUp[]> {
+  const supabase = createServerClient();
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("resident_wellness_follow_ups")
+    .select("id, resident_id, title, completed_at, completed_by")
+    .eq("status", "completed")
+    .gte("completed_at", cutoff)
+    .order("completed_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("[wellnessFollowUps:getRecentlyCompletedWellnessFollowUps:error]", {
+      message: error.message,
+      code: error.code,
+    });
+    return [];
+  }
+
+  const rows = data ?? [];
+  const residentIds = [...new Set(rows.map((r) => r.resident_id))];
+  const residentNames = new Map<string, string>();
+
+  if (residentIds.length > 0) {
+    const { data: residentRows, error: residentError } = await supabase
+      .from("residents")
+      .select("id, first_name, last_name, display_name, full_name")
+      .in("id", residentIds);
+
+    if (residentError) {
+      console.error("[wellnessFollowUps:getRecentlyCompletedWellnessFollowUps:residents:error]", {
+        message: residentError.message,
+        code: residentError.code,
+      });
+    } else {
+      for (const row of residentRows ?? []) {
+        residentNames.set(row.id, residentDisplayName(row));
+      }
+    }
+  }
+
+  return rows.map((row) => ({
+    id: row.id,
+    residentId: row.resident_id,
+    residentDisplayName: residentNames.get(row.resident_id) ?? "Unnamed Resident",
+    title: row.title,
+    completedAt: row.completed_at as string,
+    completedBy: row.completed_by,
+  }));
+}
+
 export async function completeResidentWellnessFollowUp(
   followUpId: string,
   residentId: string,

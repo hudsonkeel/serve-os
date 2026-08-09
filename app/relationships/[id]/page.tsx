@@ -4,6 +4,7 @@ import { PageContainer } from "@/components/PageContainer";
 import { Badge } from "@/components/ui/Badge";
 import {
   getCurrentServiceLocationByRelationshipId,
+  getInteractionSuggestionsByRelationship,
   getRelationshipActions,
   getRelationshipById,
   getRelationshipCommitments,
@@ -31,21 +32,31 @@ import { RelationshipTimelineSection } from "@/components/relationships/Relation
 import { RelationshipServiceLocationSection } from "@/components/relationships/RelationshipServiceLocationSection";
 import { ConvertRelationshipPanel } from "@/components/relationships/ConvertRelationshipPanel";
 import { ExternalClientPanel } from "@/components/relationships/ExternalClientPanel";
+import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
+import { buildAskServeContext } from "@/lib/askServe/buildContext";
+import { RELATIONSHIPS_CONTEXT } from "@/lib/askServe/areaContexts";
+import { hasTodaysWorkOrigin } from "@/lib/workspace/originMarker";
+import { BackToTodaysWorkLink } from "@/components/workspace/BackToTodaysWorkLink";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function RelationshipDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { id } = await params;
+  const { from } = await searchParams;
   const relationship = await getRelationshipById(id);
 
   if (!relationship) notFound();
 
-  const [actions, notes, interactions, insights, commitments, openLoops, timeline, linkedResidentName, externalClient, currentLocation] =
+  const [actions, notes, interactions, insights, commitments, openLoops, timeline, linkedResidentName, externalClient, currentLocation, interactionSuggestions, profile] =
     await Promise.all([
       getRelationshipActions(id),
       getRelationshipWorkingNotes(id),
@@ -57,7 +68,15 @@ export default async function RelationshipDetailPage({
       relationship.resident_id ? getResidentDisplayNameById(relationship.resident_id) : Promise.resolve(null),
       getExternalClientByRelationshipId(id),
       getCurrentServiceLocationByRelationshipId(id),
+      getInteractionSuggestionsByRelationship(id),
+      getCurrentAuthorizedUser(),
     ]);
+  const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
+
+  const suggestionsByInteraction: Record<string, typeof interactionSuggestions> = {};
+  for (const suggestion of interactionSuggestions) {
+    (suggestionsByInteraction[suggestion.source_interaction_id] ??= []).push(suggestion);
+  }
 
   const openActions = actions.filter((a) => a.status === "open");
   const currentNextAction = selectPrimaryOpenAction(
@@ -80,24 +99,41 @@ export default async function RelationshipDetailPage({
 
   return (
     <PageContainer title={relationship.display_name}>
-      <div className="mb-6">
+      <div className="mb-6 flex items-center gap-4">
         <Link
           href="/relationships"
           className="inline-flex h-9 items-center font-sans text-sm font-medium text-navy transition-colors hover:text-navy-light"
         >
           ← Back to Relationships
         </Link>
+        {hasTodaysWorkOrigin(from) && <BackToTodaysWorkLink />}
       </div>
 
-      <div className="mb-8">
-        <h1 className="font-serif text-page-title font-light text-body">
-          {relationship.display_name}
-        </h1>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <Badge tone="gold">{RELATIONSHIP_TYPE_LABELS[relationship.relationship_type]}</Badge>
-          {relationship.status === "on_hold" && <Badge tone="warning">On Hold</Badge>}
-          {relationship.status === "closed" && <Badge tone="neutral">Closed</Badge>}
+      <div className="mb-8 flex items-start justify-between gap-6">
+        <div>
+          <h1 className="font-serif text-page-title font-light text-body">
+            {relationship.display_name}
+          </h1>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Badge tone="gold">{RELATIONSHIP_TYPE_LABELS[relationship.relationship_type]}</Badge>
+            {relationship.status === "on_hold" && <Badge tone="warning">On Hold</Badge>}
+            {relationship.status === "closed" && <Badge tone="neutral">Closed</Badge>}
+          </div>
         </div>
+        {askServeEnabled && (
+          <AskServeTrigger
+            context={buildAskServeContext(RELATIONSHIPS_CONTEXT, {
+              surface: "relationship_detail",
+              route: `/relationships/${id}`,
+              pageTitle: relationship.display_name,
+              subjectType: "relationship",
+              subjectId: id,
+              subjectLabel: relationship.display_name,
+              userRole: profile?.role ?? undefined,
+            })}
+            label="Ask Serve about this relationship"
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -127,7 +163,11 @@ export default async function RelationshipDetailPage({
           </div>
 
           <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
-            <RelationshipInteractionsSection relationshipId={id} interactions={interactions} />
+            <RelationshipInteractionsSection
+              relationshipId={id}
+              interactions={interactions}
+              suggestionsByInteraction={suggestionsByInteraction}
+            />
           </div>
 
           <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">

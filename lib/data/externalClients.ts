@@ -180,6 +180,10 @@ export interface ConvertExternalProspectToNewResidentInput {
   communityName: string | null;
   unitNumber: string | null;
   phone: string | null;
+  // The true, unmodified value the reviewer entered — distinct from
+  // `phone` (validated/normalized, null when invalid). See
+  // supabase/migrations/20260807000000_create_resident_data_integrity.sql.
+  phoneRaw: string | null;
   email: string | null;
   familyContactName: string | null;
   familyContactRelationship: string | null;
@@ -201,6 +205,7 @@ export async function convertExternalProspectToNewResident(
     p_community_name: input.communityName,
     p_unit_number: input.unitNumber,
     p_phone: input.phone,
+    p_phone_raw: input.phoneRaw,
     p_email: input.email,
     p_family_contact_name: input.familyContactName,
     p_family_contact_relationship: input.familyContactRelationship,

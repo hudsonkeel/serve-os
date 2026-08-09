@@ -1,6 +1,11 @@
 import { PageContainer } from "@/components/PageContainer";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
+import { buildAskServeContext } from "@/lib/askServe/buildContext";
+import { COMMUNITY_OUTLOOK_CONTEXT } from "@/lib/askServe/areaContexts";
 
 // Community Intelligence is proactive, system-initiated pattern-surfacing —
 // distinct from Ask Serve's user-initiated, on-demand reasoning. See
@@ -50,15 +55,26 @@ const insightCategories = [
   },
 ];
 
-export default function CommunityIntelligencePage() {
+export default async function CommunityIntelligencePage() {
+  const profile = await getCurrentAuthorizedUser();
+  const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
+
   return (
-    <PageContainer title="Community Intelligence">
-      <div className="mb-6">
-        <h1 className="font-serif text-page-title font-light text-body">Community Intelligence</h1>
-        <p className="mt-1 font-sans text-base text-muted">
-          Proactive patterns, risks, opportunities, and operational insights across the
-          community.
-        </p>
+    <PageContainer title="Community Outlook">
+      <div className="mb-6 flex items-start justify-between gap-6">
+        <div>
+          <h1 className="font-serif text-page-title font-light text-body">Community Outlook</h1>
+          <p className="mt-1 font-sans text-base text-muted">
+            Proactive patterns, risks, opportunities, and operational insights across the
+            community.
+          </p>
+        </div>
+        {askServeEnabled && (
+          <AskServeTrigger
+            context={buildAskServeContext(COMMUNITY_OUTLOOK_CONTEXT, { userRole: profile?.role ?? undefined })}
+            label="Ask Serve about this community"
+          />
+        )}
       </div>
 
       <div className="mb-8 rounded-xl border border-gold/30 bg-gold/5 px-6 py-4">

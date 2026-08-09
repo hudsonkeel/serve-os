@@ -8,6 +8,7 @@ import type {
   RelationshipInsight,
   RelationshipInteractionParticipant,
   RelationshipInteractionResult,
+  RelationshipInteractionSuggestion,
   RelationshipOpenLoop,
   RelationshipPriority,
   RelationshipServiceLocation,
@@ -1442,4 +1443,115 @@ export async function resolveRelationshipOpenLoop(
   }
 
   return {};
+}
+
+// ─── Interaction Suggestion Review ─────────────────────────────────────
+// Deterministically-generated (never AI-fabricated — see
+// lib/relationships/suggestionEngine.ts) candidate downstream updates from
+// a logged Interaction, reviewed and approved/edited/dismissed one at a
+// time before anything is written to a canonical table.
+
+export interface InteractionSuggestionInput {
+  suggestionType: string;
+  payload: Record<string, unknown>;
+  rationale: string;
+}
+
+export async function createInteractionSuggestions(
+  sourceInteractionId: string,
+  relationshipId: string,
+  suggestions: readonly InteractionSuggestionInput[],
+  actor: string,
+): Promise<{ suggestions?: RelationshipInteractionSuggestion[]; error?: string }> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase.rpc("generate_interaction_suggestions", {
+    p_source_interaction_id: sourceInteractionId,
+    p_relationship_id: relationshipId,
+    p_suggestions: suggestions.map((s) => ({
+      suggestionType: s.suggestionType,
+      payload: s.payload,
+      rationale: s.rationale,
+    })),
+    p_actor: actor,
+  });
+
+  if (error) {
+    console.error("[relationships:createInteractionSuggestions:error]", {
+      sourceInteractionId,
+      relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not generate suggestions for this interaction." };
+  }
+
+  return { suggestions: (data as RelationshipInteractionSuggestion[] | null) ?? [] };
+}
+
+export async function getInteractionSuggestionsByRelationship(
+  relationshipId: string,
+): Promise<RelationshipInteractionSuggestion[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("relationship_interaction_suggestions")
+    .select("*")
+    .eq("relationship_id", relationshipId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("[relationships:getInteractionSuggestionsByRelationship:error]", {
+      relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return [];
+  }
+
+  return (data as RelationshipInteractionSuggestion[] | null) ?? [];
+}
+
+export async function approveInteractionSuggestion(
+  suggestionId: string,
+  editedPayload: Record<string, unknown> | null,
+  actor: string,
+): Promise<{ suggestion?: RelationshipInteractionSuggestion; error?: string }> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase.rpc("approve_interaction_suggestion", {
+    p_suggestion_id: suggestionId,
+    p_edited_payload: editedPayload,
+    p_actor: actor,
+  });
+
+  if (error) {
+    console.error("[relationships:approveInteractionSuggestion:error]", {
+      suggestionId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not approve this suggestion." };
+  }
+
+  return { suggestion: data as RelationshipInteractionSuggestion };
+}
+
+export async function dismissInteractionSuggestion(
+  suggestionId: string,
+  actor: string,
+): Promise<{ suggestion?: RelationshipInteractionSuggestion; error?: string }> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase.rpc("dismiss_interaction_suggestion", {
+    p_suggestion_id: suggestionId,
+    p_actor: actor,
+  });
+
+  if (error) {
+    console.error("[relationships:dismissInteractionSuggestion:error]", {
+      suggestionId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not dismiss this suggestion." };
+  }
+
+  return { suggestion: data as RelationshipInteractionSuggestion };
 }

@@ -3,12 +3,19 @@ import { getRelationshipBoardRows } from "@/lib/data/relationships";
 import { getRelationshipAttentionStatus } from "@/lib/relationships/attention";
 import { Whiteboard, type WhiteboardRow } from "@/components/relationships/Whiteboard";
 import { RelationshipViewTabs } from "@/components/relationships/RelationshipViewTabs";
+import { PeopleWeServeTabs } from "@/components/peopleWeServe/PeopleWeServeTabs";
+import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
+import { buildAskServeContext } from "@/lib/askServe/buildContext";
+import { RELATIONSHIPS_CONTEXT } from "@/lib/askServe/areaContexts";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function RelationshipWhiteboardPage() {
-  const boardRows = await getRelationshipBoardRows();
+  const [boardRows, profile] = await Promise.all([getRelationshipBoardRows(), getCurrentAuthorizedUser()]);
+  const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
 
   const rows: WhiteboardRow[] = boardRows.map((row) => {
     const nearestOpenActionDueAt = row.nearestAction ? row.nearestAction.dueAt : undefined;
@@ -24,7 +31,8 @@ export default async function RelationshipWhiteboardPage() {
   });
 
   return (
-    <PageContainer title="Operational Whiteboard">
+    <PageContainer title="The People We Serve · Whiteboard">
+      <PeopleWeServeTabs active="relationships" />
       <RelationshipViewTabs active="whiteboard" />
       <div className="mb-6 flex items-baseline justify-between">
         <div>
@@ -33,9 +41,22 @@ export default async function RelationshipWhiteboardPage() {
             Where every active relationship currently stands.
           </p>
         </div>
-        <span className="font-sans text-base font-medium text-muted">
-          {rows.length} relationship{rows.length === 1 ? "" : "s"}
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="font-sans text-base font-medium text-muted">
+            {rows.length} relationship{rows.length === 1 ? "" : "s"}
+          </span>
+          {askServeEnabled && (
+            <AskServeTrigger
+              context={buildAskServeContext(RELATIONSHIPS_CONTEXT, {
+                surface: "relationship_whiteboard",
+                route: "/relationships/whiteboard",
+                pageTitle: "The People We Serve · Whiteboard",
+                userRole: profile?.role ?? undefined,
+              })}
+              label="Ask Serve about this pipeline"
+            />
+          )}
+        </div>
       </div>
 
       <Whiteboard rows={rows} />
