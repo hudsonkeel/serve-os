@@ -6,14 +6,17 @@ instruction.** Delivered for review.
 | | SHA |
 |---|---|
 | Starting | `0e0bfc4a2cbb663e508d7127284000b1f1885fc3` (main, "feat: add Capture Assessment entry point to resident profile") |
-| Ending | `f8912d4060d11e8c8756ba0e5296beebc753c73a` |
+| Ending | `e16842ed8bf0e84837c87cf7a30f493c9bd220cd` |
 
-**Commits created: 1** — `f8912d4 feat: assessment-to-client operationalization` (26 files
-changed, 3390 insertions, 65 deletions). Kept as one commit deliberately: every piece
-(migration, pure logic, data layer, actions, UI) is interdependent — the migration alone
-doesn't typecheck against code that references its tables, and the UI doesn't work without
-the actions/data layer beneath it. Splitting it would have produced intermediate commits that
-don't build.
+**Commits created: 2**:
+- `f8912d4 feat: assessment-to-client operationalization` (26 files changed, 3390 insertions,
+  65 deletions) — every piece of the feature (migration, pure logic, data layer, actions, UI)
+  in one commit, deliberately: the migration alone doesn't typecheck against code that
+  references its tables, and the UI doesn't work without the actions/data layer beneath it.
+  Splitting it would have produced intermediate commits that don't build.
+- `e16842e docs: final report for assessment-to-client operationalization` — this file, added
+  after the feature commit since it documents the completed result (including this report's
+  own final SHA, which could only be known once written).
 
 ---
 
