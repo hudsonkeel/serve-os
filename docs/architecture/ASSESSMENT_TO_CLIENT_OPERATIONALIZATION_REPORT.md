@@ -163,29 +163,68 @@ tool here) — see Blockers.
 
 ## 10. Remaining blockers
 
-1. **The migration has not been applied to any database.** Same environment limitation
-   encountered throughout this project — no Supabase CLI auth or direct DB connection here.
-   `supabase/migrations/20260901000000_create_assessment_intelligence_layer.sql` needs to be
-   run (SQL editor, or `supabase db push` once linked) before any of this code can succeed
-   against real data. It is additive-only and was written defensively (dynamic constraint
-   lookup, `IF NOT EXISTS`/`OR REPLACE` throughout) — see the file's own header for the exact
-   scope guarantee.
-2. **`OPENAI_API_KEY` is not configured anywhere in `serve-os`** (confirmed by direct grep of
-   `.env.local`/`.env.example`/`package.json` before building the extraction pipeline — this
-   repo never had OpenAI wired in before). `openai` and `zod` were added as new npm
-   dependencies (`npm install` already run, `package-lock.json` updated and committed).
-   Extraction will fail cleanly with a clear "Missing OPENAI_API_KEY" error, not silently, until
-   a real key is configured — not fabricated here.
-3. **No live end-to-end test was possible** — no DB, no browser, no OpenAI key together mean
-   the full pipeline (paste → extract → review → approve → price → preview) has only been
-   verified at the unit-test level (pure logic) plus a clean production build (everything wires
-   together correctly at compile time). See Manual QA below for what a human needs to do once
-   the two blockers above are resolved.
+### 10.1 Migration — RESOLVED (2026-08-11)
 
-None of these are code defects — they're the same class of "needs a credential/connection this
-environment doesn't have" gap that showed up at every prior stage of this project, handled the
-same way: build correctly, fail loudly and clearly rather than fake success, flag precisely
-what's needed.
+The user applied `supabase/migrations/20260901000000_create_assessment_intelligence_layer.sql`
+directly via the Supabase SQL Editor against production. This is the **only** migration file
+this branch introduces (`git diff main...feature/assessment-to-client-operationalization --stat
+-- supabase/migrations/` shows exactly one file, 330 insertions).
+
+Verified live, this session, via direct PostgREST calls against `serve-os`'s Supabase project
+using the service-role key already present in `.env.local` (no direct Postgres connection was
+available or needed for this check):
+
+| Object | Check | Result |
+|---|---|---|
+| `intake_transcript_segments` | `GET /rest/v1/intake_transcript_segments?select=id&limit=0` | **PASS** — `200` |
+| `assessment_draft_facts` | same pattern | **PASS** — `200` |
+| `assessment_fact_conflicts` | same pattern | **PASS** — `200` |
+| `assessment_approved_facts` | same pattern | **PASS** — `200` |
+| `assessment_decisions` | same pattern | **PASS** — `200` |
+| `assessment_outputs` | same pattern | **PASS** — `200` |
+| `approve_assessment_session` RPC exists and runs its real body | called with a nonexistent session id | **PASS** — returned `P0001: assessment session ... not found`, raised from inside the function, not a "function does not exist" error |
+| `intake_assessment_sessions.status` CHECK widened to allow `'operationalized'` | created a throwaway resident (via `create_provisional_resident_from_intake`) + a real session, `PATCH`'d its status to `'operationalized'` | **PASS** — `200`, accepted; both rows then deleted, residual count confirmed `0` |
+
+All test data created for this check was deleted immediately after and confirmed gone. No
+`information_schema`/`pg_catalog` access was available or used — every result above is proven
+by live behavior against the real tables/RPC, not by inspecting stored definitions.
+
+This blocker is closed. The migration-not-applied caveat in §8/§11 no longer applies.
+
+### 10.2 `OPENAI_API_KEY` — still not configured in `serve-os`; a candidate credential exists but reuse is a decision, not yet made
+
+Confirmed again this session (`serve-os/.env.local` has no `OPENAI_API_KEY` key at all; neither
+does the `os-servecaregiving` or `serve-intake` Netlify site's live environment — checked via
+`netlify api getEnvVars` against both sites' actual configured keys, names only).
+
+An `OPENAI_API_KEY` **does** exist, but only in `serve-intake-mvp/.env` (name confirmed via
+grep; value never read or displayed). Before treating that as reusable, it's worth being
+explicit about what it actually is: it lives in the **local, non-deployed** env file of the old
+pre-Netlify Serve Intake prototype — it was never part of the Netlify Functions site
+(`serve-intake`'s deployed env vars are exactly `SERVE_SHARED_SUPABASE_URL` and
+`SERVE_SHARED_SUPABASE_SERVICE_ROLE_KEY`, confirmed above), and Vertical Slice 2 explicitly
+never exercised transcription/extraction/live prompts. So this key has no known production
+usage today — its validity, quota, billing owner, and org scoping are all unknown from the
+filesystem alone.
+
+**Recommendation, not yet actioned**: don't silently copy it. A key of unknown provenance and
+unknown quota being pointed at a new, governed, production PHI-adjacent extraction pipeline is
+exactly the kind of decision this project's standing instruction says to surface rather than
+choose unilaterally. Two reasonable paths, either is fine — this needs your call:
+- Confirm the `serve-intake-mvp` key is still valid and intended for reuse, and if so I can move
+  it into `serve-os`'s env (locally now, and to the Netlify site's env vars for deploy) without
+  ever printing its value.
+- Or provision a fresh key scoped specifically to `serve-os`, which avoids coupling two
+  unrelated apps' billing/rate limits to one credential.
+
+Until one of those happens, extraction remains blocked — by design, it fails with a clear
+"Missing OPENAI_API_KEY" error rather than fabricating output.
+
+### 10.3 No live end-to-end test yet
+
+With §10.1 resolved, the remaining gap to a full live run is purely §10.2. No browser-automation
+tool exists in this environment either, so even once a key is configured, the UI click-path
+itself would still need a human (see Manual QA below).
 
 ## 11. Manual QA instructions
 
