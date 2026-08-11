@@ -15,7 +15,8 @@ import { getRelationshipsByResident } from "@/lib/data/relationships";
 import { StartRelationshipCard } from "@/components/residents/StartRelationshipCard";
 import { getResidentTimeline } from "@/lib/data/residentTimeline";
 import { ResidentMemory } from "@/components/residents/ResidentMemory";
-import { CaptureAssessmentButton } from "@/components/residents/CaptureAssessmentButton";
+import { AssessmentSection } from "@/components/residents/AssessmentSection";
+import { getAssessmentSessionsForResident } from "@/lib/data/assessmentIntelligence";
 import { Badge } from "@/components/ui/Badge";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
@@ -128,6 +129,7 @@ export default async function ResidentDetailPage({
   const workingNotes = await getResidentWorkingNotes(id);
   const timelineEvents = await getResidentTimeline(id);
   const relationships = await getRelationshipsByResident(id);
+  const assessmentSessions = await getAssessmentSessionsForResident(id);
 
   const resident = record.resident;
   const contactName =
@@ -477,9 +479,10 @@ export default async function ResidentDetailPage({
 
           <GettingToKnow residentId={id} connections={connections} />
 
-          <CaptureAssessmentButton
+          <AssessmentSection
             residentId={id}
             residentName={record.residentDisplayName}
+            sessions={assessmentSessions}
           />
 
           <WellnessNotes
