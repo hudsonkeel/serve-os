@@ -271,6 +271,96 @@ opened directly once the blockers in §10 are resolved.
 - All pre-existing test suites (residents, auth, relationships, AxisCare) pass identically to
   before this work began.
 
+## 14. Live OpenAI-backed synthetic validation (2026-08-11)
+
+### 14.1 Credential handling
+
+A fresh, Serve-specific OpenAI credential (Serve Caregiving API organization/project — not the
+legacy `serve-intake-mvp` key, which remains unused and untouched) was configured by the user as
+`OPENAI_API_KEY` on the `os-servecaregiving` Netlify site, across all contexts (`dev`,
+`branch-deploy`, `deploy-preview`, `production`), marked `is_secret: true`. Its value was never
+read, printed, logged, or committed at any point in this process — confirmed structurally, since
+Netlify does not return secret-scoped values via its API at all.
+
+**BAA / Modified Retention status**: submitted to OpenAI, not yet confirmed complete. Per
+explicit instruction, this entire validation pass used only fabricated synthetic personas —
+never a real Serve resident, prospect, or client, and no real PHI of any kind. See §14.3.
+
+A fresh `branch-deploy` build was triggered for this exact branch (via a temporary Netlify build
+hook, created and deleted within this session) to guarantee the credential was available to that
+deploy context — completed `ready` at commit `9cd3e3e` before this validation ran.
+
+### 14.2 How the validation was executed
+
+No browser-automation tool exists in this environment, and this app's assessment-intelligence
+entry points are Next.js Server Actions (not directly invocable over HTTP without a real
+authenticated Serve OS session). Consistent with how every other live check in this project was
+done — direct execution of the real application code against the real Supabase project — the
+full pipeline was exercised via a temporary script
+(`scripts/_tmp_live_synthetic_validation.ts`, never committed, deleted immediately after this
+run) that imports and calls the actual production modules directly: `extractFactsFromTranscript`
+(real OpenAI call), the `assessment_*` data-layer functions, `computeReviewExceptions`,
+`recommendPricing`, `computeAxisCareReadiness`/`buildAxisCarePayloadPreview`,
+`buildCinchProjection`. The script ran via `netlify dev:exec --context dev`, which injects the
+Netlify-configured environment (including the real `OPENAI_API_KEY`) directly into the script's
+process — the credential never passed through any command whose output I could see.
+
+Two synthetic cases, both against the real OpenAI API and the real Supabase project:
+
+- **Case A** — a fabricated daughter/assessor conversation describing confirmed bathing and
+  toileting needs, an explicit "no recent falls," and an explicit "not sure" about memory —
+  deliberately never mentions cognition/wandering, allergies, or a diagnosis, to exercise
+  "not discussed stays unknown."
+- **Case B** — a fabricated son/assessor check-in call that discusses no care needs at all, to
+  exercise the pricing-exception path.
+
+Both personas were named `ZZTEST SYNTHETIC Validation Person A/B` — obviously fake, never
+resembling a real Serve resident — and both, plus every row they produced, were deleted
+immediately after the run.
+
+### 14.3 Stage-by-stage results — all against actual persisted database rows
+
+| Stage | Case A | Case B |
+|---|---|---|
+| Source-agnostic transcript boundary (`getCombinedTranscriptText` returns exactly what was written) | PASS | PASS |
+| Extraction succeeds through the real OpenAI API call | PASS — `model=gpt-5-mini`, 8 accepted, 0 rejected, no parse error | PASS — `model=gpt-5-mini`, 6 accepted, 0 rejected, no parse error |
+| Unknown never silently becomes false (no accepted fact is an affirmative/negative claim with confidence "none") | PASS — 0 violations | PASS — 0 violations |
+| Extracted facts persist correctly (`assessment_draft_facts` row count matches accepted count) | PASS — 8 written = 8 persisted | PASS — 6 written = 6 persisted |
+| Exception review behaves as designed | PASS — 1 uncertain (the model's own "not sure about memory" statement — a live, not synthetic-in-code, uncertain fact), 5 missing_required, 0 conflicting, 7 clear | PASS — 0 uncertain, 5 missing_required, 0 conflicting, 6 clear |
+| Not-discussed fields never become fabricated negative facts | PASS — every `missing_required` exception (e.g. `cognition.wandering`, `health.allergies`) carries zero facts, never a manufactured "No" | PASS — same |
+| Approval RPC succeeds (`approve_assessment_session`) | PASS | PASS |
+| Approved facts persist separately from draft facts | PASS — 7 `assessment_approved_facts` rows written; all 8 original `assessment_draft_facts` rows remain unchanged (draft table is never mutated by approval) | PASS — 6 approved rows; all 6 draft rows unchanged |
+| Session status transitions to `approved` | PASS | PASS |
+| Deterministic pricing consumes approved facts only, matches this case's design | PASS — `recommended`, Comfort Service, from `recommendPricing()` called with only the 7 approved rows | PASS — `pricing_review_required`, "do not clearly map to a published service tier" |
+| Pricing decision persists (`assessment_decisions`) | PASS | PASS |
+| AxisCare readiness computed; no identity link exists for a throwaway resident | PASS — `status: null` | PASS — `status: null` |
+| AxisCare output persists as preview only | PASS — `assessment_outputs` row, `output_type='axiscare_payload_preview'`, `status='draft'` | PASS — same |
+| Cinch projection persists as draft only | PASS — `output_type='cinch_projection'`, `status='draft'` | PASS — same |
+| AxisCare/Cinch outputs never claim sent/approved | PASS — both output rows `status='draft'` in both cases; no AxisCare write path exists anywhere in this codebase to have called even if attempted | PASS |
+| Cleanup — all rows across residents/sessions/sources/draft facts/conflicts/approved facts/decisions/outputs deleted, residual count re-queried | PASS — 0 residual | PASS — 0 residual |
+
+**32/32 checks passed.**
+
+**One sub-path this pass did not exercise live**: neither synthetic transcript caused the model
+to produce two contradictory `confirmed_yes`/`confirmed_no` statements for the same field, so
+the "open conflict blocks approval" branch wasn't hit by real model output this run. That branch
+remains verified by `reviewExceptions.test.ts`'s deterministic unit test (pure function, not
+dependent on model behavior) — not a gap in the governing logic, just something this particular
+live pass didn't happen to trigger.
+
+**No real PHI was sent to OpenAI at any point in this validation** — both transcripts were
+entirely fabricated dialogue about fabricated personas; no real Serve resident, prospect, or
+client's name, history, or data was used or referenced.
+
 ---
 
-## READY FOR REVIEW — not merged to `main`, per instruction.
+## READY FOR MERGE REVIEW — not merged to `main`, per instruction.
+
+Migration confirmed live (§10.1). Fresh Serve-specific OpenAI credential configured without its
+value ever being exposed, and the full pipeline validated end-to-end against the real OpenAI API
+and real Supabase project using only synthetic data (§14) — extraction, persistence, epistemic
+guarantees, exception review, approval, deterministic pricing (both the recommended and
+review-required paths), and AxisCare/Cinch preview-only behavior all confirmed by actual
+persisted rows, not simulated. Real-PHI use remains explicitly gated on the user's confirmation
+of BAA execution and Modified Retention provisioning — not yet given, correctly not attempted
+here.

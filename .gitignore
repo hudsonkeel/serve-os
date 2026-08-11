@@ -48,3 +48,6 @@ next-env.d.ts
 /docs/workforce/Caregiver EMR/
 /docs/workforce/Caregiver NAR/
 /data/
+
+# Local Netlify folder
+.netlify
