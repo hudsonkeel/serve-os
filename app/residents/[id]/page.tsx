@@ -15,6 +15,7 @@ import { getRelationshipsByResident } from "@/lib/data/relationships";
 import { StartRelationshipCard } from "@/components/residents/StartRelationshipCard";
 import { getResidentTimeline } from "@/lib/data/residentTimeline";
 import { ResidentMemory } from "@/components/residents/ResidentMemory";
+import { CaptureAssessmentButton } from "@/components/residents/CaptureAssessmentButton";
 import { Badge } from "@/components/ui/Badge";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
@@ -476,9 +477,9 @@ export default async function ResidentDetailPage({
 
           <GettingToKnow residentId={id} connections={connections} />
 
-          <PlaceholderSection
-            title="Assessment History"
-            description="Completed and scheduled assessments will appear here."
+          <CaptureAssessmentButton
+            residentId={id}
+            residentName={record.residentDisplayName}
           />
 
           <WellnessNotes
