@@ -36,6 +36,47 @@ test("exact string 'true' confirms", () => {
   restoreEnv();
 });
 
+const ORIGINAL_SYNTHETIC = process.env.PHI_SYNTHETIC_TEST_MODE;
+function restoreSyntheticEnv() {
+  if (ORIGINAL_SYNTHETIC === undefined) delete process.env.PHI_SYNTHETIC_TEST_MODE;
+  else process.env.PHI_SYNTHETIC_TEST_MODE = ORIGINAL_SYNTHETIC;
+}
+
+test("SYNTHETIC OVERRIDE: requesting it without the separate PHI_SYNTHETIC_TEST_MODE flag still fails closed, and does NOT fall back to checking PHI_OPENAI_PROCESSING_CONFIRMED", () => {
+  delete process.env.PHI_SYNTHETIC_TEST_MODE;
+  process.env.PHI_OPENAI_PROCESSING_CONFIRMED = "true"; // even if the PRODUCTION flag is on...
+  assert.equal(isPhiOpenAiProcessingConfirmed({ syntheticTestOverride: true }), false); // ...the override still requires its own flag
+  assert.throws(() => requirePhiOpenAiProcessingConfirmed({ syntheticTestOverride: true }));
+  restoreEnv();
+  restoreSyntheticEnv();
+});
+
+test("SYNTHETIC OVERRIDE: setting PHI_SYNTHETIC_TEST_MODE alone does NOT satisfy the production gate (no override requested)", () => {
+  delete process.env.PHI_OPENAI_PROCESSING_CONFIRMED;
+  process.env.PHI_SYNTHETIC_TEST_MODE = "synthetic-only-not-for-production";
+  assert.equal(isPhiOpenAiProcessingConfirmed(), false);
+  assert.throws(() => requirePhiOpenAiProcessingConfirmed());
+  restoreEnv();
+  restoreSyntheticEnv();
+});
+
+test("SYNTHETIC OVERRIDE: with syntheticTestOverride requested AND the exact expected flag value set, the override succeeds", () => {
+  delete process.env.PHI_OPENAI_PROCESSING_CONFIRMED;
+  process.env.PHI_SYNTHETIC_TEST_MODE = "synthetic-only-not-for-production";
+  assert.equal(isPhiOpenAiProcessingConfirmed({ syntheticTestOverride: true }), true);
+  assert.doesNotThrow(() => requirePhiOpenAiProcessingConfirmed({ syntheticTestOverride: true }));
+  restoreEnv();
+  restoreSyntheticEnv();
+});
+
+test("SYNTHETIC OVERRIDE: a near-miss value (not the exact expected string) fails closed", () => {
+  for (const v of ["true", "synthetic", "SYNTHETIC-ONLY-NOT-FOR-PRODUCTION", "synthetic-only-not-for-production "]) {
+    process.env.PHI_SYNTHETIC_TEST_MODE = v;
+    assert.equal(isPhiOpenAiProcessingConfirmed({ syntheticTestOverride: true }), false, `expected "${v}" to NOT activate the override`);
+  }
+  restoreSyntheticEnv();
+});
+
 let passed = 0;
 for (const t of tests) {
   try {

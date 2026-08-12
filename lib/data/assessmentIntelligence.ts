@@ -473,6 +473,37 @@ export async function updateSourceTranscriptText(sourceId: string, transcriptTex
   return true;
 }
 
+/** Records whether every chunk transcribed successfully, durably, in source_payload — so a
+ * partial transcription (some chunks failed) is visible to anyone reviewing the session later,
+ * not just present in an ephemeral function-call return value nobody may have looked at. Never
+ * silently presents a partial transcript as complete. */
+export async function recordTranscriptionOutcome(input: {
+  sourceId: string;
+  totalChunks: number;
+  succeededChunks: number;
+  failedChunkPaths: string[];
+}): Promise<boolean> {
+  const supabase = createServerClient();
+  const { data: existing } = await supabase.from("intake_sources").select("source_payload").eq("id", input.sourceId).maybeSingle();
+  const { error } = await supabase
+    .from("intake_sources")
+    .update({
+      source_payload: {
+        ...((existing as { source_payload?: Record<string, unknown> } | null)?.source_payload ?? {}),
+        transcription_status: input.failedChunkPaths.length > 0 ? "partial" : "complete",
+        transcription_total_chunks: input.totalChunks,
+        transcription_succeeded_chunks: input.succeededChunks,
+        transcription_failed_chunk_paths: input.failedChunkPaths,
+      },
+    })
+    .eq("id", input.sourceId);
+  if (error) {
+    console.error("[recordTranscriptionOutcome]", { message: error.message });
+    return false;
+  }
+  return true;
+}
+
 /** Reuses the EXISTING governed identity-resolution mechanism — never a parallel query. */
 export async function getAxisCareIdentityLinkState(residentId: string): Promise<AxisCareIdentityLinkState> {
   const links = await getPersonVendorIdentityLinksForSubject("resident", residentId);

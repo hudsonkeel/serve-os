@@ -13,8 +13,15 @@ test("PHI GATE: the automatic audio pipeline refuses a real session id when the 
   // database layer it would need real Supabase credentials configured; it must not get there.
   const result = await transcribeAndExtractAssessmentAudio("00000000-0000-0000-0000-000000000000");
   assert.equal(result.phiGateBlocked, true);
-  assert.match(result.error ?? "", /PHI_OPENAI_PROCESSING_CONFIRMED/);
+  assert.match(result.error ?? "", /PHI processing is not confirmed/);
   assert.equal(result.draftFactCount, undefined, "must not have attempted extraction");
+});
+
+test("SYNTHETIC OVERRIDE: requesting it without PHI_SYNTHETIC_TEST_MODE set still refuses a real session id, before ever touching the database — the override is not a blanket bypass", async () => {
+  delete process.env.PHI_OPENAI_PROCESSING_CONFIRMED;
+  delete process.env.PHI_SYNTHETIC_TEST_MODE;
+  const result = await transcribeAndExtractAssessmentAudio("00000000-0000-0000-0000-000000000000", { syntheticTestOverride: true });
+  assert.equal(result.phiGateBlocked, true);
 });
 
 let passed = 0;

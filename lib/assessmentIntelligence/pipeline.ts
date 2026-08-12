@@ -10,10 +10,11 @@ import {
   downloadAudioChunksForSession,
   writeTranscriptSegments,
   updateSourceTranscriptText,
+  recordTranscriptionOutcome,
 } from "../data/assessmentIntelligence.ts";
 import { extractFactsFromTranscript } from "./extraction.ts";
 import { transcribeAudioChunks } from "./transcription.ts";
-import { isPhiOpenAiProcessingConfirmed } from "./phiGovernance.ts";
+import { isPhiOpenAiProcessingConfirmed, type PhiGateOverride } from "./phiGovernance.ts";
 
 // The shared tail of both entry points into extraction (pasted-transcript admin/test fallback,
 // and the real captured-audio pipeline below) — one pipeline, two ways in, per the
@@ -58,8 +59,10 @@ export async function runExtractionPipelineForSession(
 export interface TranscribeAndExtractResult {
   error?: string;
   phiGateBlocked?: boolean;
+  alreadyProcessed?: boolean;
   chunksTranscribed?: number;
   chunksFailed?: number;
+  partial?: boolean;
   draftFactCount?: number;
   rejectedCount?: number;
 }
@@ -68,12 +71,20 @@ export interface TranscribeAndExtractResult {
  * app/api/intake/transcribe/route.ts after that route has verified the shared webhook secret.
  * Deliberately NOT exported from a "use server" actions file: this function has no human-session
  * check (there is no Serve OS user in a webhook call from serve-intake-mvp), so it must never be
- * reachable as a directly callable Next.js Server Action. */
-export async function transcribeAndExtractAssessmentAudio(assessmentSessionId: string): Promise<TranscribeAndExtractResult> {
-  if (!isPhiOpenAiProcessingConfirmed()) {
+ * reachable as a directly callable Next.js Server Action.
+ *
+ * `gateOverride` defaults to undefined, which means the strict production PHI gate applies —
+ * the production webhook route never passes anything else. Only a dedicated, manually-run
+ * synthetic-data validation script passes `{ syntheticTestOverride: true }`, and even then
+ * phiGovernance.ts requires a second, separate flag to actually be set before it does anything. */
+export async function transcribeAndExtractAssessmentAudio(
+  assessmentSessionId: string,
+  gateOverride?: PhiGateOverride
+): Promise<TranscribeAndExtractResult> {
+  if (!isPhiOpenAiProcessingConfirmed(gateOverride)) {
     return {
       error:
-        "PHI_OPENAI_PROCESSING_CONFIRMED is not set to 'true' — real captured audio may not be transcribed until a human has confirmed the BAA is executed and Modified Retention is provisioned.",
+        "PHI processing is not confirmed for this call — real captured audio may not be transcribed until a human has confirmed the BAA is executed and Modified Retention is provisioned.",
       phiGateBlocked: true,
     };
   }
@@ -84,6 +95,14 @@ export async function transcribeAndExtractAssessmentAudio(assessmentSessionId: s
     return { error: `Audio source status is '${source.status}', not yet 'uploaded' — nothing to transcribe.` };
   }
 
+  // Idempotency guard: a retried/duplicate webhook call for a session that was already
+  // transcribed must not re-transcribe, re-insert a second set of segments, or re-run
+  // extraction a second time (which would duplicate draft facts). transcript_text is only ever
+  // set once, by this same function, so its presence is a reliable "already done" signal.
+  if (source.transcript_text !== null) {
+    return { alreadyProcessed: true };
+  }
+
   const session = await getAssessmentSession(assessmentSessionId);
   if (!session) return { error: "Assessment session not found." };
 
@@ -91,14 +110,22 @@ export async function transcribeAndExtractAssessmentAudio(assessmentSessionId: s
   if (chunks.length === 0) return { error: "No audio chunks found in storage for this session." };
 
   const transcription = await transcribeAudioChunks(
-    chunks.map((c) => ({ path: c.path, bytes: c.bytes, mimeType: c.mimeType }))
+    chunks.map((c) => ({ path: c.path, bytes: c.bytes, mimeType: c.mimeType })),
+    gateOverride
   );
 
   if (transcription.segments.length === 0) {
+    await recordTranscriptionOutcome({
+      sourceId: source.id,
+      totalChunks: chunks.length,
+      succeededChunks: 0,
+      failedChunkPaths: transcription.failedChunks.map((f) => f.path),
+    });
     return {
       error: "Transcription produced no usable text from any chunk.",
       chunksTranscribed: 0,
       chunksFailed: transcription.failedChunks.length,
+      partial: false,
     };
   }
 
@@ -114,11 +141,23 @@ export async function transcribeAndExtractAssessmentAudio(assessmentSessionId: s
     .join(" ");
   await updateSourceTranscriptText(source.id, combinedText);
 
+  // Recorded durably regardless of outcome — a partial transcript (some chunks failed) must
+  // stay visible to anyone reviewing this session later, not just present in this function's
+  // return value for whichever caller happened to be watching when it ran.
+  const isPartial = transcription.failedChunks.length > 0;
+  await recordTranscriptionOutcome({
+    sourceId: source.id,
+    totalChunks: chunks.length,
+    succeededChunks: transcription.segments.length,
+    failedChunkPaths: transcription.failedChunks.map((f) => f.path),
+  });
+
   const pipelineResult = await runExtractionPipelineForSession(assessmentSessionId, session.resident_id, source.id);
 
   return {
     ...pipelineResult,
     chunksTranscribed: transcription.segments.length,
     chunksFailed: transcription.failedChunks.length,
+    partial: isPartial,
   };
 }

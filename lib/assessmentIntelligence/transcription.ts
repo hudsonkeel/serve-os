@@ -1,6 +1,6 @@
 import "server-only";
 import OpenAI, { toFile } from "openai";
-import { requirePhiOpenAiProcessingConfirmed } from "./phiGovernance.ts";
+import { requirePhiOpenAiProcessingConfirmed, type PhiGateOverride } from "./phiGovernance.ts";
 
 // Transcribes captured audio chunks into text segments — the second half of the
 // source-agnostic transcript boundary (docs/architecture/
@@ -54,8 +54,8 @@ export function chunkIndexFromPath(path: string): number {
  * captured audio unless requirePhiOpenAiProcessingConfirmed() has already passed — callers must
  * not skip that check; it is re-asserted here too, defensively, since this function is the one
  * place a network call to OpenAI with real audio bytes would actually happen. */
-export async function transcribeAudioChunks(chunks: AudioChunk[]): Promise<TranscriptionResult> {
-  requirePhiOpenAiProcessingConfirmed();
+export async function transcribeAudioChunks(chunks: AudioChunk[], gateOverride?: PhiGateOverride): Promise<TranscriptionResult> {
+  requirePhiOpenAiProcessingConfirmed(gateOverride);
 
   if (chunks.length === 0) {
     return { segments: [], modelVersion: MODEL, failedChunks: [] };
