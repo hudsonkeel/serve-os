@@ -6,9 +6,6 @@ import { createServerClient } from "@/lib/supabase/server";
 import {
   createPastedTranscriptSource,
   updateAssessmentSessionStatus,
-  getCombinedTranscriptText,
-  writeDraftFacts,
-  detectAndRecordConflicts,
   getDraftFactsForSession,
   getOpenConflictsForSession,
   getApprovedFactsForResident,
@@ -18,7 +15,7 @@ import {
   getAssessmentSession,
   getAxisCareIdentityLinkState,
 } from "@/lib/data/assessmentIntelligence";
-import { extractFactsFromTranscript } from "@/lib/assessmentIntelligence/extraction";
+import { runExtractionPipelineForSession } from "@/lib/assessmentIntelligence/pipeline";
 import { computeReviewExceptions, type DraftFactForReview } from "@/lib/assessmentIntelligence/reviewExceptions";
 import { recommendPricing, PRICING_RULES_VERSION, type FactForPricing } from "@/lib/assessmentIntelligence/pricingEngine";
 import { PRICING_CATALOG_VERSION } from "@/lib/assessmentIntelligence/pricingCatalog";
@@ -109,28 +106,7 @@ export async function submitPastedTranscriptAndExtract(
 
   await updateAssessmentSessionStatus(assessmentSessionId, "processing");
 
-  const combinedText = await getCombinedTranscriptText(assessmentSessionId);
-  const extraction = await extractFactsFromTranscript(combinedText);
-
-  if (extraction.rawResponseParseError) {
-    return { error: `Extraction failed to parse a valid response: ${extraction.rawResponseParseError}` };
-  }
-
-  const runRef = `extraction-${Date.now()}`;
-  await writeDraftFacts({
-    assessmentSessionId,
-    sourceId: source.id,
-    facts: extraction.accepted,
-    extractionRunRef: runRef,
-    modelVersion: extraction.modelVersion,
-  });
-
-  await detectAndRecordConflicts(session.resident_id, assessmentSessionId);
-
-  const openConflicts = await getOpenConflictsForSession(assessmentSessionId);
-  await updateAssessmentSessionStatus(assessmentSessionId, openConflicts.length > 0 ? "needs_review" : "draft");
-
-  return { draftFactCount: extraction.accepted.length, rejectedCount: extraction.rejected.length };
+  return runExtractionPipelineForSession(assessmentSessionId, session.resident_id, source.id);
 }
 
 export interface ReviewData {

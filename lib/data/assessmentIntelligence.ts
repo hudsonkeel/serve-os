@@ -384,6 +384,126 @@ export async function getOutputsForSession(assessmentSessionId: string) {
   return data ?? [];
 }
 
+const AUDIO_BUCKET = "intake-audio";
+
+export interface AudioSourceRow {
+  id: string;
+  assessment_session_id: string;
+  status: string;
+  transcript_text: string | null;
+}
+
+/** The live_audio_stream intake_sources row a Capture Assessment session writes chunks
+ * against (netlify/functions/intake-audio-chunk-url.js / intake-finish.js in serve-intake-mvp).
+ * Reads the same row the pasted-transcript path never touches — one row per source_type. */
+export async function getAudioSourceForSession(assessmentSessionId: string): Promise<AudioSourceRow | null> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("intake_sources")
+    .select("id, assessment_session_id, status, transcript_text")
+    .eq("assessment_session_id", assessmentSessionId)
+    .eq("source_type", "live_audio_stream")
+    .maybeSingle();
+  if (error) {
+    console.error("[getAudioSourceForSession]", { assessmentSessionId, message: error.message });
+    return null;
+  }
+  return data as AudioSourceRow | null;
+}
+
+export interface StoredAudioChunk {
+  path: string;
+  bytes: ArrayBuffer;
+  mimeType: string;
+}
+
+/** Lists and downloads every uploaded chunk for a session from the private intake-audio
+ * bucket, in chunk-index order. Object paths are opaque ({session_id}/{index}.webm) — no
+ * resident identity anywhere in the path, matching the existing storage convention. */
+export async function downloadAudioChunksForSession(assessmentSessionId: string): Promise<StoredAudioChunk[]> {
+  const supabase = createServerClient();
+  const { data: listing, error: listError } = await supabase.storage.from(AUDIO_BUCKET).list(assessmentSessionId);
+  if (listError || !listing) {
+    console.error("[downloadAudioChunksForSession] list failed", { assessmentSessionId, message: listError?.message });
+    return [];
+  }
+
+  const chunks: StoredAudioChunk[] = [];
+  for (const entry of listing.filter((e) => e.name.endsWith(".webm")).sort((a, b) => a.name.localeCompare(b.name))) {
+    const path = `${assessmentSessionId}/${entry.name}`;
+    const { data: fileData, error: downloadError } = await supabase.storage.from(AUDIO_BUCKET).download(path);
+    if (downloadError || !fileData) {
+      console.error("[downloadAudioChunksForSession] download failed", { path, message: downloadError?.message });
+      continue;
+    }
+    chunks.push({ path, bytes: await fileData.arrayBuffer(), mimeType: fileData.type || "audio/webm" });
+  }
+  return chunks;
+}
+
+export async function writeTranscriptSegments(input: {
+  sourceId: string;
+  segments: { text: string; chunkIndex: number }[];
+}): Promise<number> {
+  if (input.segments.length === 0) return 0;
+  const supabase = createServerClient();
+  const rows = input.segments.map((s) => ({
+    source_id: input.sourceId,
+    speaker: null,
+    start_time: s.chunkIndex,
+    end_time: null,
+    text: s.text,
+    is_final: true,
+  }));
+  const { error } = await supabase.from("intake_transcript_segments").insert(rows);
+  if (error) {
+    console.error("[writeTranscriptSegments]", { message: error.message });
+    return 0;
+  }
+  return rows.length;
+}
+
+export async function updateSourceTranscriptText(sourceId: string, transcriptText: string): Promise<boolean> {
+  const supabase = createServerClient();
+  const { error } = await supabase.from("intake_sources").update({ transcript_text: transcriptText }).eq("id", sourceId);
+  if (error) {
+    console.error("[updateSourceTranscriptText]", { sourceId, message: error.message });
+    return false;
+  }
+  return true;
+}
+
+/** Records whether every chunk transcribed successfully, durably, in source_payload — so a
+ * partial transcription (some chunks failed) is visible to anyone reviewing the session later,
+ * not just present in an ephemeral function-call return value nobody may have looked at. Never
+ * silently presents a partial transcript as complete. */
+export async function recordTranscriptionOutcome(input: {
+  sourceId: string;
+  totalChunks: number;
+  succeededChunks: number;
+  failedChunkPaths: string[];
+}): Promise<boolean> {
+  const supabase = createServerClient();
+  const { data: existing } = await supabase.from("intake_sources").select("source_payload").eq("id", input.sourceId).maybeSingle();
+  const { error } = await supabase
+    .from("intake_sources")
+    .update({
+      source_payload: {
+        ...((existing as { source_payload?: Record<string, unknown> } | null)?.source_payload ?? {}),
+        transcription_status: input.failedChunkPaths.length > 0 ? "partial" : "complete",
+        transcription_total_chunks: input.totalChunks,
+        transcription_succeeded_chunks: input.succeededChunks,
+        transcription_failed_chunk_paths: input.failedChunkPaths,
+      },
+    })
+    .eq("id", input.sourceId);
+  if (error) {
+    console.error("[recordTranscriptionOutcome]", { message: error.message });
+    return false;
+  }
+  return true;
+}
+
 /** Reuses the EXISTING governed identity-resolution mechanism — never a parallel query. */
 export async function getAxisCareIdentityLinkState(residentId: string): Promise<AxisCareIdentityLinkState> {
   const links = await getPersonVendorIdentityLinksForSubject("resident", residentId);

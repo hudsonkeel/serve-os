@@ -133,15 +133,16 @@ export function AssessmentSection({ residentId, residentName, sessions }: Assess
           onClick={() => setShowPasteForm((v) => !v)}
           className="inline-flex h-10 items-center rounded-lg border border-ivory-border bg-ivory px-5 font-sans text-sm font-semibold text-body transition-colors hover:bg-white"
         >
-          {showPasteForm ? "Cancel" : "Paste Transcript"}
+          {showPasteForm ? "Cancel" : "Paste Transcript (admin/test fallback)"}
         </button>
       </div>
 
       {showPasteForm && (
         <div className="mt-4">
           <p className="mb-2 font-sans text-xs text-muted">
-            Development/validation entry point — a temporary way to feed the assessment
-            pipeline without live transcription. Not the intended long-term operator workflow.
+            Admin/test fallback only — not the normal operator workflow. The normal path is
+            Capture Assessment (mobile audio, transcribed automatically). Use this only to
+            validate the pipeline or recover a session whose audio can&rsquo;t be transcribed.
           </p>
           <textarea
             value={transcriptText}
