@@ -12,14 +12,16 @@ import {
   updateSourceTranscriptText,
   recordTranscriptionOutcome,
 } from "../data/assessmentIntelligence.ts";
-import { extractFactsFromTranscript } from "./extraction.ts";
 import { transcribeAudioChunks } from "./transcription.ts";
 import { isPhiOpenAiProcessingConfirmed, type PhiGateOverride } from "./phiGovernance.ts";
+import { getConfiguredExtractionProvider } from "./providerSelection.ts";
 
 // The shared tail of both entry points into extraction (pasted-transcript admin/test fallback,
 // and the real captured-audio pipeline below) — one pipeline, two ways in, per the
 // source-agnostic boundary this was designed around from the start (docs/architecture/
-// ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md §3A).
+// ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md §3A). Provider-neutral: this function calls
+// through providerSelection.ts, never a specific provider module directly — see docs/
+// architecture/BEDROCK_CLAUDE_PROVIDER.md.
 
 export interface ExtractionPipelineResult {
   error?: string;
@@ -33,7 +35,10 @@ export async function runExtractionPipelineForSession(
   sourceId: string
 ): Promise<ExtractionPipelineResult> {
   const combinedText = await getCombinedTranscriptText(assessmentSessionId);
-  const extraction = await extractFactsFromTranscript(combinedText);
+  const provider = getConfiguredExtractionProvider();
+  // A thrown error here (provider-level failure) is deliberately allowed to propagate — never
+  // caught-and-rerouted to a different provider. See AssessmentExtractionProvider's contract.
+  const extraction = await provider.extractFacts(combinedText);
 
   if (extraction.rawResponseParseError) {
     return { error: `Extraction failed to parse a valid response: ${extraction.rawResponseParseError}` };
@@ -45,7 +50,7 @@ export async function runExtractionPipelineForSession(
     sourceId,
     facts: extraction.accepted,
     extractionRunRef: runRef,
-    modelVersion: extraction.modelVersion,
+    modelVersion: `${extraction.provider}:${extraction.modelId}`,
   });
 
   await detectAndRecordConflicts(residentId, assessmentSessionId);

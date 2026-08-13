@@ -1,20 +1,16 @@
 import "server-only";
 import OpenAI from "openai";
 import { buildExtractionSystemPrompt, buildExtractionUserPrompt } from "./extractionPrompt.ts";
-import { normalizeExtractedFacts, type NormalizationResult } from "./factTypes.ts";
+import { normalizeExtractedFacts } from "./factTypes.ts";
+import type { AssessmentExtractionProvider, ExtractionResult } from "./extractionProvider.ts";
 
-// The extraction pipeline's only entry point. Takes plain transcript text — it does not know
-// or care whether that text came from a pasted-transcript dev/validation entry (today) or a
-// future transcription pipeline's intake_transcript_segments joined into one string (later);
-// see docs/architecture/ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md §3A. This function is never
-// called directly from a UI component — only from the server action / data layer that already
-// resolved the transcript text from intake_sources, keeping extraction logic decoupled from
-// how the text arrived.
+// The OpenAI implementation of the provider-neutral extraction interface (extractionProvider.ts).
+// Takes plain transcript text — it does not know or care whether that text came from a
+// pasted-transcript dev/validation entry or the transcription pipeline's assembled segments;
+// see docs/architecture/ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md §3A. Never called directly
+// from a UI component — only through providerSelection.ts, which pipeline.ts uses.
 
-export interface ExtractionResult extends NormalizationResult {
-  modelVersion: string;
-  rawResponseParseError: string | null;
-}
+export type { ExtractionResult };
 
 let cachedClient: OpenAI | null = null;
 
@@ -31,10 +27,11 @@ function getOpenAiClient(): OpenAI {
 }
 
 const MODEL = "gpt-5-mini";
+const PROVIDER_ID = "openai";
 
 export async function extractFactsFromTranscript(transcriptText: string): Promise<ExtractionResult> {
   if (!transcriptText || !transcriptText.trim()) {
-    return { accepted: [], rejected: [], modelVersion: MODEL, rawResponseParseError: null };
+    return { accepted: [], rejected: [], provider: PROVIDER_ID, modelId: MODEL, rawResponseParseError: null };
   }
 
   const openai = getOpenAiClient();
@@ -55,7 +52,8 @@ export async function extractFactsFromTranscript(transcriptText: string): Promis
     return {
       accepted: [],
       rejected: [],
-      modelVersion: MODEL,
+      provider: PROVIDER_ID,
+      modelId: MODEL,
       rawResponseParseError: err instanceof Error ? err.message : "Unknown JSON parse error",
     };
   }
@@ -67,5 +65,11 @@ export async function extractFactsFromTranscript(transcriptText: string): Promis
 
   const normalized = normalizeExtractedFacts(facts);
 
-  return { ...normalized, modelVersion: MODEL, rawResponseParseError: null };
+  return { ...normalized, provider: PROVIDER_ID, modelId: MODEL, rawResponseParseError: null };
 }
+
+export const openAiExtractionProvider: AssessmentExtractionProvider = {
+  providerId: PROVIDER_ID,
+  modelId: MODEL,
+  extractFacts: extractFactsFromTranscript,
+};
