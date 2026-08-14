@@ -102,6 +102,7 @@ export function ResidentsInbox({
       <div className="relative">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-subtle" />
         <input
+          id="person-search"
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -117,8 +118,10 @@ export function ResidentsInbox({
         </p>
       )}
 
-      {/* Relationship tabs — the primary filter */}
-      <div className="flex flex-wrap items-center gap-1 border-b border-ivory-border">
+      {/* Relationship tabs — the primary filter. Horizontally scrollable
+          rather than wrapping, same reasoning as PeopleWeServeTabs.tsx —
+          6 tabs would wrap to 2-3 lines on a phone otherwise. */}
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-ivory-border">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.value;
           return (
@@ -126,7 +129,7 @@ export function ResidentsInbox({
               key={tab.value}
               type="button"
               onClick={() => setActiveTab(tab.value)}
-              className={`flex min-h-[44px] items-center gap-2 border-b-2 px-4 py-2.5 font-sans text-button font-medium transition-colors ${
+              className={`flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 font-sans text-button font-medium transition-colors ${
                 isActive ? "border-b-navy text-navy" : "border-b-transparent text-muted hover:text-body"
               }`}
             >

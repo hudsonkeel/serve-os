@@ -16,6 +16,7 @@ import { StartRelationshipCard } from "@/components/residents/StartRelationshipC
 import { getResidentTimeline } from "@/lib/data/residentTimeline";
 import { ResidentMemory } from "@/components/residents/ResidentMemory";
 import { AssessmentSection } from "@/components/residents/AssessmentSection";
+import { QuickNoteButton } from "@/components/residents/QuickNoteButton";
 import { getAssessmentSessionsForResident } from "@/lib/data/assessmentIntelligence";
 import { Badge } from "@/components/ui/Badge";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
@@ -173,20 +174,27 @@ export default async function ResidentDetailPage({
             </span>
           </div>
         </div>
-        {askServeEnabled && (
-          <AskServeTrigger
-            context={buildAskServeContext(PEOPLE_WE_SERVE_CONTEXT, {
-              surface: "resident_detail",
-              route: `/residents/${id}`,
-              pageTitle: record.residentDisplayName,
-              subjectType: "resident",
-              subjectId: id,
-              subjectLabel: record.residentDisplayName,
-              userRole: profile?.role ?? undefined,
-            })}
-            label="Ask Serve about this person"
-          />
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {/* Prominent, always reachable without scrolling — the full
+              Working Notes section further down the page is the right
+              place to browse/resolve notes, but not the right place to
+              start one from on a phone. See QuickNoteButton.tsx. */}
+          <QuickNoteButton residentId={id} residentDisplayName={record.residentDisplayName} />
+          {askServeEnabled && (
+            <AskServeTrigger
+              context={buildAskServeContext(PEOPLE_WE_SERVE_CONTEXT, {
+                surface: "resident_detail",
+                route: `/residents/${id}`,
+                pageTitle: record.residentDisplayName,
+                subjectType: "resident",
+                subjectId: id,
+                subjectLabel: record.residentDisplayName,
+                userRole: profile?.role ?? undefined,
+              })}
+              label="Ask Serve about this person"
+            />
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

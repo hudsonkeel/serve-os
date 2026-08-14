@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { ServeRelationshipCorrectionControl } from "./ServeRelationshipCorrectionControl";
 import type { EnrichedResidentRecord } from "@/lib/data/residentServeRelationships";
@@ -57,7 +58,12 @@ export function ResidentRelationshipRow({ record, canCorrect }: ResidentRelation
   const deliveryLabel = DELIVERY_LABELS[projection.deliverySystem];
 
   return (
-    <div className="relative flex items-start gap-6 px-6 py-6 transition-colors hover:bg-ivory">
+    // Mobile: a single stacked column, deliberately not the same 3-column
+    // layout squeezed narrower — family contact and "updated" are dropped
+    // to the desktop-only columns below (tap through to the full record
+    // for those), per "don't place every desktop field into every mobile
+    // record." Desktop layout (md:) is completely unchanged.
+    <div className="relative flex flex-col gap-1 px-4 py-4 transition-colors hover:bg-ivory active:bg-ivory md:flex-row md:items-start md:gap-6 md:px-6 md:py-6">
       <Link
         href={`/residents/${base.id}`}
         aria-label={`Open resident record for ${base.residentDisplayName}`}
@@ -70,7 +76,7 @@ export function ResidentRelationshipRow({ record, canCorrect }: ResidentRelation
         className="absolute inset-0 z-0 focus:outline-none focus-visible:bg-ivory focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold/40"
       />
 
-      <div className="pointer-events-none relative z-[1] min-w-0 flex-1">
+      <div className="pointer-events-none relative z-[1] min-w-0 flex-1 pr-8 md:pr-0">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <Badge tone={RELATIONSHIP_TONES[projection.relationship]}>{RELATIONSHIP_LABELS[projection.relationship]}</Badge>
           {projection.correction && <Badge tone="blue">Corrected</Badge>}
@@ -123,7 +129,10 @@ export function ResidentRelationshipRow({ record, canCorrect }: ResidentRelation
         )}
       </div>
 
-      <div className="pointer-events-none relative z-[1] w-48 shrink-0">
+      {/* Deprioritized on mobile — recognizing/deciding needs name + status
+          + community, not family contact or a raw timestamp. Both remain
+          one tap away on the full record. */}
+      <div className="pointer-events-none relative z-[1] hidden w-48 shrink-0 md:block">
         {base.familyContact !== "No contact on file" ? (
           <>
             <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">Family Contact</p>
@@ -134,9 +143,19 @@ export function ResidentRelationshipRow({ record, canCorrect }: ResidentRelation
         )}
       </div>
 
-      <div className="pointer-events-none relative z-[1] w-44 shrink-0 space-y-1 text-right">
+      <div className="pointer-events-none relative z-[1] hidden w-44 shrink-0 space-y-1 text-right md:block">
         <p className="font-sans text-sm text-muted">Updated {shortDate(base.updatedAt ?? base.createdAt)}</p>
       </div>
+
+      {/* Disclosure signifier — makes "this row leads somewhere" visible
+          rather than implied only by hover/cursor (Phase 5: the user
+          shouldn't have to guess whether the row is tappable). */}
+      <ChevronRight
+        size={18}
+        strokeWidth={1.75}
+        aria-hidden="true"
+        className="pointer-events-none absolute right-4 top-4 z-[1] shrink-0 text-subtle md:static md:mt-1 md:self-center"
+      />
     </div>
   );
 }

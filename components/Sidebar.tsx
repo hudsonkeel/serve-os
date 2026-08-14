@@ -2,61 +2,30 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Briefcase,
-  LayoutDashboard,
-  Users,
-  ShieldCheck,
-  BarChart2,
-  MessageSquare,
-  Sparkles,
-  Settings,
-} from "lucide-react";
 import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
+import { NAV_SECTIONS as sections, NAV_COMING_SOON as comingSoonNav, NAV_UTILITY } from "@/lib/navigation/primaryNav";
 
-// Preserves the navigation model users already understand — Today's Work
-// as the sole operational home, The People We Serve as one destination for
-// the whole resident/client relationship realm, Workforce covering the
-// full lifecycle of people who may/do/did serve. See DECISION_LOG.md
-// ("Serve OS navigation shell") for the retirement of "The People Who
-// Serve" as a separate destination. "How We're Doing" still isn't a
-// second, competing operational home — it moved from the app's literal
-// root URL to /dashboard so / could become the universal authenticated
-// landing redirect to Today's Work (see the Post-Release Stabilization
-// decision log entry); the destination itself is unchanged.
+// Desktop-only (hidden below the md breakpoint — see MobileNavDrawer.tsx for
+// the phone-width equivalent, which reuses NAV_SECTIONS/NAV_COMING_SOON/
+// NAV_UTILITY from lib/navigation/primaryNav.ts rather than a second
+// hard-coded tree). Preserves the navigation model users already
+// understand — Today's Work as the sole operational home, The People We
+// Serve as one destination for the whole resident/client relationship
+// realm, Workforce covering the full lifecycle of people who may/do/did
+// serve. See DECISION_LOG.md ("Serve OS navigation shell") for the
+// retirement of "The People Who Serve" as a separate destination. "How
+// We're Doing" still isn't a second, competing operational home — it moved
+// from the app's literal root URL to /dashboard so / could become the
+// universal authenticated landing redirect to Today's Work (see the
+// Post-Release Stabilization decision log entry); the destination itself
+// is unchanged.
 //
 // Relationships and External Clients remain fully functional at their
 // existing routes — they're reached from within The People We Serve, not
 // duplicated as separate top-level entries. Recruiting remains fully
 // functional at /recruiting — reached as Workforce's Hiring Pipeline, not
 // duplicated as a separate top-level entry either.
-const sections = [
-  {
-    heading: "Today",
-    items: [{ icon: Briefcase, label: "Today's Work", href: "/workspace" }],
-  },
-  {
-    heading: "Serve",
-    items: [
-      { icon: Users, label: "The People We Serve", href: "/residents" },
-      { icon: ShieldCheck, label: "Workforce", href: "/workforce" },
-    ],
-  },
-  {
-    heading: "Understand",
-    items: [
-      { icon: LayoutDashboard, label: "How We're Doing", href: "/dashboard" },
-      { icon: BarChart2, label: "Community Outlook", href: "/community-intelligence" },
-    ],
-  },
-];
-
-// Communications is the only "Coming Soon" item — Scheduling and Care
-// Plans have no dedicated route yet.
-const comingSoonNav = [
-  { icon: MessageSquare,   label: "Communications" },
-];
 
 export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
   const pathname = usePathname();
@@ -64,7 +33,7 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
   const isActive = (href: string) => pathname.startsWith(href);
 
   return (
-    <aside className="fixed left-0 top-0 z-30 flex h-screen w-64 flex-col bg-navy shadow-sidebar">
+    <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 flex-col bg-navy shadow-sidebar md:flex">
       {/* ─── Logo ─── */}
       <div className="border-b border-white/8 px-6 py-4">
         <Link href="/workspace" aria-label="Go to Today's Work">
@@ -127,30 +96,24 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
         {/* Utility area — Ask Serve + Settings, deliberately outside the
             Today/Serve/Understand work hierarchy above. */}
         <div className="mt-6 space-y-1 border-t border-white/10 pt-6">
-          <Link
-            href="/ask-serve"
-            aria-current={isActive("/ask-serve") ? "page" : undefined}
-            className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
-              isActive("/ask-serve")
-                ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
-                : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
-            }`}
-          >
-            <Sparkles size={17} strokeWidth={isActive("/ask-serve") ? 2 : 1.5} className="shrink-0" />
-            <span>Ask Serve</span>
-          </Link>
-          <Link
-            href="/settings"
-            aria-current={isActive("/settings") ? "page" : undefined}
-            className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
-              isActive("/settings")
-                ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
-                : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
-            }`}
-          >
-            <Settings size={17} strokeWidth={isActive("/settings") ? 2 : 1.5} className="shrink-0" />
-            <span>Settings</span>
-          </Link>
+          {NAV_UTILITY.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
+                  active
+                    ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
+                    : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
+                }`}
+              >
+                <item.icon size={17} strokeWidth={active ? 2 : 1.5} className="shrink-0" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
         </div>
       </nav>
 

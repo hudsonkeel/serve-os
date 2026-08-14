@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   getResidentServeRelationships,
   type ResidentRelationshipTabValue,
@@ -45,28 +46,54 @@ export default async function ResidentsPage({
   return (
     <PageContainer title="The People We Serve · Residents">
       <PeopleWeServeTabs active="residents" />
-      <div className="mb-6 flex items-baseline justify-between">
-        <div>
-          <h1 className="font-serif text-page-title font-light text-body">Residents</h1>
-          <p className="mt-1 font-sans text-base text-muted">
-            Manage resident records, service status, wellness needs, and operational details.
-          </p>
+      <div className="mb-6 space-y-4">
+        <div className="flex items-baseline justify-between">
+          <div>
+            <h1 className="font-serif text-page-title font-light text-body">Residents</h1>
+            <p className="mt-1 font-sans text-base text-muted">
+              Manage resident records, service status, wellness needs, and operational details.
+            </p>
+          </div>
+          <div className="hidden items-center gap-4 md:flex">
+            <span className="font-sans text-base font-medium text-muted">
+              {community.totalResidents} residents
+            </span>
+            {askServeEnabled && (
+              <AskServeTrigger
+                context={buildAskServeContext(PEOPLE_WE_SERVE_CONTEXT, {
+                  surface: "residents_list",
+                  pageTitle: "The People We Serve · Residents",
+                  subjectType: "resident_collection",
+                  userRole: profile?.role ?? undefined,
+                })}
+                label="Ask Serve about these residents"
+              />
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="font-sans text-base font-medium text-muted">
-            {community.totalResidents} residents
-          </span>
-          {askServeEnabled && (
-            <AskServeTrigger
-              context={buildAskServeContext(PEOPLE_WE_SERVE_CONTEXT, {
-                surface: "residents_list",
-                pageTitle: "The People We Serve · Residents",
-                subjectType: "resident_collection",
-                userRole: profile?.role ?? undefined,
-              })}
-              label="Ask Serve about these residents"
-            />
-          )}
+
+        {/* Mobile primary actions — "Find a person" jumps straight to the
+            search box below (no separate search UI to build/maintain);
+            "New Prospect" bridges to the existing add-prospect flow at
+            /relationships (see the completion report for why: no
+            single-tap, name-only "new prospect" capture exists anywhere
+            in the app yet — this is the closest real, working entry
+            point, not a new feature). Mobile-only: desktop already shows
+            the count/Ask Serve controls above and the search box is
+            already on-screen without scrolling. */}
+        <div className="flex gap-3 md:hidden">
+          <a
+            href="#person-search"
+            className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg border border-navy/20 bg-surface px-4 font-sans text-button font-medium text-navy shadow-card"
+          >
+            Find a Person
+          </a>
+          <Link
+            href="/relationships"
+            className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-navy px-4 font-sans text-button font-medium text-white shadow-card"
+          >
+            New Prospect
+          </Link>
         </div>
       </div>
 

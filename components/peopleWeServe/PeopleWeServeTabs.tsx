@@ -53,7 +53,12 @@ const VIEWS: { value: PeopleWeServeView; label: string; href: string }[] = [
 // untouched and renders BELOW this one on every /relationships* page).
 export function PeopleWeServeTabs({ active }: { active: PeopleWeServeView }) {
   return (
-    <div className="mb-6 flex flex-wrap items-center gap-1 border-b border-ivory-border">
+    // Horizontally scrollable, never wrapping — a phone-width viewport
+    // can't fit 4 tabs on one line at a readable size, and wrapping to a
+    // second row reads as a "button wall" (explicitly avoided). A
+    // horizontal strip is a familiar mobile tab pattern; at desktop widths
+    // all 4 fit with no scrolling needed, so this is a no-op there.
+    <div className="mb-6 flex items-center gap-1 overflow-x-auto border-b border-ivory-border">
       {VIEWS.map((view) => {
         const isActive = view.value === active;
         return (
@@ -61,7 +66,7 @@ export function PeopleWeServeTabs({ active }: { active: PeopleWeServeView }) {
             key={view.value}
             href={view.href}
             aria-current={isActive ? "page" : undefined}
-            className={`flex min-h-[44px] items-center gap-2 border-b-2 px-4 py-2.5 font-sans text-button font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50 ${
+            className={`flex min-h-[44px] shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 font-sans text-button font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50 ${
               isActive
                 ? "border-b-navy text-navy"
                 : "border-b-transparent text-muted hover:text-body"
