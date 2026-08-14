@@ -4,10 +4,23 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { X } from "lucide-react";
+import { X, LogOut } from "lucide-react";
 import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
-import { NAV_SECTIONS, NAV_COMING_SOON, NAV_UTILITY } from "@/lib/navigation/primaryNav";
+import { NAV_SECTIONS, NAV_UTILITY } from "@/lib/navigation/primaryNav";
+import { logoutAction } from "@/lib/auth/actions";
+
+// Mobile release scope: the mobile product is intentionally narrower than
+// desktop right now — "The People We Serve" is the only operational
+// destination that has been designed/tested for mobile, so it's the only
+// one offered here ("do not offer a door until the room behind it is
+// ready"). Derived from NAV_SECTIONS (never hardcoded) so this can never
+// silently drift from the real destination's label/icon/href — desktop's
+// Sidebar still shows the complete set unchanged, since NAV_SECTIONS
+// itself isn't touched, only filtered at render time, here only.
+const PEOPLE_WE_SERVE_NAV_ITEM = NAV_SECTIONS.flatMap((section) => section.items).find(
+  (item) => item.href === "/residents"
+);
 
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -84,7 +97,7 @@ export function MobileNavDrawer({ isOpen, onClose, currentUser }: MobileNavDrawe
         className="relative flex h-full w-[82vw] max-w-[320px] flex-col overflow-y-auto bg-navy shadow-sidebar"
       >
         <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
-          <Link href="/workspace" aria-label="Go to Today's Work" onClick={onClose}>
+          <Link href="/residents" aria-label="Go to The People We Serve" onClick={onClose}>
             <Logo width={112} />
           </Link>
           <button
@@ -98,61 +111,47 @@ export function MobileNavDrawer({ isOpen, onClose, currentUser }: MobileNavDrawe
         </div>
 
         <nav className="flex-1 overflow-y-auto px-4 py-6" aria-label="Primary">
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.heading} className="mb-5 last:mb-0">
-              <p className="mb-2 px-4 font-sans text-label font-semibold uppercase tracking-[0.18em] text-white/35">
-                {section.heading}
-              </p>
+          {/* Deliberately narrow for this mobile release — see the
+              PEOPLE_WE_SERVE_NAV_ITEM comment above. Today's Work,
+              Workforce, How We're Doing, Community Outlook, Ask Serve, and
+              Coming Soon are all withheld from mobile navigation, not
+              removed: every one of them is still a full destination on
+              desktop (NAV_SECTIONS/NAV_COMING_SOON are untouched — this
+              file just doesn't render most of them below md:), and a
+              direct URL still loads if someone types one in on their
+              phone (deliberately not blocked — see the completion
+              report). */}
+          {PEOPLE_WE_SERVE_NAV_ITEM && (
+            <div className="mb-5">
               <ul className="space-y-1">
-                {section.items.map((item) => {
-                  const active = isActive(item.href);
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        onClick={onClose}
-                        aria-current={active ? "page" : undefined}
-                        className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
-                          active
-                            ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
-                            : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
-                        }`}
-                      >
-                        <item.icon size={17} strokeWidth={active ? 2 : 1.5} className="shrink-0" />
-                        <span>{item.label}</span>
-                      </Link>
-                    </li>
-                  );
-                })}
+                <li>
+                  <Link
+                    href={PEOPLE_WE_SERVE_NAV_ITEM.href}
+                    onClick={onClose}
+                    aria-current={isActive(PEOPLE_WE_SERVE_NAV_ITEM.href) ? "page" : undefined}
+                    className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
+                      isActive(PEOPLE_WE_SERVE_NAV_ITEM.href)
+                        ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
+                        : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
+                    }`}
+                  >
+                    <PEOPLE_WE_SERVE_NAV_ITEM.icon
+                      size={17}
+                      strokeWidth={isActive(PEOPLE_WE_SERVE_NAV_ITEM.href) ? 2 : 1.5}
+                      className="shrink-0"
+                    />
+                    <span>{PEOPLE_WE_SERVE_NAV_ITEM.label}</span>
+                  </Link>
+                </li>
               </ul>
             </div>
-          ))}
-
-          <div className="mt-6 border-t border-white/10 pt-6">
-            <p className="mb-2 px-4 font-sans text-label font-semibold uppercase tracking-[0.18em] text-white/35">
-              Coming Soon
-            </p>
-            <ul className="space-y-1">
-              {NAV_COMING_SOON.map((item) => (
-                <li key={item.label}>
-                  <span
-                    aria-disabled="true"
-                    className="flex min-h-[44px] cursor-default items-center gap-3 rounded-lg border-l-[3px] border-l-transparent px-4 py-3 font-sans text-button tracking-wide text-white/35"
-                  >
-                    <item.icon size={17} strokeWidth={1.5} className="shrink-0" />
-                    <span>{item.label}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          )}
 
           <div className="mt-6 space-y-1 border-t border-white/10 pt-6">
-            {/* Ask Serve is deliberately excluded from the mobile drawer —
-                not useful enough yet to earn nav space here (matches
-                AskServeTrigger.tsx's own mobile suppression). Still a full
-                desktop Sidebar destination — filtered here only, NAV_UTILITY
-                itself is untouched so desktop is unaffected. */}
+            {/* Only genuinely necessary account/session utilities — Ask
+                Serve is excluded here too (matches AskServeTrigger.tsx's
+                own mobile suppression), NAV_UTILITY itself untouched so
+                desktop is unaffected. */}
             {NAV_UTILITY.filter((item) => item.href !== "/ask-serve").map((item) => {
               const active = isActive(item.href);
               return (
@@ -172,6 +171,20 @@ export function MobileNavDrawer({ isOpen, onClose, currentUser }: MobileNavDrawe
                 </Link>
               );
             })}
+            {/* Sign Out did not exist anywhere in the mobile experience
+                before this — TopNav.tsx's logout button is hidden below
+                md: along with the rest of that header, and nothing
+                replaced it. Same logoutAction server action TopNav.tsx
+                already uses; no new auth logic. */}
+            <form action={logoutAction}>
+              <button
+                type="submit"
+                className="flex min-h-[44px] w-full items-center gap-3 rounded-lg border-l-[3px] border-l-transparent px-4 py-3 font-sans text-button tracking-wide text-white/70 transition-all duration-150 hover:bg-white/8 hover:text-white/95"
+              >
+                <LogOut size={17} strokeWidth={1.5} className="shrink-0" />
+                <span>Sign Out</span>
+              </button>
+            </form>
           </div>
         </nav>
 

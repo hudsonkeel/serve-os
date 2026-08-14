@@ -7,16 +7,16 @@ function test(name: string, fn: Test["fn"]) {
   tests.push({ name, fn });
 }
 
-test("null falls back to /workspace", () => {
-  assert.equal(resolveNextDestination(null), "/workspace");
+test("null falls back to /residents", () => {
+  assert.equal(resolveNextDestination(null), "/residents");
 });
 
-test("undefined falls back to /workspace", () => {
-  assert.equal(resolveNextDestination(undefined), "/workspace");
+test("undefined falls back to /residents", () => {
+  assert.equal(resolveNextDestination(undefined), "/residents");
 });
 
-test("empty string falls back to /workspace", () => {
-  assert.equal(resolveNextDestination(""), "/workspace");
+test("empty string falls back to /residents", () => {
+  assert.equal(resolveNextDestination(""), "/residents");
 });
 
 test("a valid internal path is honored", () => {
@@ -27,24 +27,28 @@ test("a valid internal path with a query string is honored", () => {
   assert.equal(resolveNextDestination("/residents?tab=wellness_watch"), "/residents?tab=wellness_watch");
 });
 
-test("/workspace itself is honored (not treated as a special case)", () => {
+test("/workspace itself is honored (explicit destinations are never overridden by the default)", () => {
   assert.equal(resolveNextDestination("/workspace"), "/workspace");
 });
 
-test("a path with no leading slash falls back to /workspace", () => {
-  assert.equal(resolveNextDestination("residents"), "/workspace");
+test("/workforce itself is honored (explicit destinations are never overridden by the default)", () => {
+  assert.equal(resolveNextDestination("/workforce"), "/workforce");
 });
 
-test("a protocol-relative URL falls back to /workspace (open-redirect protection)", () => {
-  assert.equal(resolveNextDestination("//evil.com"), "/workspace");
+test("a path with no leading slash falls back to /residents", () => {
+  assert.equal(resolveNextDestination("residents"), "/residents");
 });
 
-test("an absolute external URL falls back to /workspace", () => {
-  assert.equal(resolveNextDestination("https://evil.com/phish"), "/workspace");
+test("a protocol-relative URL falls back to /residents (open-redirect protection)", () => {
+  assert.equal(resolveNextDestination("//evil.com"), "/residents");
 });
 
-test("a javascript: URL falls back to /workspace", () => {
-  assert.equal(resolveNextDestination("javascript:alert(1)"), "/workspace");
+test("an absolute external URL falls back to /residents", () => {
+  assert.equal(resolveNextDestination("https://evil.com/phish"), "/residents");
+});
+
+test("a javascript: URL falls back to /residents", () => {
+  assert.equal(resolveNextDestination("javascript:alert(1)"), "/residents");
 });
 
 let passed = 0;

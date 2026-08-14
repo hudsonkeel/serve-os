@@ -35,7 +35,13 @@ export function MobileHeader({ title, currentUser }: MobileHeaderProps) {
           <Menu size={22} strokeWidth={1.75} />
         </button>
 
-        <Link href="/workspace" aria-label="Go to Today's Work" className="shrink-0">
+        {/* Points at People We Serve, not Today's Work — the mobile home
+            is intentionally narrower than desktop right now (see
+            MobileNavDrawer.tsx), and a logo-tap "home" affordance that
+            led into Today's Work would quietly contradict that. Desktop's
+            Sidebar logo is a separate component and still points at
+            Today's Work, unchanged. */}
+        <Link href="/residents" aria-label="Go to The People We Serve" className="shrink-0">
           <Logo width={84} />
         </Link>
 
