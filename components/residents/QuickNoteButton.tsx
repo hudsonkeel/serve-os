@@ -13,6 +13,10 @@ const FOCUSABLE_SELECTOR =
 interface QuickNoteButtonProps {
   residentId: string;
   residentDisplayName: string;
+  /** Overrides the trigger button's own classes (e.g. to sit as an
+   * equal-width sibling next to AssessmentCaptureButton in the person
+   * header) — everything else about the component is unchanged. */
+  className?: string;
 }
 
 // A fast, person-level capture path for the SAME underlying model the full
@@ -34,7 +38,7 @@ interface QuickNoteButtonProps {
 // Overlay pattern mirrors AskServePanel.tsx exactly (portal, backdrop,
 // focus trap, Escape) — the only modal primitive already proven in this
 // repo, reused rather than a third one invented.
-export function QuickNoteButton({ residentId, residentDisplayName }: QuickNoteButtonProps) {
+export function QuickNoteButton({ residentId, residentDisplayName, className }: QuickNoteButtonProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [content, setContent] = useState("");
@@ -123,7 +127,10 @@ export function QuickNoteButton({ residentId, residentDisplayName }: QuickNoteBu
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-navy/20 bg-surface px-4 font-sans text-button font-medium text-navy shadow-card"
+        className={
+          className ??
+          "flex min-h-[44px] items-center justify-center gap-2 rounded-lg border border-navy/20 bg-surface px-4 font-sans text-button font-medium text-navy shadow-card"
+        }
       >
         <NotebookPen size={17} strokeWidth={1.75} />
         Add Note

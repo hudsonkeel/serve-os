@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { startAssessmentCapture } from "@/lib/actions/assessmentCapture";
 import { submitPastedTranscriptAndExtract } from "@/lib/actions/assessmentIntelligence";
 import type { AssessmentSessionRecord } from "@/lib/data/assessmentIntelligence";
 
@@ -42,18 +41,6 @@ export function AssessmentSection({ residentId, residentName, sessions }: Assess
   const [showPasteForm, setShowPasteForm] = useState(false);
   const [transcriptText, setTranscriptText] = useState("");
   const [extractResult, setExtractResult] = useState<string | null>(null);
-
-  function handleCaptureClick() {
-    setError(null);
-    startTransition(async () => {
-      const result = await startAssessmentCapture(residentId);
-      if (result.error || !result.captureUrl) {
-        setError(result.error || "Could not start assessment capture.");
-        return;
-      }
-      window.open(result.captureUrl, "_blank", "noopener,noreferrer");
-    });
-  }
 
   function handlePasteSubmit() {
     setError(null);
@@ -119,15 +106,13 @@ export function AssessmentSection({ residentId, residentName, sessions }: Assess
         <p className="mb-4 font-sans text-sm text-muted">No assessments yet.</p>
       )}
 
+      {/* The primary launch action ("Capture Assessment") now lives at the
+          top of the person record (AssessmentCaptureButton, always visible,
+          no scrolling) — removed here as a duplicate rather than left as a
+          second entry point to the same action. This section keeps exactly
+          what isn't duplicated: history/status above, and the admin/test
+          fallback below. */}
       <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={handleCaptureClick}
-          disabled={isPending}
-          className="inline-flex h-10 items-center rounded-lg bg-navy px-5 font-sans text-sm font-semibold text-white transition-colors hover:bg-navy-light disabled:opacity-50"
-        >
-          {isPending ? "Starting…" : "Capture Assessment"}
-        </button>
         <button
           type="button"
           onClick={() => setShowPasteForm((v) => !v)}
@@ -140,9 +125,10 @@ export function AssessmentSection({ residentId, residentName, sessions }: Assess
       {showPasteForm && (
         <div className="mt-4">
           <p className="mb-2 font-sans text-xs text-muted">
-            Admin/test fallback only — not the normal operator workflow. The normal path is
-            Capture Assessment (mobile audio, transcribed automatically). Use this only to
-            validate the pipeline or recover a session whose audio can&rsquo;t be transcribed.
+            Admin/test fallback only — not the normal operator workflow. The normal path is the
+            Assessment button at the top of this page (mobile audio, transcribed automatically).
+            Use this only to validate the pipeline or recover a session whose audio can&rsquo;t
+            be transcribed.
           </p>
           <textarea
             value={transcriptText}

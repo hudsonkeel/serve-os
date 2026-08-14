@@ -17,6 +17,7 @@ import { getResidentTimeline } from "@/lib/data/residentTimeline";
 import { ResidentMemory } from "@/components/residents/ResidentMemory";
 import { AssessmentSection } from "@/components/residents/AssessmentSection";
 import { QuickNoteButton } from "@/components/residents/QuickNoteButton";
+import { AssessmentCaptureButton } from "@/components/residents/AssessmentCaptureButton";
 import { getAssessmentSessionsForResident } from "@/lib/data/assessmentIntelligence";
 import { Badge } from "@/components/ui/Badge";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
@@ -154,47 +155,71 @@ export default async function ResidentDetailPage({
         {hasTodaysWorkOrigin(from) && <BackToTodaysWorkLink />}
       </div>
 
-      <div className="mb-8 flex items-start justify-between gap-6">
-        <div>
-          <h1 className="font-serif text-page-title font-light text-body">
-            {record.residentDisplayName}
-          </h1>
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            {record.serveRelationshipStatus !== "none" && (
-              <Badge tone="gold">{record.serveRelationshipLabel}</Badge>
+      {/* Stacked on mobile — name, status, then the two person-level
+          actions directly beneath, per real-device feedback (they were
+          previously displaced to the right of the name and felt
+          disconnected from who they act on — Design of Everyday Things
+          "mapping": actions affecting this person belong next to this
+          person). Desktop keeps its existing side-by-side arrangement
+          (name/badges left, actions right) via md:, unchanged. */}
+      <div className="mb-8">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+          <div>
+            <h1 className="font-serif text-page-title font-light text-body">
+              {record.residentDisplayName}
+            </h1>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {record.serveRelationshipStatus !== "none" && (
+                <Badge tone="gold">{record.serveRelationshipLabel}</Badge>
+              )}
+              {resident.status && (
+                <Badge>Resident {titleCase(resident.status)}</Badge>
+              )}
+              {record.needsReview && (
+                <Badge tone="warning">Review: {titleCase(record.needsReview)}</Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Add Note and Assessment are equal-width siblings on mobile —
+              both immediately visible, both real 44px touch targets, no
+              scrolling required. Their relative visual weight (Assessment
+              filled/primary, Add Note outlined/secondary) matches the
+              hierarchy those two actions already had before this change
+              (AssessmentSection.tsx's own "Capture Assessment" button was
+              filled/primary; QuickNoteButton has always been outlined) —
+              relocated, not reinvented. Ask Serve is hidden below md: by
+              its own component default (see AskServeTrigger.tsx). */}
+          <div className="flex gap-3 md:shrink-0">
+            <QuickNoteButton
+              residentId={id}
+              residentDisplayName={record.residentDisplayName}
+              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg border border-navy/20 bg-surface px-4 font-sans text-button font-medium text-navy shadow-card md:flex-none"
+            />
+            <AssessmentCaptureButton
+              residentId={id}
+              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-navy px-4 font-sans text-button font-medium text-white shadow-card transition-colors hover:bg-navy/90 disabled:cursor-not-allowed disabled:opacity-50 md:flex-none"
+            />
+            {askServeEnabled && (
+              <AskServeTrigger
+                context={buildAskServeContext(PEOPLE_WE_SERVE_CONTEXT, {
+                  surface: "resident_detail",
+                  route: `/residents/${id}`,
+                  pageTitle: record.residentDisplayName,
+                  subjectType: "resident",
+                  subjectId: id,
+                  subjectLabel: record.residentDisplayName,
+                  userRole: profile?.role ?? undefined,
+                })}
+                label="Ask Serve about this person"
+              />
             )}
-            {resident.status && (
-              <Badge>Resident {titleCase(resident.status)}</Badge>
-            )}
-            {record.needsReview && (
-              <Badge tone="warning">Review: {titleCase(record.needsReview)}</Badge>
-            )}
-            <span className="font-sans text-sm text-muted">
-              Updated {fullDate(record.updatedAt ?? record.createdAt)}
-            </span>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {/* Prominent, always reachable without scrolling — the full
-              Working Notes section further down the page is the right
-              place to browse/resolve notes, but not the right place to
-              start one from on a phone. See QuickNoteButton.tsx. */}
-          <QuickNoteButton residentId={id} residentDisplayName={record.residentDisplayName} />
-          {askServeEnabled && (
-            <AskServeTrigger
-              context={buildAskServeContext(PEOPLE_WE_SERVE_CONTEXT, {
-                surface: "resident_detail",
-                route: `/residents/${id}`,
-                pageTitle: record.residentDisplayName,
-                subjectType: "resident",
-                subjectId: id,
-                subjectLabel: record.residentDisplayName,
-                userRole: profile?.role ?? undefined,
-              })}
-              label="Ask Serve about this person"
-            />
-          )}
-        </div>
+
+        <p className="mt-3 font-sans text-sm text-muted">
+          Updated {fullDate(record.updatedAt ?? record.createdAt)}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

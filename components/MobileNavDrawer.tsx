@@ -148,7 +148,12 @@ export function MobileNavDrawer({ isOpen, onClose, currentUser }: MobileNavDrawe
           </div>
 
           <div className="mt-6 space-y-1 border-t border-white/10 pt-6">
-            {NAV_UTILITY.map((item) => {
+            {/* Ask Serve is deliberately excluded from the mobile drawer —
+                not useful enough yet to earn nav space here (matches
+                AskServeTrigger.tsx's own mobile suppression). Still a full
+                desktop Sidebar destination — filtered here only, NAV_UTILITY
+                itself is untouched so desktop is unaffected. */}
+            {NAV_UTILITY.filter((item) => item.href !== "/ask-serve").map((item) => {
               const active = isActive(item.href);
               return (
                 <Link
