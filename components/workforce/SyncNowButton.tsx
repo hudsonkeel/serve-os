@@ -3,10 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { triggerAxisCareCaregiverSync } from "@/lib/actions/workforce";
+import { resolveSyncSummaryDisplay, type SyncStatusDisplay } from "@/lib/workforce/syncStatusDisplay";
+import { Badge } from "@/components/ui/Badge";
 
 export function SyncNowButton() {
   const [isPending, startTransition] = useTransition();
-  const [message, setMessage] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [display, setDisplay] = useState<SyncStatusDisplay | null>(null);
   const router = useRouter();
 
   return (
@@ -15,19 +18,17 @@ export function SyncNowButton() {
         type="button"
         disabled={isPending}
         onClick={() => {
-          setMessage(null);
+          setPermissionError(null);
+          setDisplay(null);
           startTransition(async () => {
             const result = await triggerAxisCareCaregiverSync();
             if (result.error) {
-              setMessage(result.error);
+              setPermissionError(result.error);
               return;
             }
-            const s = result.summary;
-            setMessage(
-              s
-                ? `Sync complete: ${s.recordsReceived} received, ${s.reviewCandidatesCreated} new candidates for review, ${s.errors.length} errors.`
-                : "Sync complete."
-            );
+            if (result.summary) {
+              setDisplay(resolveSyncSummaryDisplay(result.summary));
+            }
             router.refresh();
           });
         }}
@@ -35,7 +36,16 @@ export function SyncNowButton() {
       >
         {isPending ? "Syncing…" : "Sync Now"}
       </button>
-      {message && <span className="font-sans text-xs text-muted">{message}</span>}
+      {permissionError && <span className="font-sans text-xs text-muted">{permissionError}</span>}
+      {display && (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Badge tone={display.tone}>{display.tone === "danger" ? "Sync failed" : display.tone === "warning" ? "Completed with issues" : display.tone === "neutral" ? "Disabled" : "Success"}</Badge>
+            <span className="font-sans text-xs text-muted">{display.message}</span>
+          </div>
+          {display.detail && <span className="font-sans text-xs text-muted">{display.detail}</span>}
+        </div>
+      )}
     </div>
   );
 }

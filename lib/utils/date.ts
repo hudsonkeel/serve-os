@@ -63,6 +63,28 @@ export function formatCentralDashboardDate(date = new Date()) {
     .toUpperCase();
 }
 
+// "Aug 14, 2026 at 2:07 PM" — Central time, same locale/timezone
+// convention as the rest of this file. Used for point-in-time timestamps
+// (e.g. "Last successful sync") where a bare clock time or relative
+// "X ago" phrasing would be ambiguous across days.
+export function formatCentralDateTime(iso: string): string | null {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const datePart = new Intl.DateTimeFormat("en-US", {
+    timeZone: CENTRAL_TIME_ZONE,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+  const timePart = new Intl.DateTimeFormat("en-US", {
+    timeZone: CENTRAL_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+  return `${datePart} at ${timePart}`;
+}
+
 export function getCentralTimeGreeting(date = new Date()) {
   const hour = Number(
     new Intl.DateTimeFormat("en-US", {

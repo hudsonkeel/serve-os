@@ -75,7 +75,14 @@ async function applyCanonicalProfileSyncProtection(member: WorkforceMember, sour
 
 export interface AxisCareCaregiverSyncSummary {
   syncRunId: string;
-  status: "success" | "partial" | "failed";
+  // "disabled" is deliberately distinct from "failed" — a feature-flag-off
+  // environment is a normal, intentional configuration state (same
+  // philosophy as isAxisCareScheduleEnabled()'s "calm external-launch
+  // panel, not an error state"), not an integration problem. Keeping it a
+  // separate literal (rather than folding it into "failed") is what lets
+  // the UI (see lib/workforce/syncStatusDisplay.ts) tell an admin "this is
+  // config, not a break" without parsing the error message text.
+  status: "success" | "partial" | "failed" | "disabled";
   recordsReceived: number;
   sourceRecordsRefreshed: number;
   sourceRecordsUnchanged: number;
@@ -126,7 +133,7 @@ export async function syncAxisCareCaregivers(initiatedBy: string): Promise<AxisC
   if (!isAxisCareWorkforceEnabled()) {
     return {
       syncRunId: "",
-      status: "failed",
+      status: "disabled",
       recordsReceived: 0,
       sourceRecordsRefreshed: 0,
       sourceRecordsUnchanged: 0,
@@ -305,4 +312,42 @@ export async function getLatestSyncRun(): Promise<WorkforceAxisCareSyncRun | nul
     return null;
   }
   return (data as WorkforceAxisCareSyncRun | null) ?? null;
+}
+
+// Pure — never touches the network. Picks the most recent status: "success"
+// run from an already-fetched list, regardless of what (if anything) ran
+// after it. Exported separately from getLatestSuccessfulSyncRun() below so
+// this decision logic ("a later failed run must never hide/overwrite the
+// last real success") is directly unit-testable without a live database —
+// see lib/workforce/__tests__/axiscareCaregiverSync.test.ts. Does not
+// assume the input is pre-sorted.
+export function pickLatestSuccessfulSyncRun(
+  runs: WorkforceAxisCareSyncRun[]
+): WorkforceAxisCareSyncRun | null {
+  const successes = runs.filter((r) => r.status === "success");
+  if (successes.length === 0) return null;
+  return successes.reduce((latest, run) => (run.started_at > latest.started_at ? run : latest));
+}
+
+// Bounded lookback (not a single most-recent-row query) so a run of failed/
+// disabled attempts after the last real success doesn't require an
+// unbounded scan to find it — 50 is comfortably more than this feature has
+// ever produced in a day of manual "Sync Now" clicks, matching the same
+// "safety net, not a hard business limit" discipline as getAllCaregivers()'s
+// MAX_CAREGIVER_PAGES.
+const SUCCESSFUL_RUN_LOOKBACK = 50;
+
+export async function getLatestSuccessfulSyncRun(): Promise<WorkforceAxisCareSyncRun | null> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("workforce_axiscare_sync_runs")
+    .select("*")
+    .order("started_at", { ascending: false })
+    .limit(SUCCESSFUL_RUN_LOOKBACK);
+
+  if (error) {
+    console.error("[getLatestSuccessfulSyncRun]", { message: error.message });
+    return null;
+  }
+  return pickLatestSuccessfulSyncRun((data as WorkforceAxisCareSyncRun[] | null) ?? []);
 }

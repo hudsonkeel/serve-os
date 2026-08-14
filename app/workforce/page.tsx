@@ -4,6 +4,8 @@ import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { getWorkforceRoster } from "@/lib/workforce/roster";
 import { getIdentityReviewQueue } from "@/lib/data/personVendorIdentityLinks";
 import { canAccessWorkforceDocuments, canTriggerAxisCareSync } from "@/lib/workforce/permissions";
+import { getLatestSuccessfulSyncRun } from "@/lib/workforce/axiscareCaregiverSync";
+import { formatCentralDateTime } from "@/lib/utils/date";
 import { SUBJECT_TYPE_WORKFORCE_MEMBER } from "@/lib/supabase/types";
 import { WorkforceRosterTable } from "@/components/workforce/WorkforceRosterTable";
 import { SyncNowButton } from "@/components/workforce/SyncNowButton";
@@ -25,6 +27,14 @@ export default async function WorkforcePage({
     getIdentityReviewQueue(SUBJECT_TYPE_WORKFORCE_MEMBER, "proposed"),
     getCurrentAuthorizedUser(),
   ]);
+
+  const canSync = canTriggerAxisCareSync(profile?.role ?? null);
+  // Only fetched for admins who can actually see/use the Sync Now control —
+  // same visibility gate, avoids an unnecessary query for everyone else.
+  const latestSuccessfulRun = canSync ? await getLatestSuccessfulSyncRun() : null;
+  const lastSyncLabel = latestSuccessfulRun
+    ? formatCentralDateTime(latestSuccessfulRun.completed_at ?? latestSuccessfulRun.started_at)
+    : null;
 
   const ready = roster.filter((r) => r.attentionState.state === "ready").length;
 
@@ -50,10 +60,15 @@ export default async function WorkforcePage({
               Bulk Import
             </Link>
           )}
-          {canTriggerAxisCareSync(profile?.role ?? null) && (
+          {canSync && (
             <>
               <SyncComplianceActionsButton />
-              <SyncNowButton />
+              <div className="flex flex-col items-end gap-1">
+                <SyncNowButton />
+                <span className="font-sans text-xs text-muted">
+                  {lastSyncLabel ? `Last successful sync: ${lastSyncLabel}` : "No successful sync recorded"}
+                </span>
+              </div>
             </>
           )}
         </div>

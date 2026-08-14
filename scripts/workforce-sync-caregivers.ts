@@ -37,7 +37,11 @@ async function main() {
     }
   }
 
-  if (summary.status === "failed") {
+  // "disabled" is treated the same as "failed" for exit-code purposes —
+  // preserves this script's pre-existing behavior (previously the disabled
+  // path was itself reported as status "failed"); only the human-readable
+  // status text changed, not whether the script signals non-zero.
+  if (summary.status === "failed" || summary.status === "disabled") {
     process.exit(1);
   }
 }
