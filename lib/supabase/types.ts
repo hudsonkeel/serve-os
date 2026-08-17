@@ -184,14 +184,30 @@ export interface WorkforceProfileDiscrepancy {
 // Verification -> Compliance Status (lib/compliance/requirementSetStatus.ts)
 // -> Domain Interpretation (lib/workforce/registryReadiness.ts).
 //
-// subject_type is a closed, controlled vocabulary — only 'workforce_member'
-// today. Adding a second value is always a migration (new CHECK constraint
-// branch) plus a new branch in assert_valid_person_subject() — the two
-// travel together, by convention, so they can never drift.
-export type PersonSubjectType = "workforce_member" | "resident";
+// subject_type is a closed, controlled vocabulary. Adding a value is always
+// a migration (new CHECK constraint branch) plus a new branch in
+// assert_valid_person_subject() — the two travel together, by convention,
+// so they can never drift. 'agency' added by
+// supabase/migrations/20260902070000_add_agencies_and_widen_agency_subject.sql
+// for Emergency Preparedness's agency-level requirements.
+export type PersonSubjectType = "workforce_member" | "resident" | "agency";
 
 export const SUBJECT_TYPE_WORKFORCE_MEMBER: PersonSubjectType = "workforce_member";
 export const SUBJECT_TYPE_RESIDENT: PersonSubjectType = "resident";
+export const SUBJECT_TYPE_AGENCY: PersonSubjectType = "agency";
+
+// See supabase/migrations/20260902070000_add_agencies_and_widen_agency_subject.sql.
+// `slug` is the stable reference-data lookup key — matching
+// requirement_sets.set_code / person_requirements.requirement_code — never
+// an implicit "first row wins" query. Seeded with exactly one row today
+// because that's the real current state, not because the schema only
+// supports one.
+export interface Agency {
+  id: string;
+  slug: string;
+  name: string;
+  created_at: string;
+}
 
 // The same 7-tier match ladder originally proven by Recruiting's
 // lead-to-vendor-record matching, reused unchanged for AxisCare caregiver
@@ -293,6 +309,20 @@ export interface PersonRequirement {
   // Infection Control training). Null for every requirement that isn't
   // score-gated. See supabase/migrations/20260814000000_add_employee_record_audit.sql.
   required_score: number | null;
+  // Audit Readiness provenance/versioning — see
+  // supabase/migrations/20260902010000_add_requirement_versioning_and_authority.sql.
+  // All null/default for every pre-existing (workforce) requirement; only
+  // populated for requirements authored through the Audit Readiness draft
+  // process (e.g. Emergency Preparedness, sourced from Serve P&P §256).
+  regulatory_authority: string | null;
+  // Audit Readiness module/product-area grouping (e.g.
+  // "emergency_preparedness", "client_file") — coarser than category,
+  // never consumed by the deterministic evaluator itself.
+  domain: string | null;
+  version: number;
+  effective_date: string | null;
+  retired_at: string | null;
+  supersedes_requirement_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -368,7 +398,12 @@ export type AuthoritativeSourceSystem =
   | "semarc"
   | "background_vendor"
   | "uploaded_document"
-  | "other_authorized_source";
+  | "other_authorized_source"
+  // Client Readiness — Medication List Available's evidence source: the
+  // physical Serve folder kept in the client's apartment. Serve OS never
+  // transcribes the list itself; see
+  // supabase/migrations/20260902100000_add_client_readiness_profile_fields.sql.
+  | "physical_client_folder";
 
 export type EvidenceCollectionMethod =
   | "human_attestation"
@@ -440,6 +475,18 @@ export interface PersonEvidence {
   verification_method: EvidenceVerificationMethod | null;
   attestation_result: AttestationResult | null;
   external_reference: string | null;
+  // How this evidence satisfies its requirement (e.g. "annual
+  // reaffirmation" vs. "planned drill" vs. "actual emergency response") —
+  // deliberately NOT layered onto source_system, which stays strictly
+  // provenance/origin. Nullable and shape-agnostic like
+  // person_requirements.category; only a domain's own
+  // EvidenceSatisfactionClassifier reads it (see
+  // lib/compliance/auditReadinessStatus.ts). Emergency Preparedness is the
+  // first (and so far only) writer — see
+  // lib/emergencyPreparedness/satisfactionContext.ts for its closed, typed
+  // vocabulary. See
+  // supabase/migrations/20260902070000_add_agencies_and_widen_agency_subject.sql.
+  satisfaction_context: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -775,6 +822,17 @@ export interface Resident {
   family_contact_relationship: string | null;
   family_contact_phone: string | null;
   family_contact_email: string | null;
+  // Client Readiness — the smallest approved canonical extension (Phase
+  // A.2 architecture lock). family_contact_* above remains Serve's
+  // emergency-contact structure; these are deliberately separate, minimal
+  // additions, not a broader physician/guardian model. "No legal
+  // guardian" is never represented by these being merely blank — see
+  // CR_CLIENT_PROFILE_ON_FILE's evidence-based "confirmed no guardian"
+  // attestation in lib/clientReadiness/.
+  physician_name: string | null;
+  physician_phone: string | null;
+  legal_guardian_name: string | null;
+  legal_guardian_phone: string | null;
   source_system: string | null;
   source_file: string | null;
   source_status: string | null;
@@ -1313,9 +1371,15 @@ export interface ResidentWorkingNote {
 // — see supabase/migrations/20260818000000_add_resident_profile_update_event.sql
 // (corrected: the original version of this union omitted
 // "follow_up_updated", a value already present on live rows, which is
-// why that migration's first draft failed to apply). Covered by
-// lib/supabase/__tests__/residentTimelineEventType.test.ts — update both
-// together.
+// why that migration's first draft failed to apply). Widened again by
+// supabase/migrations/20260902050000_add_resident_document_timeline_events.sql
+// (Phase 2, Evidence Repository — NOT YET APPLIED at the time this type
+// was updated; see the Phase 2 report) to add document_uploaded/
+// document_superseded, so a resident's document/evidence activity is
+// recorded on this resident's own timeline, per "client evidence lives
+// with clients" rather than a separate Audit-Readiness-owned log.
+// Covered by lib/supabase/__tests__/residentTimelineEventType.test.ts —
+// update both together.
 export type ResidentTimelineEventType =
   | "current_needs_updated"
   | "follow_up_updated"
@@ -1323,7 +1387,9 @@ export type ResidentTimelineEventType =
   | "working_note_created"
   | "working_note_resolved"
   | "relationship_conversion"
-  | "profile_updated";
+  | "profile_updated"
+  | "document_uploaded"
+  | "document_superseded";
 
 // Compiler-enforced exhaustiveness: TS rejects this array at build time
 // if it is missing any ResidentTimelineEventType member, and a literal
@@ -1343,7 +1409,9 @@ export const RESIDENT_TIMELINE_EVENT_TYPES = exhaustiveArrayOf<ResidentTimelineE
   "working_note_created",
   "working_note_resolved",
   "relationship_conversion",
-  "profile_updated"
+  "profile_updated",
+  "document_uploaded",
+  "document_superseded"
 );
 
 export interface ResidentTimelineEvent {
@@ -2067,4 +2135,211 @@ export interface RelationshipInteractionSuggestion {
   created_at: string;
   resolved_at: string | null;
   resolved_by: string | null;
+}
+
+// ─── Audit Readiness v0.1 (Phase 1) — see
+// supabase/migrations/20260902020000_create_requirement_evidence_links.sql
+// and 20260902030000_create_audit_readiness_platform.sql. ─────────────────
+
+// The many-to-many companion to person_evidence.requirement_id (which
+// remains the primary, sufficient link for every existing workforce call
+// site, untouched). One evidence row satisfying more than one requirement,
+// with a stated reason why.
+export interface RequirementEvidenceLink {
+  id: string;
+  requirement_id: string;
+  evidence_id: string;
+  rationale: string;
+  linked_by: string;
+  linked_at: string;
+  created_at: string;
+}
+
+// Deliberately excludes "workforce_member" — workforce findings live in
+// workforce_compliance_actions, untouched. See the migration header for why
+// this is a structural boundary, not just a naming convention.
+export type ComplianceCorrectiveActionSubjectType = "resident" | "agency" | "community";
+
+export type ComplianceCorrectiveActionType =
+  | "evidence_missing"
+  | "evidence_expired"
+  | "evidence_expiring_soon"
+  | "evidence_requires_review"
+  | "evidence_awaiting_verification"
+  | "audit_finding_failed";
+
+export type ComplianceCorrectiveActionPriority = "low" | "normal" | "high" | "urgent";
+export type ComplianceCorrectiveActionStatus = "open" | "resolved" | "dismissed";
+
+export interface ComplianceCorrectiveAction {
+  id: string;
+  subject_type: ComplianceCorrectiveActionSubjectType;
+  subject_id: string;
+  requirement_id: string | null;
+  domain: string | null;
+  action_type: ComplianceCorrectiveActionType;
+  title: string;
+  reason: string;
+  owner: string | null;
+  priority: ComplianceCorrectiveActionPriority;
+  due_at: string | null;
+  status: ComplianceCorrectiveActionStatus;
+  resolution_note: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  audit_session_item_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type AuditSessionStatus = "draft" | "in_progress" | "completed";
+
+export interface AuditSession {
+  id: string;
+  name: string;
+  description: string | null;
+  scope_domains: string[];
+  auditor: string;
+  status: AuditSessionStatus;
+  summary: string | null;
+  created_by: string;
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type AuditSessionItemSubjectType = "resident" | "workforce_member" | "agency" | "community";
+export type AuditSessionItemFinding = "pass" | "fail" | "evidence_missing" | "needs_review";
+
+export interface AuditSessionItem {
+  id: string;
+  session_id: string;
+  requirement_id: string;
+  subject_type: AuditSessionItemSubjectType;
+  subject_id: string;
+  evidence_id: string | null;
+  finding: AuditSessionItemFinding;
+  notes: string | null;
+  corrective_action_id: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Governed Correction Mode — see
+// supabase/migrations/20260902060000_add_audit_session_corrections.sql. The
+// original audit_session_items rows above are never edited; a correction is
+// a separate, appended parent event (this type) with one or more item-level
+// changes (AuditSessionItemCorrection) under it, reviewed and locked
+// together with one rationale.
+export interface AuditSessionCorrection {
+  id: string;
+  session_id: string;
+  actor: string;
+  rationale: string;
+  created_at: string;
+}
+
+// 'removed' means the finding was entered in error and should not have
+// been part of the audit — never "the problem was later fixed" (that's
+// corrective-action resolution, a separate, unlinked mechanism). 'added'
+// means a finding the correction asserts should additionally have
+// existed; audit_session_item_id is null for it since there is no
+// original row to point back to.
+export type AuditSessionItemCorrectionChangeType = "edited" | "added" | "removed";
+
+export interface AuditSessionItemCorrection {
+  id: string;
+  correction_id: string;
+  audit_session_item_id: string | null;
+  change_type: AuditSessionItemCorrectionChangeType;
+  requirement_id: string;
+  subject_type: AuditSessionItemSubjectType;
+  subject_id: string;
+  previous_finding: AuditSessionItemFinding | null;
+  previous_notes: string | null;
+  new_finding: AuditSessionItemFinding | null;
+  new_notes: string | null;
+  created_at: string;
+}
+
+export type ComplianceActivitySubjectType = "resident" | "agency" | "community";
+
+export type ComplianceActivityEventType =
+  | "corrective_action_created"
+  | "corrective_action_resolved"
+  | "corrective_action_dismissed"
+  | "requirement_evidence_link_created"
+  | "audit_session_started"
+  | "audit_session_item_recorded"
+  | "audit_session_completed"
+  // Emergency Preparedness — real triggering-event records for
+  // EP_HHS_NOTIFICATION's applicability, never inferred from evidence
+  // absence. See
+  // supabase/migrations/20260902090000_create_emergency_preparedness_reviews.sql.
+  | "agency_temporary_relocation"
+  | "agency_service_area_expansion";
+
+export interface ComplianceActivity {
+  id: string;
+  subject_type: ComplianceActivitySubjectType;
+  subject_id: string;
+  event_type: ComplianceActivityEventType;
+  event_title: string;
+  event_description: string | null;
+  source: string;
+  system_generated: boolean;
+  created_by: string | null;
+  created_at: string;
+}
+
+// ─── Emergency Preparedness Annual Review — see
+// supabase/migrations/20260902090000_create_emergency_preparedness_reviews.sql.
+// Materially different from AuditSession/AuditSessionItem above: an Annual
+// Review is Emergency Preparedness's own evidence-producing event (it can
+// create person_evidence rows), never a third-party judgment about
+// pre-existing evidence — see
+// lib/emergencyPreparedness/emergencyPreparednessReviews.ts. Same
+// completion-lock discipline: a review is freely editable while
+// in_progress; complete_emergency_preparedness_review() is the one RPC that
+// can transition it, after which its items are structurally immutable.
+
+export type EmergencyPreparednessReviewStatus = "in_progress" | "completed";
+
+export interface EmergencyPreparednessReview {
+  id: string;
+  review_type: "annual";
+  status: EmergencyPreparednessReviewStatus;
+  reviewer: string;
+  summary: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export type EmergencyPreparednessReviewItemKind = "requirement_finding" | "improvement";
+
+// no_change_needed / update_needed never write new evidence for a
+// requirement satisfied by continued existence rather than a calendar
+// (EP_PLAN_MAINTAINED, EP_DISASTER_COORDINATOR_DESIGNATED) — the review
+// item itself is the durable "still accurate" fact for those. For a
+// genuinely cadence-gated requirement (EP_RISK_ASSESSMENT_CURRENT,
+// EP_ANNUAL_PLAN_REVIEW), no_change_needed/update_needed each insert a
+// fresh, independent person_evidence row rather than rewriting the
+// original's dates — see the migration header and
+// lib/emergencyPreparedness/emergencyPreparednessReviews.ts.
+export type EmergencyPreparednessReviewOutcome = "no_change_needed" | "update_needed" | "evidence_needed" | "needs_review";
+
+export interface EmergencyPreparednessReviewItem {
+  id: string;
+  review_id: string;
+  item_kind: EmergencyPreparednessReviewItemKind;
+  requirement_id: string | null;
+  outcome: EmergencyPreparednessReviewOutcome | null;
+  resulting_evidence_id: string | null;
+  description: string | null;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
 }

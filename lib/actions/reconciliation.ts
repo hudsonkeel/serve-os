@@ -20,8 +20,9 @@ import {
 import { setAxisCareClientDisposition } from "@/lib/data/axiscareClientDispositions";
 import { toPersonVendorIdentityLinksMatchMethod, type ClientMatchBasis } from "@/lib/integrations/axiscare/clientIdentityMatching";
 import type { AxisCareClientDisposition } from "@/lib/integrations/axiscare/clientDisposition";
+import { syncOneConfirmedResident } from "@/lib/data/axiscareClientSync";
 
-type ReconciliationActionResult = { error?: string; success?: boolean };
+type ReconciliationActionResult = { error?: string; success?: boolean; syncWarning?: string };
 
 async function requireReconciliationActor(): Promise<{ actor: string } | { error: string }> {
   const profile = await getCurrentAuthorizedUser();
@@ -75,10 +76,15 @@ async function ensureProposedLink(input: AxisCareIdentityCandidateInput): Promis
   return { linkId: result.linkId };
 }
 
-function revalidatePeopleWeServe() {
+function revalidatePeopleWeServe(residentId?: string) {
   revalidatePath("/reconciliation");
   revalidatePath("/clients");
   revalidatePath("/residents");
+  // revalidatePath("/residents") does not itself cover the dynamic
+  // [id] detail route — identity decisions can now be made directly from
+  // that page (see components/residents/ResidentIdentityAndRelationship.tsx),
+  // so its own path needs an explicit revalidate too.
+  if (residentId) revalidatePath(`/residents/${residentId}`);
 }
 
 export async function confirmAxisCareResidentIdentity(
@@ -99,8 +105,27 @@ export async function confirmAxisCareResidentIdentity(
   });
   if (error) return { error };
 
-  revalidatePeopleWeServe();
-  return { success: true };
+  // Identity confirmation succeeded — that decision is durable and final
+  // regardless of what happens next. AxisCare Client Data Sync runs
+  // automatically from here so a user never has to know a separate sync
+  // step exists, but a sync failure (e.g. AxisCare temporarily
+  // unreachable) must never look like the identity decision itself
+  // failed — it did not. Surfaced as an honest, non-blocking warning; the
+  // resident stays picked up by the next scheduled/manual sync regardless.
+  let syncWarning: string | undefined;
+  try {
+    const syncResult = await syncOneConfirmedResident(input.residentId, input.axiscareId, actorResult.actor, "identity_confirmation");
+    if (syncResult.status === "failed") {
+      syncWarning = `Identity confirmed, but AxisCare data sync could not complete: ${syncResult.error ?? "unknown error"}. It will retry on the next sync.`;
+    } else if (syncResult.status === "synced_with_conflicts") {
+      syncWarning = `Identity confirmed. AxisCare data synced, but ${syncResult.conflicts.length} field${syncResult.conflicts.length === 1 ? "" : "s"} disagree with Serve's existing values and need review.`;
+    }
+  } catch (err) {
+    syncWarning = `Identity confirmed, but AxisCare data sync could not complete: ${err instanceof Error ? err.message : "unknown error"}. It will retry on the next sync.`;
+  }
+
+  revalidatePeopleWeServe(input.residentId);
+  return { success: true, syncWarning };
 }
 
 export async function rejectAxisCareResidentIdentity(
@@ -117,7 +142,7 @@ export async function rejectAxisCareResidentIdentity(
   const { error } = await rejectPersonVendorIdentityLink({ linkId: linkResult.linkId, actor: actorResult.actor, rationale });
   if (error) return { error };
 
-  revalidatePeopleWeServe();
+  revalidatePeopleWeServe(input.residentId);
   return { success: true };
 }
 
@@ -135,7 +160,7 @@ export async function deferAxisCareResidentIdentity(
   const { error } = await deferPersonVendorIdentityLink({ linkId: linkResult.linkId, actor: actorResult.actor, rationale });
   if (error) return { error };
 
-  revalidatePeopleWeServe();
+  revalidatePeopleWeServe(input.residentId);
   return { success: true };
 }
 
@@ -164,4 +189,71 @@ export async function classifyAxisCareClientRecord(input: ClassifyAxisCareClient
 
   revalidatePeopleWeServe();
   return { success: true };
+}
+
+// ─── Exclude / Excluded Records — a simplified, single-click front door
+// onto the same governed disposition mechanism above (classifyAxisCareClientRecord).
+// "Exclude" is not a new taxonomy — it always writes disposition =
+// 'administrative_record', the existing value that already computes to
+// operationalBucket: 'excluded' (see isExcludedFromLifecycleCounts,
+// lib/integrations/axiscare/clientDisposition.ts). A user excluding an
+// obviously irrelevant record should never have to pick from the full
+// 6-option disposition list. Rationale stays required at the schema
+// layer (person_evidence_... no — axiscare_client_dispositions.rationale
+// is NOT NULL) but is optional from the USER's perspective: a sensible
+// default is substituted when they don't type one, satisfying the
+// constraint without demanding detail for an obvious case. ────────────
+
+const DEFAULT_EXCLUDE_RATIONALE =
+  "Excluded — reviewed and determined not to represent a relevant Serve operational person/relationship.";
+const DEFAULT_RESTORE_RATIONALE = "Restored from Excluded Records for re-review.";
+
+export async function quickExcludeAxisCareRecord(axiscareId: string, rationale?: string): Promise<ReconciliationActionResult> {
+  return classifyAxisCareClientRecord({
+    axiscareId,
+    disposition: "administrative_record",
+    rationale: rationale?.trim() || DEFAULT_EXCLUDE_RATIONALE,
+  });
+}
+
+export async function bulkExcludeAxisCareRecords(
+  axiscareIds: string[],
+  rationale?: string
+): Promise<ReconciliationActionResult & { excludedCount?: number; failedIds?: string[] }> {
+  if (axiscareIds.length === 0) return { error: "No records selected." };
+
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+
+  const failedIds: string[] = [];
+  for (const axiscareId of axiscareIds) {
+    const { error } = await setAxisCareClientDisposition({
+      axiscareClientId: axiscareId,
+      disposition: "administrative_record",
+      rationale: rationale?.trim() || DEFAULT_EXCLUDE_RATIONALE,
+      actor: actorResult.actor,
+    });
+    if (error) failedIds.push(axiscareId);
+  }
+
+  revalidatePeopleWeServe();
+  if (failedIds.length > 0) {
+    return {
+      error: `${failedIds.length} of ${axiscareIds.length} record(s) could not be excluded.`,
+      excludedCount: axiscareIds.length - failedIds.length,
+      failedIds,
+    };
+  }
+  return { success: true, excludedCount: axiscareIds.length };
+}
+
+// Suppression, not deletion — restoring puts the record back into
+// ordinary review (disposition: 'needs_review'), never asserts a new
+// classification on the user's behalf.
+export async function restoreAxisCareRecord(axiscareId: string, rationale?: string): Promise<ReconciliationActionResult> {
+  return classifyAxisCareClientRecord({
+    axiscareId,
+    disposition: "needs_review",
+    rationale: rationale?.trim() || DEFAULT_RESTORE_RATIONALE,
+  });
 }

@@ -33,6 +33,30 @@ export async function getResidentAxisCareLinks(residentId: string): Promise<Pers
   return (data as PersonVendorIdentityLink[] | null) ?? [];
 }
 
+// Every resident whose AxisCare identity match is human-confirmed — the
+// one population the canonical bootstrap sync is ever allowed to write
+// against (see lib/integrations/axiscare/clientCanonicalSync.ts). A
+// candidate/needs-review match never reaches this list, mirroring
+// isAuditEligibleActiveClient()'s same non-negotiable rule for the
+// Audit Readiness denominator.
+export async function getConfirmedResidentAxisCareLinks(): Promise<PersonVendorIdentityLink[]> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .from("person_vendor_identity_links")
+    .select("*")
+    .eq("subject_type", "resident")
+    .eq("source_system", "axiscare")
+    .eq("status", "confirmed");
+
+  if (error) {
+    console.error("[getConfirmedResidentAxisCareLinks]", { message: error.message });
+    return [];
+  }
+
+  return (data as PersonVendorIdentityLink[] | null) ?? [];
+}
+
 export async function getResidentAxisCareReviewQueue(): Promise<PersonVendorIdentityLink[]> {
   const supabase = createServerClient();
 

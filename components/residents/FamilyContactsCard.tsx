@@ -55,6 +55,10 @@ interface FamilyContactsCardProps {
   initialRelationship: string;
   initialPhone: string;
   initialEmail: string;
+  // Lets a compact host row (ResidentEssentials) open this straight into
+  // its edit form instead of requiring a click into the read view first,
+  // then a second click on this card's own internal "Edit" link.
+  startInEditMode?: boolean;
 }
 
 export function FamilyContactsCard({
@@ -64,10 +68,11 @@ export function FamilyContactsCard({
   initialRelationship,
   initialPhone,
   initialEmail,
+  startInEditMode = false,
 }: FamilyContactsCardProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(startInEditMode);
   const [error, setError] = useState<string | null>(null);
 
   const [contactName, setContactName] = useState(initialContactName);

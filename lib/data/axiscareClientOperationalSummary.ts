@@ -62,6 +62,8 @@ export interface AxisCareClientOperationalRow {
   readonly computedLifecycle: ServeClientLifecycle;
   readonly disposition: AxisCareClientDisposition | null;
   readonly dispositionRationale: string | null;
+  readonly dispositionSetBy: string | null;
+  readonly dispositionSetAt: string | null;
   readonly operationalBucket: AxisCareClientOperationalBucket;
   // "name_denylist" (lib/integrations/axiscare/clientIdentityMatching.ts's
   // KNOWN_NON_RESIDENT_NAMES) or "disposition:<value>" — both are
@@ -84,28 +86,123 @@ export interface AxisCareClientOperationalSummary {
   readonly counts: Record<AxisCareClientOperationalBucket, number>;
 }
 
+interface RawResidentRow {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  display_name: string | null;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  phone_raw: string | null;
+  unit_number: string | null;
+  community_name: string | null;
+}
+
+// Canonicalizes the AxisCare match-candidate pool against Resident
+// Identity Resolution (supabase/migrations/20260805000000_create_resident_identity_resolution.sql):
+// a resident that has been retired/redirected through that system (e.g.
+// "Elliott Goldberg" redirected to canonical "Elliot Goldberg") must never
+// win an AxisCare identity match under its own, now-retired identity —
+// source candidate -> redirect/alias -> canonical resident, never source
+// candidate -> dead resident. Implemented as an additive candidate-list
+// transform only: matchAxisCareClientToResident() itself is untouched, so
+// every existing match tier (email, phone, apartment, community) keeps its
+// exact precedence and semantics — a redirected duplicate's own name (and
+// any resident_identity_aliases spelling variant) simply becomes an
+// alternate name-only candidate ROW that resolves to the CANONICAL
+// resident's id, alongside the canonical's own real candidate row. Alias/
+// redirect-derived rows never carry email or phone (never let a stale
+// duplicate's contact fields independently win an email/phone-tier match
+// on the canonical's behalf — only the canonical's own real contact data
+// does that) but do carry the canonical's own real community/apartment, so
+// the name_and_community / name_and_apartment tiers can still fire.
+export function buildAxisCareMatchCandidates(
+  residentsRaw: readonly RawResidentRow[],
+  redirects: readonly { duplicate_resident_id: string; canonical_resident_id: string }[],
+  aliases: readonly { canonical_resident_id: string; normalized_value: string }[]
+): NormalizedResidentCandidate[] {
+  const residentById = new Map(residentsRaw.map((r) => [r.id, r]));
+  const canonicalIdByDuplicateId = new Map(redirects.map((r) => [r.duplicate_resident_id, r.canonical_resident_id]));
+
+  function candidateFor(canonicalId: string, normalizedName: string): NormalizedResidentCandidate | null {
+    const canonical = residentById.get(canonicalId);
+    if (!canonical) return null; // defensive: a redirect/alias pointing at a resident row that no longer exists
+    return {
+      id: canonicalId,
+      displayName: canonical.display_name || canonical.full_name || `${canonical.first_name ?? ""} ${canonical.last_name ?? ""}`.trim(),
+      normalizedEmail: null,
+      normalizedPhones: [],
+      normalizedName,
+      normalizedLastName: null,
+      unitNumber: canonical.unit_number,
+      communityName: canonical.community_name,
+    };
+  }
+
+  const candidates: NormalizedResidentCandidate[] = [];
+
+  for (const r of residentsRaw) {
+    // A retired/redirected duplicate is never an independent match
+    // candidate under its own identity — its name still matters (below,
+    // via the alias it always gets on merge), just no longer as "this
+    // resident."
+    if (canonicalIdByDuplicateId.has(r.id)) continue;
+    candidates.push({
+      id: r.id,
+      displayName: r.display_name || r.full_name || `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim(),
+      normalizedEmail: normalizeEmail(r.email),
+      normalizedPhones: [r.phone, r.phone_raw].map(normalizePhone).filter((p): p is string => p !== null),
+      normalizedName: normalizeName(r.first_name ?? "", r.last_name ?? ""),
+      normalizedLastName: r.last_name ? normalizeLastName(r.last_name) : null,
+      unitNumber: r.unit_number,
+      communityName: r.community_name,
+    });
+  }
+
+  // A redirected duplicate's own (pre-merge) name resolves straight to its
+  // canonical resident — this is exactly what merge_residents() already
+  // recorded as a resident_identity_aliases row when the names differed,
+  // so in practice this loop and the alias loop below cover the same
+  // ground for a completed merge; kept as its own explicit case so a
+  // redirect is honored even in the (currently impossible, but not
+  // contractually guaranteed) case its alias row is missing.
+  for (const [duplicateId, canonicalId] of canonicalIdByDuplicateId) {
+    const duplicate = residentById.get(duplicateId);
+    if (!duplicate) continue;
+    const normalizedName = normalizeName(duplicate.first_name ?? "", duplicate.last_name ?? "");
+    const candidate = candidateFor(canonicalId, normalizedName);
+    if (candidate) candidates.push(candidate);
+  }
+
+  // Every confirmed alias (resident_identity_aliases — spelling variants,
+  // historical spellings, source-specific spellings, etc.) is real,
+  // governed identity evidence for its canonical resident, usable here the
+  // same way the resident's own primary name is.
+  for (const alias of aliases) {
+    const candidate = candidateFor(alias.canonical_resident_id, alias.normalized_value);
+    if (candidate) candidates.push(candidate);
+  }
+
+  return candidates;
+}
+
 export async function getAxisCareClientOperationalSummary(): Promise<AxisCareClientOperationalSummary> {
   const supabase = createServerClient();
 
-  const [{ data: residentsRaw }, { data: existingLinksRaw }, dispositions, clientsResult] = await Promise.all([
-    supabase
-      .from("residents")
-      .select("id, first_name, last_name, display_name, full_name, email, phone, phone_raw, unit_number, community_name"),
-    supabase.from("person_vendor_identity_links").select("*").eq("subject_type", "resident").eq("source_system", "axiscare"),
-    getAxisCareClientDispositions(),
-    getAllClients(),
-  ]);
+  const [{ data: residentsRaw }, { data: existingLinksRaw }, { data: redirectsRaw }, { data: aliasesRaw }, dispositions, clientsResult] =
+    await Promise.all([
+      supabase
+        .from("residents")
+        .select("id, first_name, last_name, display_name, full_name, email, phone, phone_raw, unit_number, community_name"),
+      supabase.from("person_vendor_identity_links").select("*").eq("subject_type", "resident").eq("source_system", "axiscare"),
+      supabase.from("resident_identity_redirects").select("duplicate_resident_id, canonical_resident_id"),
+      supabase.from("resident_identity_aliases").select("canonical_resident_id, normalized_value"),
+      getAxisCareClientDispositions(),
+      getAllClients(),
+    ]);
 
-  const residents: NormalizedResidentCandidate[] = (residentsRaw ?? []).map((r) => ({
-    id: r.id,
-    displayName: r.display_name || r.full_name || `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim(),
-    normalizedEmail: normalizeEmail(r.email),
-    normalizedPhones: [r.phone, r.phone_raw].map(normalizePhone).filter((p): p is string => p !== null),
-    normalizedName: normalizeName(r.first_name ?? "", r.last_name ?? ""),
-    normalizedLastName: r.last_name ? normalizeLastName(r.last_name) : null,
-    unitNumber: r.unit_number,
-    communityName: r.community_name,
-  }));
+  const residents = buildAxisCareMatchCandidates(residentsRaw ?? [], redirectsRaw ?? [], aliasesRaw ?? []);
 
   const existingLinks = new Map(
     (existingLinksRaw ?? []).map((l) => [String(l.vendor_record_id), l as { subject_id: string | null; status: string }])
@@ -181,6 +278,8 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
       computedLifecycle,
       disposition: dispositionRow?.disposition ?? null,
       dispositionRationale: dispositionRow?.rationale ?? null,
+      dispositionSetBy: dispositionRow?.setBy ?? null,
+      dispositionSetAt: dispositionRow?.setAt ?? null,
       operationalBucket,
       exclusionReason,
       identityStatus: resolveAxisCareIdentityStatus(residentMatch),

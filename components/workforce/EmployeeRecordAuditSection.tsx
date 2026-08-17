@@ -30,6 +30,7 @@ export function EmployeeRecordAuditSection({
   rosterOptions,
   lifecycleStatus,
   history,
+  highlightRequirementCode,
 }: {
   registry: RequirementSetEvaluation;
   workforceMemberId: string;
@@ -37,6 +38,11 @@ export function EmployeeRecordAuditSection({
   rosterOptions: Array<{ workforceMemberId: string; displayName: string }>;
   lifecycleStatus: WorkforceLifecycleStatus;
   history: PersonEvidence[];
+  // Set when arriving from a "Resolve →" link elsewhere (e.g. Audit
+  // Readiness's Needs Attention) — the matching card auto-expands and
+  // scrolls into view, so the link is a real resolution path, not just a
+  // pointer at this whole section.
+  highlightRequirementCode?: string;
 }) {
   const groups = groupByCategory(registry.requirements);
 
@@ -59,6 +65,7 @@ export function EmployeeRecordAuditSection({
                 history={history.filter(
                   (e) => e.requirement_id === evaluation.requirement.id && e.id !== evaluation.latestEvidence?.id
                 )}
+                autoExpand={evaluation.requirement.requirement_code === highlightRequirementCode}
               />
             ))}
           </div>

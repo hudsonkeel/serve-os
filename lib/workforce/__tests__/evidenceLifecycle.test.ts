@@ -63,6 +63,7 @@ function evidence(overrides: Partial<PersonEvidence> = {}): PersonEvidence {
     verification_method: null,
     attestation_result: null,
     external_reference: null,
+    satisfaction_context: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,

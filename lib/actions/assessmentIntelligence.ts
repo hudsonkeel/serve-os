@@ -22,6 +22,9 @@ import { PRICING_CATALOG_VERSION } from "@/lib/assessmentIntelligence/pricingCat
 import { computeAxisCareReadiness, buildAxisCarePayloadPreview } from "@/lib/assessmentIntelligence/axiscareReadiness";
 import { buildCinchProjection } from "@/lib/assessmentIntelligence/cinchProjection";
 import type { AssertionState } from "@/lib/assessmentIntelligence/factTypes";
+import { getRequirementByCode } from "@/lib/data/personRequirements";
+import { recordAssessmentEvidence } from "@/lib/clientReadiness/evidence";
+import { CR_ASSESSMENT_CURRENT } from "@/lib/clientReadiness/constants";
 
 // Server actions for the assessment intelligence layer — see docs/architecture/
 // ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md. Distinct from lib/actions/assessmentCapture.ts
@@ -175,6 +178,30 @@ export async function approveAssessment(input: {
   const session = await getAssessmentSession(input.assessmentSessionId);
   if (!session) return { error: "Assessment approved, but the session could not be reloaded for pricing." };
 
+  // Client Readiness — Serve-native governed evidence (approved architecture
+  // Phase 3): approval itself creates/refreshes CR_ASSESSMENT_CURRENT's
+  // evidence directly — no second Verify From Source action. This call is
+  // sequential, not transactional, with approveAssessmentSession() above;
+  // recordAssessmentEvidence() is idempotent (dedupes on
+  // assessmentSessionId), so re-running this action later is always safe,
+  // and a failure here is surfaced honestly rather than folded into a
+  // false "success."
+  let clientReadinessError: string | undefined;
+  const clientReadinessRequirement = await getRequirementByCode(CR_ASSESSMENT_CURRENT);
+  if (clientReadinessRequirement) {
+    const evidenceResult = await recordAssessmentEvidence({
+      residentId: session.resident_id,
+      requirementId: clientReadinessRequirement.id,
+      assessmentSessionId: input.assessmentSessionId,
+      effectiveDate: (session.finished_at ?? session.started_at).slice(0, 10),
+      assessor: session.started_by,
+      approvingActor: authResult.actor,
+    });
+    if (evidenceResult.error) {
+      clientReadinessError = `Assessment approved, but Client Readiness evidence could not be recorded: ${evidenceResult.error}`;
+    }
+  }
+
   const approvedFactRows = await getApprovedFactsForResident(session.resident_id);
   const factsForPricing: FactForPricing[] = approvedFactRows.map((f) => ({
     fieldPath: f.field_path,
@@ -193,7 +220,52 @@ export async function approveAssessment(input: {
     rulesVersion: PRICING_RULES_VERSION,
   });
 
+  if (clientReadinessError) {
+    return { error: clientReadinessError, pricingStatus: pricingOutput.status };
+  }
   return { pricingStatus: pricingOutput.status };
+}
+
+// Reconciliation path for the one non-transactional gap in
+// approveAssessment(): if approve_assessment_session() succeeded but the
+// follow-up Client Readiness evidence write failed, this lets the gap be
+// closed WITHOUT re-approving. Deliberately does not call
+// approveAssessmentSession() again — that RPC has no "already approved"
+// guard (unlike complete_audit_session/complete_emergency_preparedness_review,
+// it never checks the session's current status before re-inserting facts
+// and re-transitioning it), so a naive retry of the whole approval action
+// would insert a second, duplicate set of approved facts and fire a
+// second resident_timeline entry. This action only re-runs the evidence
+// step, which is genuinely idempotent (recordAssessmentEvidence() dedupes
+// on assessmentSessionId) — safe to call any number of times, including
+// when there is nothing to reconcile.
+export async function reconcileClientReadinessAssessmentEvidence(
+  assessmentSessionId: string
+): Promise<{ error?: string; alreadyRecorded?: boolean }> {
+  const authResult = await requireActor();
+  if ("error" in authResult) return { error: authResult.error };
+
+  const session = await getAssessmentSession(assessmentSessionId);
+  if (!session) return { error: "Assessment session not found." };
+  if (session.status !== "approved") {
+    return { error: "This assessment has not been approved yet — nothing to reconcile." };
+  }
+
+  const requirement = await getRequirementByCode(CR_ASSESSMENT_CURRENT);
+  if (!requirement) {
+    return { error: "CR_ASSESSMENT_CURRENT requirement not found — has the Client Readiness seed migration been applied?" };
+  }
+
+  const result = await recordAssessmentEvidence({
+    residentId: session.resident_id,
+    requirementId: requirement.id,
+    assessmentSessionId,
+    effectiveDate: (session.finished_at ?? session.started_at).slice(0, 10),
+    assessor: session.started_by,
+    approvingActor: authResult.actor,
+  });
+  if (result.error) return { error: result.error };
+  return { alreadyRecorded: result.alreadyRecorded };
 }
 
 /** AxisCare readiness + payload PREVIEW only — no write adapter exists, and none is invoked

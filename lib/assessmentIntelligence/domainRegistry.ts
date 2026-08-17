@@ -92,6 +92,14 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   { fieldPath: "daily_life.transportation_errands", domain: "daily_life", label: "Transportation / errands", isBoolean: true },
   { fieldPath: "daily_life.companionship_social", domain: "daily_life", label: "Companionship / social support", isBoolean: true },
   { fieldPath: "daily_life.medication_reminders", domain: "daily_life", label: "Medication reminders", isBoolean: true, requiredForReview: true },
+  // Client Readiness taxonomy delta ("Client Readiness — Phase A.2
+  // Architecture Lock" / Phase B, §5/§8): closes the one real §301(b) gap
+  // — "supplies and equipment to be utilized" — for care-task supplies
+  // beyond the mobility-specific equipment already captured below
+  // (walker/cane/wheelchair/shower_equipment). Free text, not an
+  // exhaustive checklist, and not required for review (conditional by
+  // nature).
+  { fieldPath: "daily_life.other_supplies_equipment", domain: "daily_life", label: "Other supplies or equipment used for care" },
 
   // Mobility / Safety
   { fieldPath: "mobility_safety.recent_falls", domain: "mobility_safety", label: "Recent falls", isBoolean: true, requiredForReview: true },
@@ -118,7 +126,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   { fieldPath: "cognition.known_diagnosis", domain: "cognition", label: "Known cognitive diagnosis (explicitly stated)" },
 
   // Health
-  { fieldPath: "health.diagnoses", domain: "health", label: "Diagnoses (explicitly provided)" },
+  // Relabeled per the Client Readiness taxonomy delta — the intent is
+  // health conditions materially relevant to how Serve provides
+  // non-medical PAS care, never comprehensive diagnosis collection. The
+  // field_path itself is unchanged (no churn to already-recorded facts);
+  // the extraction-prompt guidance that actually shapes what gets
+  // captured lives outside this registry and is not touched here.
+  { fieldPath: "health.diagnoses", domain: "health", label: "Health conditions relevant to care" },
   { fieldPath: "health.allergies", domain: "health", label: "Allergies", requiredForReview: true },
   { fieldPath: "health.recent_hospitalization", domain: "health", label: "Recent hospitalization / rehab", isBoolean: true },
   { fieldPath: "health.blood_thinners", domain: "health", label: "Blood thinners", isBoolean: true },
@@ -129,6 +143,10 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   { fieldPath: "advance_planning.dnr", domain: "advance_planning", label: "DNR", isBoolean: true },
   { fieldPath: "advance_planning.advance_directive", domain: "advance_planning", label: "Advance directive", isBoolean: true },
   { fieldPath: "advance_planning.medical_poa", domain: "advance_planning", label: "Medical POA", isBoolean: true },
+  // Client Readiness taxonomy delta: financial POA does not bear on safe/
+  // effective non-medical PAS care or ISP content — it remains in the
+  // registry (may still matter elsewhere, e.g. billing authorization) but
+  // must never gate CR_ASSESSMENT_CURRENT's completeness.
   { fieldPath: "advance_planning.financial_poa", domain: "advance_planning", label: "Financial POA", isBoolean: true },
 
   // When
@@ -138,7 +156,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   { fieldPath: "when.frequency", domain: "when", label: "Frequency" },
   { fieldPath: "when.duration", domain: "when", label: "Duration" },
 
-  // Serve Relationship Intelligence
+  // Serve Relationship Intelligence — genuinely useful for Serve's own
+  // sales/relationship pipeline, but not part of "the minimum sufficient
+  // care picture." Client Readiness taxonomy delta: these 4 fields, plus
+  // what_why.why_now and what_why.acceptance_of_care above, must never
+  // gate CR_ASSESSMENT_CURRENT's completeness — their absence is never a
+  // Client Readiness concern. what_why.primary_goals is the one what_why
+  // field that IS care/service-plan relevant and stays in scope.
   { fieldPath: "serve_relationship_intelligence.primary_motivation", domain: "serve_relationship_intelligence", label: "Primary motivation for seeking help" },
   { fieldPath: "serve_relationship_intelligence.family_caregiver_stress", domain: "serve_relationship_intelligence", label: "Family / caregiver stress" },
   { fieldPath: "serve_relationship_intelligence.barriers_to_acceptance", domain: "serve_relationship_intelligence", label: "Barriers to accepting care" },

@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  updateCareContactFields,
   updateFamilyContactFields,
   updateResidentProfileFields,
 } from "@/lib/data/residents";
@@ -139,6 +140,50 @@ export async function saveFamilyContact(
   }
 
   await logResidentProfileUpdated(data.residentId, permissionCheck.actor!, "Family contact");
+
+  return {};
+}
+
+export interface CareContactFormData {
+  residentId: string;
+  physicianName: string;
+  physicianPhone: string;
+  guardianName: string;
+  guardianPhone: string;
+}
+
+export async function saveCareContacts(
+  data: CareContactFormData
+): Promise<{ error?: string }> {
+  const permissionCheck = await assertCanEditResidentProfile();
+  if (permissionCheck.error) return permissionCheck;
+
+  if (!data.residentId) {
+    return { error: "Missing resident." };
+  }
+
+  const physicianPhone = data.physicianPhone.trim();
+  if (physicianPhone && !isValidPhone(physicianPhone)) {
+    return { error: "Enter a valid physician phone number." };
+  }
+
+  const guardianPhone = data.guardianPhone.trim();
+  if (guardianPhone && !isValidPhone(guardianPhone)) {
+    return { error: "Enter a valid guardian phone number." };
+  }
+
+  const result = await updateCareContactFields(data.residentId, {
+    physician_name: data.physicianName.trim() || null,
+    physician_phone: physicianPhone || null,
+    legal_guardian_name: data.guardianName.trim() || null,
+    legal_guardian_phone: guardianPhone || null,
+  });
+
+  if (result.error) {
+    return { error: result.error };
+  }
+
+  await logResidentProfileUpdated(data.residentId, permissionCheck.actor!, "Physician / guardian contact");
 
   return {};
 }

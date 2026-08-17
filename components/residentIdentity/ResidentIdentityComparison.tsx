@@ -13,6 +13,8 @@ import {
 import type { ResidentComparisonRecord } from "@/lib/data/residentIdentity";
 import { recommendCanonicalResident } from "@/lib/residents/identity/canonicalRecommendation";
 import { Badge } from "@/components/ui/Badge";
+import { RELATIONSHIP_LABELS, RELATIONSHIP_TONES } from "@/components/residents/ResidentIdentityAndRelationship";
+import type { ResidentServeRelationshipDetail } from "@/lib/data/residentServeRelationships";
 
 interface EvidenceEntry {
   signalType: string;
@@ -44,6 +46,8 @@ interface ResidentIdentityComparisonProps {
   candidate: CandidateRecord;
   residents: ResidentComparisonRecord[];
   linkedCounts: Record<string, Record<string, number>>;
+  relationshipDetails: Record<string, ResidentServeRelationshipDetail | null>;
+  documentEvidenceCounts: Record<string, { documents: number; evidence: number }>;
 }
 
 const FIELD_LABEL = "mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-subtle";
@@ -75,7 +79,13 @@ const COMPARE_FIELDS: { key: keyof ResidentComparisonRecord; label: string }[] =
 
 const isOpen = (status: string) => status === "open" || status === "investigating";
 
-export function ResidentIdentityComparison({ candidate, residents, linkedCounts }: ResidentIdentityComparisonProps) {
+export function ResidentIdentityComparison({
+  candidate,
+  residents,
+  linkedCounts,
+  relationshipDetails,
+  documentEvidenceCounts,
+}: ResidentIdentityComparisonProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +109,6 @@ export function ResidentIdentityComparison({ candidate, residents, linkedCounts 
   }
 
   const duplicateId = canonicalId === a.id ? b.id : a.id;
-  const duplicateHasLittleHistory = totalLinkedRecords(linkedCounts[duplicateId]) <= 2;
 
   function runAction(fn: () => Promise<{ error?: string }>) {
     setError(null);
@@ -159,6 +168,47 @@ export function ResidentIdentityComparison({ candidate, residents, linkedCounts 
           </ul>
         </div>
       )}
+
+      {/* Current Serve relationship + AxisCare identity link + documents/
+          evidence, per side — required context for choosing a canonical
+          survivor that the field-by-field table below doesn't cover on
+          its own (an inactive/archived record naturally has no live
+          relationship computed for it — shown honestly, not guessed). */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {[a, b].map((r) => {
+          const detail = relationshipDetails[r.id];
+          const counts = documentEvidenceCounts[r.id];
+          return (
+            <div key={r.id} className="rounded-lg border border-ivory-border bg-surface px-4 py-3">
+              <p className="font-sans text-sm font-semibold text-body">{fullName(r)}</p>
+              <p className="mt-0.5 font-sans text-xs text-subtle">{r.isActive ? "Active resident record" : "Inactive / archived record"}</p>
+              <div className="mt-2 space-y-1 font-sans text-sm text-body">
+                <p>
+                  <span className="text-subtle">Relationship: </span>
+                  {detail ? (
+                    <Badge tone={RELATIONSHIP_TONES[detail.projection.relationship]}>{RELATIONSHIP_LABELS[detail.projection.relationship]}</Badge>
+                  ) : (
+                    <span className="text-muted">No live relationship computed (record is inactive)</span>
+                  )}
+                </p>
+                <p>
+                  <span className="text-subtle">AxisCare: </span>
+                  {detail?.axiscareMatch ? (
+                    <span>
+                      #{detail.axiscareMatch.axiscareId} ({detail.axiscareMatch.identityStatus.replace(/_/g, " ")})
+                    </span>
+                  ) : (
+                    <span className="text-muted">No match</span>
+                  )}
+                </p>
+                <p className="text-subtle">
+                  {counts ? `${counts.documents} document(s) · ${counts.evidence} evidence record(s)` : "—"}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       {/* Side-by-side comparison */}
       <div className="overflow-x-auto rounded-lg border border-ivory-border bg-surface">
@@ -249,7 +299,7 @@ export function ResidentIdentityComparison({ candidate, residents, linkedCounts 
               }
               className="inline-flex h-11 items-center justify-center rounded-md bg-navy px-4 font-sans text-button font-semibold text-white hover:bg-navy/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {duplicateHasLittleHistory ? "Same Person — Alias Only (Merge Now)" : "Full Merge — Consolidate Now"}
+              Same Person — Consolidate Records
             </button>
             <button
               type="button"
@@ -266,12 +316,14 @@ export function ResidentIdentityComparison({ candidate, residents, linkedCounts 
               }
               className="inline-flex h-11 items-center justify-center rounded-md border border-navy/30 px-4 font-sans text-button font-semibold text-navy hover:bg-navy/5 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Same Person — Defer Consolidation
+              Same Person — Keep Separate for Now
             </button>
           </div>
           <p className="font-sans text-xs text-subtle">
-            Either choice immediately stops the non-canonical record from appearing as an ordinary active resident. &quot;Defer&quot;
-            skips only the detailed reassignment of linked records — do that later from this same page once it&apos;s marked pending.
+            Both options immediately retire the non-canonical record (it stops appearing as an ordinary active resident, and its
+            name becomes a known alias of the canonical record) — that part is not optional once you&apos;ve confirmed same person.
+            &quot;Consolidate Records&quot; also reassigns that record&apos;s notes, history, and other linked data to the canonical
+            record right now. &quot;Keep Separate for Now&quot; defers only that reassignment — finish it later from this same page.
           </p>
 
           <div className="flex flex-wrap gap-3 border-t border-ivory-border pt-3">

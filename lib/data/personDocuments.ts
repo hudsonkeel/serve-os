@@ -26,6 +26,29 @@ export async function getPersonDocumentsForSubject(
   return (data as PersonDocument[] | null) ?? [];
 }
 
+// Cross-subject read — powers Audit Readiness's global Evidence view
+// (spec Module B: "see source system... across those records"). Composes
+// this platform-owned table for presentation; every write still goes
+// through the domain-scoped call sites above (workforce's
+// uploadWorkforceDocument, residents' uploadResidentDocument, etc.), never
+// through a parallel path here.
+export async function listRecentPersonDocuments(limit: number = 100): Promise<PersonDocument[]> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .from("person_documents")
+    .select("*")
+    .order("uploaded_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("[listRecentPersonDocuments]", { message: error.message });
+    return [];
+  }
+
+  return (data as PersonDocument[] | null) ?? [];
+}
+
 export async function getPersonDocumentById(id: string): Promise<PersonDocument | null> {
   const supabase = createServerClient();
 

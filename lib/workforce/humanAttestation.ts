@@ -30,6 +30,12 @@ export const AUTHORITATIVE_SOURCE_LABELS: Record<AuthoritativeSourceSystem, stri
   background_vendor: "Background Vendor",
   uploaded_document: "Uploaded Document",
   other_authorized_source: "Other Authorized Source",
+  // Client Readiness's Medication List source — included here only for
+  // AuthoritativeSourceSystem's shared-type exhaustiveness. Workforce's own
+  // Human Attestation dialog iterates this map for its dropdown, so this
+  // value is technically selectable there too; it is never meaningful for
+  // a workforce requirement and no workforce evidence should ever carry it.
+  physical_client_folder: "Physical Client Folder",
 };
 
 export const COLLECTION_METHOD_LABELS: Record<EvidenceCollectionMethod, string> = {

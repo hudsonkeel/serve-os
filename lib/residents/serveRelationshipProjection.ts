@@ -19,6 +19,7 @@
 // contract in clientOperationalStatus.ts).
 import type { ServeRelationshipStatus } from "@/lib/supabase/types";
 import type { AxisCareClientOperationalBucket, AxisCareIdentityStatus } from "@/lib/integrations/axiscare/clientOperationalStatus";
+import type { ClientMatchBasis } from "@/lib/integrations/axiscare/clientIdentityMatching";
 
 export type ServeRelationship =
   | "prospect"
@@ -42,6 +43,18 @@ export interface AxisCareRelationshipMatch {
   readonly axiscareId: string;
   readonly operationalBucket: AxisCareRelationshipBucket;
   readonly identityStatus: AxisCareIdentityStatus;
+  // Display/decision-support fields for identity-resolution UI —
+  // optional since projectServeRelationship()'s own decision logic below
+  // never reads them (identity confidence is a separate dimension, never
+  // used to hide a real operational relationship — see this module's own
+  // header comment). Populated by residentServeRelationships.ts's
+  // buildResidentAxisCareMatches() from the full
+  // AxisCareClientOperationalRow; absent in synthetic/older inputs.
+  readonly vendorDisplayName?: string;
+  readonly matchBasis?: ClientMatchBasis;
+  readonly statusLabel?: string | null;
+  readonly statusActive?: boolean;
+  readonly classes?: readonly string[];
 }
 
 export interface RelevantRelationship {
@@ -105,7 +118,14 @@ function firstProspectStage(relationships: readonly RelevantRelationship[]): str
 }
 
 export function projectServeRelationship(input: ServeRelationshipProjectionInput): ServeRelationshipProjection {
-  const onHold = input.legacyResidentStatus === "hold" || hasOnHoldRelationship(input.activeRelationships);
+  // onHold is governed/CRM-relationship-sourced ONLY (hasOnHoldRelationship)
+  // — never derived from legacyResidentStatus. That raw column (and its
+  // staged-import overlay) can carry a historical CINCH-imported 'hold'
+  // value, and CINCH is never a relationship source (see this module's
+  // own header comment) — current or otherwise. A real "On Hold" state
+  // must come from an actual governed CRM Relationship, not a vendor
+  // import artifact.
+  const onHold = hasOnHoldRelationship(input.activeRelationships);
 
   let relationship: ServeRelationship;
   let relationshipSource: ServeRelationshipSource;

@@ -107,6 +107,13 @@ export async function createPersonEvidence(input: {
   verificationMethod?: EvidenceVerificationMethod | null;
   attestationResult?: AttestationResult | null;
   externalReference?: string | null;
+  // How this evidence satisfies its requirement — see
+  // person_evidence.satisfaction_context's own comment in
+  // lib/supabase/types.ts. Null for every pre-existing caller; Emergency
+  // Preparedness is the first writer (always validated against its own
+  // closed vocabulary before reaching here — see
+  // lib/emergencyPreparedness/satisfactionContext.ts).
+  satisfactionContext?: string | null;
 }): Promise<{ evidence?: PersonEvidence; error?: string }> {
   const supabase = createServerClient();
 
@@ -130,6 +137,7 @@ export async function createPersonEvidence(input: {
       verification_method: input.verificationMethod ?? null,
       attestation_result: input.attestationResult ?? null,
       external_reference: input.externalReference ?? null,
+      satisfaction_context: input.satisfactionContext ?? null,
     })
     .select("*")
     .single();

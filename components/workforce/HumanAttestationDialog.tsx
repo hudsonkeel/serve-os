@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { submitHumanAttestation } from "@/lib/actions/workforce";
+import { FileUploadField } from "@/components/ui/FileUploadField";
 import {
   ATTESTATION_RESULT_LABELS,
   AUTHORITATIVE_SOURCE_LABELS,
@@ -161,10 +162,7 @@ export function HumanAttestationDialog({
           />
         </label>
 
-        <label className="block">
-          <span className="font-sans text-[11px] font-medium text-muted">Supporting Document (optional)</span>
-          <input type="file" name="file" accept="application/pdf" className="mt-0.5 block w-full font-sans text-xs text-body" />
-        </label>
+        <FileUploadField label="Supporting Document (optional)" name="file" accept="application/pdf" />
       </div>
 
       <p className="font-sans text-[11px] text-subtle">

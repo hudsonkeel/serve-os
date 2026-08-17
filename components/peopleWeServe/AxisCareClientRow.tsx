@@ -94,6 +94,13 @@ export function AxisCareClientRow({ row }: AxisCareClientRowProps) {
           {row.dispositionRationale && (
             <p className="mt-1 font-sans text-sm text-muted">{row.dispositionRationale}</p>
           )}
+          {(row.dispositionSetBy || row.dispositionSetAt) && (
+            <p className="mt-1 font-sans text-xs text-subtle">
+              {row.dispositionSetBy && `by ${row.dispositionSetBy}`}
+              {row.dispositionSetBy && row.dispositionSetAt && " · "}
+              {row.dispositionSetAt && new Date(row.dispositionSetAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+            </p>
+          )}
         </div>
       )}
     </div>

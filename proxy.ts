@@ -20,6 +20,11 @@ const PUBLIC_PATHS = [
   // header (INTAKE_INTERNAL_SECRET) rather than relying on cookie auth —
   // see docs/integrations/WEBSITE_TO_SERVE_INTAKE_CONTRACT.md.
   "/api/intake",
+  // Same server-to-server pattern, for AxisCare Client Data Sync's
+  // scheduled entry point — verifies its own shared-secret header
+  // (AXISCARE_SYNC_INTERNAL_SECRET), never cookie auth. See
+  // app/api/axiscare/scheduled-sync/route.ts.
+  "/api/axiscare/scheduled-sync",
 ];
 
 function isPublicPath(pathname: string) {

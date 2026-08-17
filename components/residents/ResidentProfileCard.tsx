@@ -90,7 +90,6 @@ interface ResidentProfileCardProps {
   fullName: string;
   location: string;
   residentType: string | null;
-  serveRelationshipLabel: string;
   serviceModel: string | null;
   residentStatus: string | null;
   needsReview: string | null;
@@ -119,7 +118,6 @@ export function ResidentProfileCard({
   fullName,
   location,
   residentType,
-  serveRelationshipLabel,
   serviceModel,
   residentStatus,
   needsReview,
@@ -222,10 +220,6 @@ export function ResidentProfileCard({
             value={titleCase(residentType)}
             sourceLabel={sourceSystem ? `from ${titleCase(sourceSystem)}` : undefined}
           />
-          <ReadOnlyField
-            label="Serve Relationship Status"
-            value={serveRelationshipLabel}
-          />
           <ReadOnlyField label="Service Model" value={titleCase(serviceModel)} />
           <ReadOnlyField
             label="Resident Status"
@@ -307,10 +301,6 @@ export function ResidentProfileCard({
         />
         <ReadOnlyField label="Location" value={location || "-"} />
         <ReadOnlyField label="Resident Type" value={titleCase(residentType)} />
-        <ReadOnlyField
-          label="Serve Relationship Status"
-          value={serveRelationshipLabel}
-        />
         <ReadOnlyField label="Service Model" value={titleCase(serviceModel)} />
         <ReadOnlyField label="Resident Status" value={titleCase(residentStatus)} />
         <EditableField

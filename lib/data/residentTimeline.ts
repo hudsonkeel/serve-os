@@ -96,3 +96,59 @@ export async function logResidentProfileUpdated(
     });
   }
 }
+
+// Best-effort, same discipline as logResidentProfileUpdated() above —
+// never blocks or fails the upload itself (the document/evidence rows
+// have already been written by the time this runs). Requires
+// 20260902050000_add_resident_document_timeline_events.sql to be applied;
+// until then this fails safely (caught, logged, swallowed) with no effect
+// on the upload's own success.
+export async function logResidentDocumentUploaded(
+  residentId: string,
+  actor: string,
+  documentType: string
+): Promise<void> {
+  const supabase = createServerClient();
+  const { error } = await supabase.from("resident_timeline").insert({
+    resident_id: residentId,
+    event_type: "document_uploaded",
+    event_title: `${documentType} uploaded`,
+    event_description: `Uploaded by ${actor}.`,
+    source: "person_documents",
+    created_by: actor,
+    system_generated: false,
+  });
+
+  if (error) {
+    console.error("[residentTimeline:logResidentDocumentUploaded:error]", {
+      residentId,
+      message: error.message,
+      code: error.code,
+    });
+  }
+}
+
+export async function logResidentDocumentSuperseded(
+  residentId: string,
+  actor: string,
+  documentType: string
+): Promise<void> {
+  const supabase = createServerClient();
+  const { error } = await supabase.from("resident_timeline").insert({
+    resident_id: residentId,
+    event_type: "document_superseded",
+    event_title: `${documentType} replaced`,
+    event_description: `Replaced by ${actor}.`,
+    source: "person_documents",
+    created_by: actor,
+    system_generated: false,
+  });
+
+  if (error) {
+    console.error("[residentTimeline:logResidentDocumentSuperseded:error]", {
+      residentId,
+      message: error.message,
+      code: error.code,
+    });
+  }
+}

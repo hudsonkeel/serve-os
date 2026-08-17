@@ -40,6 +40,7 @@ import { getOrganizationSample } from "../organizations.ts";
 import { getAdlSample, getAdlCategorySample } from "../adls.ts";
 import { getTaggingCategorySample } from "../taggingCategories.ts";
 import { getExpiringTokensSample } from "../expiringTokens.ts";
+import { syncOneAxisCareClientCanonicalSnapshot } from "../clientCanonicalSync.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
 const tests: Test[] = [];
@@ -615,6 +616,24 @@ test("getApplicantSample never sends requestedSensitiveFields or a limit param",
       // parameter at all — asserting its absence guards against a future
       // edit reintroducing an unsupported param by copy-paste.
       assert.equal(captured[0].url.searchParams.has("limit"), false);
+    }
+  );
+});
+
+test("syncOneAxisCareClientCanonicalSnapshot never sends requestedSensitiveFields on either the client or responsibleParties request", async () => {
+  await withFakeFetch(
+    // A single generic shape tolerant of both calls; the eventual Supabase
+    // write is expected to fail in this env-var-less unit test context —
+    // irrelevant here, both axisCareGet() calls (the only thing this test
+    // checks) have already completed by that point.
+    { ok: true, status: 200, json: async () => ({ results: {} }) },
+    async (captured) => {
+      await syncOneAxisCareClientCanonicalSnapshot("29", "resident-1");
+      assert.ok(captured.length >= 1);
+      for (const request of captured) {
+        assert.equal(request.url.searchParams.has("requestedSensitiveFields"), false);
+      }
+      assert.ok(captured.some((r) => r.url.pathname === "/api/clients/29"));
     }
   );
 });

@@ -21,3 +21,15 @@ const RECONCILIATION_ACTION_ROLES: readonly AuthRole[] = ["admin", "manager", "e
 export function canPerformReconciliationActions(role: AuthRole | null | undefined): boolean {
   return Boolean(role && RECONCILIATION_ACTION_ROLES.includes(role));
 }
+
+// Resident documents/evidence (Audit Readiness Phase 2) — same PHI-
+// sensitivity tier as editing the resident profile itself, since a
+// document is frequently more sensitive than the profile fields around
+// it. Deliberately not reusing canEditResidentProfile directly (a future
+// reason to diverge the two tiers shouldn't be blocked by them being
+// literally the same function), but identical today by design.
+const RESIDENT_EVIDENCE_ROLES: readonly AuthRole[] = ["admin", "manager", "executive"];
+
+export function canAccessResidentEvidence(role: AuthRole | null | undefined): boolean {
+  return Boolean(role && RESIDENT_EVIDENCE_ROLES.includes(role));
+}

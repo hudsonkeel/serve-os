@@ -451,6 +451,41 @@ export async function loadOpenCandidatesForMigration(): Promise<OpenCandidateFor
   }));
 }
 
+// Used by the resident detail page to decide whether a relationship
+// conflict is explained by a known duplicate-resident candidate (in which
+// case the page should point at THIS review flow, not the generic
+// relationship-correction control — see ResidentIdentityAndRelationship.tsx).
+// Read-only; never creates or resolves anything.
+export async function getOpenDuplicateCandidateForResident(
+  residentId: string,
+): Promise<{ id: string; confidenceBand: string } | null> {
+  const supabase = createServerClient();
+  const { data: memberRows, error: memberError } = await supabase
+    .from("resident_identity_candidate_members")
+    .select("candidate_id")
+    .eq("resident_id", residentId);
+  if (memberError) {
+    console.error("[residentIdentity:getOpenDuplicateCandidateForResident:members-error]", { residentId, message: memberError.message });
+    return null;
+  }
+  const candidateIds = (memberRows ?? []).map((r) => r.candidate_id as string);
+  if (candidateIds.length === 0) return null;
+
+  const { data: candidateRows, error: candidateError } = await supabase
+    .from("resident_identity_candidates")
+    .select("id, confidence_band, created_at")
+    .in("id", candidateIds)
+    .in("status", ["open", "investigating"])
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (candidateError) {
+    console.error("[residentIdentity:getOpenDuplicateCandidateForResident:candidates-error]", { residentId, message: candidateError.message });
+    return null;
+  }
+  const candidate = candidateRows?.[0];
+  return candidate ? { id: candidate.id as string, confidenceBand: candidate.confidence_band as string } : null;
+}
+
 export async function getMergeEventByDuplicateResidentId(duplicateResidentId: string) {
   const supabase = createServerClient();
   const { data, error } = await supabase

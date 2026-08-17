@@ -1,6 +1,9 @@
 // Pins ResidentTimelineEventType against the intended migration
 // vocabulary (supabase/migrations/20260818000000_add_resident_profile_update_event.sql,
-// corrected against confirmed live data). This is the runtime half of
+// corrected against confirmed live data; widened by
+// 20260902050000_add_resident_document_timeline_events.sql — Phase 2,
+// Evidence Repository — which is written but NOT YET APPLIED as of this
+// test update; see the Phase 2 report). This is the runtime half of
 // drift prevention: RESIDENT_TIMELINE_EVENT_TYPES in lib/supabase/types.ts
 // is already compiler-enforced to exactly match the ResidentTimelineEventType
 // union (a missing or extra member is a type error on its own) — this
@@ -26,10 +29,12 @@ const EXPECTED_LIVE_VOCABULARY = [
   "working_note_resolved",
   "relationship_conversion",
   "profile_updated",
+  "document_uploaded",
+  "document_superseded",
 ];
 
-test("RESIDENT_TIMELINE_EVENT_TYPES has exactly seven entries", () => {
-  assert.equal(RESIDENT_TIMELINE_EVENT_TYPES.length, 7);
+test("RESIDENT_TIMELINE_EVENT_TYPES has exactly nine entries", () => {
+  assert.equal(RESIDENT_TIMELINE_EVENT_TYPES.length, 9);
 });
 
 test("RESIDENT_TIMELINE_EVENT_TYPES contains every value from the corrected migration, and nothing else", () => {

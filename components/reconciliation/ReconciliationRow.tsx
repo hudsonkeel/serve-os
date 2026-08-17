@@ -1,6 +1,7 @@
 import { AxisCareClientRow } from "@/components/peopleWeServe/AxisCareClientRow";
 import { IdentityDecisionActions } from "./IdentityDecisionActions";
 import { DispositionClassifyForm } from "./DispositionClassifyForm";
+import { RestoreRecordButton } from "./RestoreRecordButton";
 import type { AxisCareClientOperationalRow } from "@/lib/data/axiscareClientOperationalSummary";
 
 interface ReconciliationRowProps {
@@ -33,7 +34,11 @@ export function ReconciliationRow({ row, canAct, showIdentityActions }: Reconcil
               }}
             />
           )}
-          <DispositionClassifyForm axiscareId={row.axiscareId} currentDisposition={row.disposition} />
+          {row.operationalBucket === "excluded" ? (
+            <RestoreRecordButton axiscareId={row.axiscareId} />
+          ) : (
+            <DispositionClassifyForm axiscareId={row.axiscareId} currentDisposition={row.disposition} />
+          )}
         </div>
       )}
     </div>

@@ -238,6 +238,13 @@ function normalizeServeRelationshipStatus(
   }
 }
 
+// CINCH is never a relationship source, current or otherwise (same
+// principle lib/residents/serveRelationshipProjection.ts's own header
+// documents) — importRecord.cinch_status is deliberately excluded from
+// this priority chain. It remains available separately, for pure
+// historical/provenance display only, via importedSourceStatus/
+// sourceCinchStatus in mapResidentToRecord() below — that field is
+// never read back into current-relationship computation.
 function stagedServeRelationshipStatus(
   relationshipImports: ResidentRelationshipImport[]
 ) {
@@ -245,7 +252,6 @@ function stagedServeRelationshipStatus(
     .map((importRecord) =>
       normalizeServeRelationshipStatus(
         importRecord.serve_relationship_status ||
-          importRecord.cinch_status ||
           importRecord.source_status ||
           importRecord.relationship_status ||
           importRecord.status

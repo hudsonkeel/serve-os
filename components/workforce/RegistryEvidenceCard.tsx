@@ -15,6 +15,7 @@ import {
 } from "@/lib/actions/workforce";
 import { getAvailableEvidenceActions, isEffectivelyExpired, type EvidenceAction } from "@/lib/workforce/evidenceLifecycle";
 import { resolveRequirementDisplay } from "@/lib/workforce/registrySummary";
+import { FileUploadField } from "@/components/ui/FileUploadField";
 import type { WorkforceLifecycleStatus } from "@/lib/workforce/lifecycleStatus";
 import type { RequirementEvaluation } from "@/lib/compliance/requirementSetStatus";
 import type { PersonEvidence, PersonEvidenceResult } from "@/lib/supabase/types";
@@ -443,7 +444,7 @@ export function RegistryEvidenceCard({
       {/* First upload */}
       {canManage && !latestEvidence && (
         <form action={handleUpload} className="mt-4 flex flex-wrap items-center gap-2 border-t border-ivory-border pt-4">
-          <input type="file" name="file" accept="application/pdf" required className="font-sans text-xs text-body" />
+          <FileUploadField name="file" accept="application/pdf" required />
           <input
             type="date"
             name="documentDate"
@@ -570,7 +571,7 @@ export function RegistryEvidenceCard({
                   : "The prior record is preserved in history — this creates a new record for review."}
               </p>
               <div className="flex flex-wrap items-center gap-2">
-                <input type="file" name="file" accept="application/pdf" className="font-sans text-xs text-body" />
+                <FileUploadField name="file" accept="application/pdf" />
                 <input
                   type="date"
                   name="documentDate"

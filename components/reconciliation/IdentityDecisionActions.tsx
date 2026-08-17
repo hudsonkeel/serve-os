@@ -38,7 +38,10 @@ export function IdentityDecisionActions({ input }: IdentityDecisionActionsProps)
       if (result.error) {
         setMessage({ type: "error", text: result.error });
       } else {
-        setMessage({ type: "success", text: "Confirmed — this identity link is now durable." });
+        setMessage({
+          type: "success",
+          text: result.syncWarning ? `Confirmed — this identity link is now durable. ${result.syncWarning}` : "Confirmed — this identity link is now durable. AxisCare data synced.",
+        });
         reset();
       }
     });

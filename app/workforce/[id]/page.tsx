@@ -62,8 +62,14 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default async function WorkforceMemberDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function WorkforceMemberDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ requirement?: string }>;
+}) {
+  const [{ id }, { requirement: highlightRequirementCode }] = await Promise.all([params, searchParams]);
 
   const [profile, currentUser, roster, communities] = await Promise.all([
     getWorkforceMemberProfile(id),
@@ -228,6 +234,7 @@ export default async function WorkforceMemberDetailPage({ params }: { params: Pr
                 rosterOptions={rosterOptions}
                 lifecycleStatus={lifecycle.status}
                 history={evidence}
+                highlightRequirementCode={highlightRequirementCode}
               />
             </Section>
           </div>

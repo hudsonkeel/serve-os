@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Sparkles,
   Settings,
+  ClipboardCheck,
 } from "lucide-react";
 
 export interface NavItem {
@@ -45,6 +46,26 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { icon: Users, label: "The People We Serve", href: "/residents" },
       { icon: ShieldCheck, label: "Workforce", href: "/workforce" },
+    ],
+  },
+  // Governance is the organizational realm — the cross-domain systems that
+  // define, evaluate, document, and demonstrate how Serve operates, as
+  // distinct from Serve's operational people/domains above. Audit
+  // Readiness is the first product to live here; the product itself keeps
+  // its own name (Governance is the realm, not a rename). Deliberately one
+  // item: Audit Drills is a capability reached from within Audit
+  // Readiness (its dashboard's own Start Audit Drill / View Past Audits
+  // actions), not a second top-level Governance destination.
+  {
+    heading: "Governance",
+    items: [
+      // Desktop-only for v0.1 — MobileNavDrawer.tsx renders its own
+      // hard-coded, narrow item list (The People We Serve + NAV_UTILITY
+      // only) rather than mapping NAV_SECTIONS directly, so adding this
+      // entry here does not put it in the phone-width drawer. See the
+      // Audit Readiness Phase 1 report for why this stays desktop-only —
+      // the Aug 26 drill workflow is a tablet/desktop task.
+      { icon: ClipboardCheck, label: "Audit Readiness", href: "/audit-readiness" },
     ],
   },
   {

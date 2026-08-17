@@ -21,6 +21,8 @@ import {
   type ServeRelationshipProjectionWithCorrection,
   type AxisCareRelationshipMatch,
 } from "@/lib/residents/serveRelationshipProjection";
+import { isAuditEligibleActiveClient } from "@/lib/residents/auditEligibleActiveClient";
+import type { Resident } from "@/lib/supabase/types";
 
 export interface EnrichedResidentRecord {
   readonly base: CommunityResidentRecord;
@@ -83,6 +85,11 @@ function buildResidentAxisCareMatches(
       axiscareId: row.axiscareId,
       operationalBucket: row.operationalBucket,
       identityStatus: row.identityStatus,
+      vendorDisplayName: row.name,
+      matchBasis: row.residentMatch.basis,
+      statusLabel: row.statusLabel,
+      statusActive: row.statusActive,
+      classes: row.classes,
     });
   }
 
@@ -141,4 +148,44 @@ export async function getResidentServeRelationships(): Promise<ResidentServeRela
     legacyResidentTabCounts: community.residentTabCounts,
     residentsError: community.residentsError,
   };
+}
+
+export interface ResidentServeRelationshipDetail {
+  projection: ServeRelationshipProjectionWithCorrection;
+  axiscareMatch: AxisCareRelationshipMatch | null;
+}
+
+// Same computation as getResidentServeRelationshipProjection() above, but
+// also returns the resident's axiscareMatch (identity status, match
+// basis, vendor display name) — for pages that need both the relationship
+// AND identity-resolution display data in one call, avoiding a second
+// full live AxisCare fetch for what's already computed here.
+export async function getResidentServeRelationshipDetail(
+  residentId: string
+): Promise<ResidentServeRelationshipDetail | null> {
+  const { records } = await getResidentServeRelationships();
+  const record = records.find((r) => r.base.id === residentId);
+  if (!record) return null;
+  return { projection: record.projection, axiscareMatch: record.axiscareMatch };
+}
+
+export interface AuditEligibleActiveClient {
+  resident: Resident;
+  projection: ServeRelationshipProjectionWithCorrection;
+  axiscareMatch: AxisCareRelationshipMatch | null;
+}
+
+// Audit Readiness's own population source — the same canonical projection
+// /residents' "Active Clients" tab uses (never a second definition), with
+// exactly one additional gate: see auditEligibleActiveClient.ts for why an
+// AxisCare-sourced match must be identity-confirmed before it's safe to
+// hold to a compliance denominator. Excluded (unconfirmed-identity)
+// residents simply never enter this list — they are not a Client
+// Readiness failure, and remain visible/actionable on the existing
+// /reconciliation page instead.
+export async function getAuditEligibleActiveClientResidents(): Promise<AuditEligibleActiveClient[]> {
+  const { records } = await getResidentServeRelationships();
+  return records
+    .filter((r) => isAuditEligibleActiveClient(r.projection, r.axiscareMatch?.identityStatus ?? null))
+    .map((r) => ({ resident: r.base.resident, projection: r.projection, axiscareMatch: r.axiscareMatch }));
 }

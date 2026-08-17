@@ -6,7 +6,14 @@ import { canPerformReconciliationActions } from "@/lib/auth/permissions";
 import { PageContainer } from "@/components/PageContainer";
 import { PeopleWeServeTabs } from "@/components/peopleWeServe/PeopleWeServeTabs";
 import { ReconciliationRow } from "@/components/reconciliation/ReconciliationRow";
+import { UnmatchedRecordsList } from "@/components/reconciliation/UnmatchedRecordsList";
+import { AxisCareClientDataSyncPanel } from "@/components/reconciliation/AxisCareClientDataSyncPanel";
 import { EmptyState } from "@/components/ui/EmptyState";
+import {
+  getLatestAxisCareClientSyncRun,
+  getLatestSuccessfulAxisCareClientSyncRun,
+  getUnresolvedConflictsWithResidents,
+} from "@/lib/data/axiscareClientSync";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,16 +27,27 @@ export const revalidate = 0;
 // independently, inside every server action in
 // lib/actions/reconciliation.ts).
 export default async function ReconciliationPage() {
-  const [summary, profile, leadEvidence] = await Promise.all([
+  const [summary, profile, leadEvidence, lastRun, lastSuccessfulRun, conflicts] = await Promise.all([
     getAxisCareClientOperationalSummary(),
     getCurrentAuthorizedUser(),
     getAxisCareLeadEvidence(),
+    getLatestAxisCareClientSyncRun(),
+    getLatestSuccessfulAxisCareClientSyncRun(),
+    getUnresolvedConflictsWithResidents(),
   ]);
   const canAct = canPerformReconciliationActions(profile?.role);
   const leadEvidenceRows = leadEvidence.rows;
   const excludedRows = summary.rows.filter((row) => row.operationalBucket === "excluded");
   const ambiguousIdentityRows = summary.rows.filter(
     (row) => row.operationalBucket !== "excluded" && row.identityStatus === "needs_identity_review"
+  );
+  // Orphan vendor records — no canonical Serve person identified at all.
+  // The one class of record that genuinely belongs on a standalone
+  // data-quality surface: an entity-bound issue (a known resident with
+  // an ambiguous or candidate match) is resolvable from that resident's
+  // own page now; an unmatched record has no person to belong to yet.
+  const unmatchedRows = summary.rows.filter(
+    (row) => row.operationalBucket !== "excluded" && row.identityStatus === "unmatched"
   );
 
   return (
@@ -46,6 +64,10 @@ export default async function ReconciliationPage() {
 
       <div className="space-y-10">
         <section>
+          <AxisCareClientDataSyncPanel canAct={canAct} lastRun={lastRun} lastSuccessfulRun={lastSuccessfulRun} conflicts={conflicts} />
+        </section>
+
+        <section>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-sans text-card-title font-semibold text-body">
               Excluded AxisCare records
@@ -56,8 +78,9 @@ export default async function ReconciliationPage() {
           </div>
           <p className="mb-3 font-sans text-sm text-muted">
             AxisCare client records reviewed and marked as not representing a true operational client — a related
-            person, an administrative/community record, or a test placeholder. Kept visible with the reviewer&rsquo;s
-            rationale rather than deleted or shown as an unusual kind of Serve Client.
+            person, an administrative/community record, or a test placeholder. This is the Excluded Records view:
+            suppression, not deletion — every record here is kept visible with who excluded it, when, and why, and
+            can be restored to ordinary review at any time.
           </p>
           <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
             {excludedRows.length > 0 ? (
@@ -87,7 +110,10 @@ export default async function ReconciliationPage() {
             Real Serve Clients (still counted in their Active/Inactive/Prospect bucket on the Serve Clients page)
             whose AxisCare record matched a resident on phone or email, but the name on file disagrees — e.g. a
             shared household line or a nickname/spelling variant. Not auto-linked; requires a human decision before
-            the identity link is confirmed.
+            the identity link is confirmed. <strong>Resolution follows the person</strong> — this same decision is
+            available directly from each resident&rsquo;s own page (look for &ldquo;Identity needs
+            confirmation&rdquo;); this list exists for visibility across every open case, not as the required path
+            to resolve one.
           </p>
           <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
             {ambiguousIdentityRows.length > 0 ? (
@@ -99,6 +125,31 @@ export default async function ReconciliationPage() {
             ) : (
               <div className="px-5 py-8">
                 <EmptyState description="No ambiguous identity matches." />
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-sans text-card-title font-semibold text-body">Unmatched AxisCare records</h2>
+            <span className="rounded-full bg-ivory-warm px-2.5 py-0.5 font-sans text-label font-semibold text-muted">
+              {unmatchedRows.length}
+            </span>
+          </div>
+          <p className="mb-3 font-sans text-sm text-muted">
+            AxisCare client records with no identifiable Serve resident at all — orphan vendor records, not yet a
+            settled Serve concept. This is the one class of record that genuinely needs a standalone queue: there is
+            no person&rsquo;s page to resolve these from. Obvious administrative/test/irrelevant records can be
+            excluded individually or in bulk below; real, actionable matches still need a person to link to (not yet
+            built in this pass — for now, classify or exclude).
+          </p>
+          <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
+            {unmatchedRows.length > 0 ? (
+              <UnmatchedRecordsList rows={[...unmatchedRows]} canAct={canAct} />
+            ) : (
+              <div className="px-5 py-8">
+                <EmptyState description="No unmatched AxisCare records." />
               </div>
             )}
           </div>

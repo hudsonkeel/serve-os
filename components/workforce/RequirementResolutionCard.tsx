@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RegistryEvidenceCard } from "@/components/workforce/RegistryEvidenceCard";
 import { HumanAttestationDialog } from "@/components/workforce/HumanAttestationDialog";
 import { getRequirementPlaybook } from "@/lib/workforce/requirementPlaybooks";
@@ -91,6 +91,7 @@ export function RequirementResolutionCard({
   rosterOptions,
   lifecycleStatus,
   history,
+  autoExpand = false,
 }: {
   evaluation: RequirementEvaluation;
   workforceMemberId: string;
@@ -98,10 +99,22 @@ export function RequirementResolutionCard({
   history: PersonEvidence[];
   lifecycleStatus: WorkforceLifecycleStatus;
   rosterOptions: Array<{ workforceMemberId: string; displayName: string }>;
+  // Set when arriving here via a "Resolve →" link elsewhere (e.g. Audit
+  // Readiness's Needs Attention) — expands straight to the evidence level
+  // and scrolls into view, so the link is a real fix path, not a pointer
+  // at a page the reader still has to search.
+  autoExpand?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [showEvidence, setShowEvidence] = useState(false);
+  const [expanded, setExpanded] = useState(autoExpand);
+  const [showEvidence, setShowEvidence] = useState(autoExpand);
   const [showHistory, setShowHistory] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (autoExpand) cardRef.current?.scrollIntoView({ block: "center" });
+    // Only ever run on mount for the one card this page landed on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const attention = attentionStateForRequirement(evaluation);
   const playbook = getRequirementPlaybook(evaluation.requirement.requirement_code);
@@ -118,7 +131,7 @@ export function RequirementResolutionCard({
         }[attention as "action_needed" | "due_soon" | "review" | "waiting"];
 
   return (
-    <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
+    <div ref={cardRef} className="rounded-xl border border-ivory-border bg-surface shadow-card">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}

@@ -96,10 +96,15 @@ test("no AxisCare match, no CRM relationship, legacy status former_client: Inact
   assert.equal(result.relationshipSource, "legacy_resident_status");
 });
 
-test("no AxisCare match, no CRM relationship, legacy status hold: Active Client + onHold true", () => {
+test("no AxisCare match, no CRM relationship, legacy status hold: Active Client, but onHold is FALSE — legacyResidentStatus (possibly CINCH-imported) never sets onHold", () => {
   const result = projectServeRelationship({ ...BASE, legacyResidentStatus: "hold" });
   assert.equal(result.relationship, "active_client");
-  assert.equal(result.onHold, true);
+  assert.equal(result.onHold, false);
+});
+
+test("REGRESSION: onHold is governed-CRM-relationship-sourced only — a vendor/import-derived legacyResidentStatus of 'hold' must never independently create an On Hold state", () => {
+  const result = projectServeRelationship({ ...BASE, legacyResidentStatus: "hold", activeRelationships: [] });
+  assert.equal(result.onHold, false);
 });
 
 test("onHold can be true even when the relationship comes from AxisCare (independent dimension)", () => {

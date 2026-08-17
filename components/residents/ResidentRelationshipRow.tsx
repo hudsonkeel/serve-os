@@ -98,14 +98,30 @@ export function ResidentRelationshipRow({ record, canCorrect }: ResidentRelation
         {(axiscareMatch || deliveryLabel) && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {deliveryLabel && <span className="font-sans text-sm text-muted">{deliveryLabel}</span>}
-            {axiscareMatch && (
-              <>
-                <span className="font-sans text-sm text-muted">· AxisCare #{axiscareMatch.axiscareId}</span>
-                <Badge tone={IDENTITY_TONES[axiscareMatch.identityStatus]}>
-                  {IDENTITY_LABELS[axiscareMatch.identityStatus]}
-                </Badge>
-              </>
-            )}
+            {axiscareMatch &&
+              (axiscareMatch.identityStatus === "candidate" || axiscareMatch.identityStatus === "needs_identity_review" ? (
+                // Leads directly to the resident's own identity-resolution
+                // action, not just a passive status badge — "resolution
+                // follows the person," never a separate reconciliation
+                // subsystem the user has to go find.
+                <Link
+                  href={`/residents/${base.id}#identity-resolution`}
+                  className="pointer-events-auto relative z-[2]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="font-sans text-sm text-muted">· AxisCare #{axiscareMatch.axiscareId}</span>{" "}
+                  <Badge tone={IDENTITY_TONES[axiscareMatch.identityStatus]}>
+                    {IDENTITY_LABELS[axiscareMatch.identityStatus]} — Resolve →
+                  </Badge>
+                </Link>
+              ) : (
+                <>
+                  <span className="font-sans text-sm text-muted">· AxisCare #{axiscareMatch.axiscareId}</span>
+                  <Badge tone={IDENTITY_TONES[axiscareMatch.identityStatus]}>
+                    {IDENTITY_LABELS[axiscareMatch.identityStatus]}
+                  </Badge>
+                </>
+              ))}
           </div>
         )}
 
