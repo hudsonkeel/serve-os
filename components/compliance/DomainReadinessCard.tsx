@@ -91,7 +91,7 @@ export function DomainReadinessCard({
   return (
     <div className="rounded-xl border border-ivory-border bg-white p-5">
       <p className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">
-        Current {label} Readiness — {readyPct}%
+        Current {label}{label.endsWith("Readiness") ? "" : " Readiness"} — {readyPct}%
       </p>
       <p className="mt-1 font-serif text-xl font-light text-body">
         <span className="font-semibold text-success-text">{readySubjectCount}</span> of {subjectCount} {subjectNoun}s

@@ -42,8 +42,17 @@ export type ServeRelationshipLabel =
 
 export interface CommunityMetricCounts {
   totalResidents: number;
-  serveClients: number;
-  onHold: number;
+  // Final Canonical Truth Cleanup: serveClients/onHold/formerClients
+  // (CINCH-staged-status-priority aggregate counts) were removed here —
+  // proven to have zero live consumers (the Dashboard, their one real
+  // caller, was moved to the canonical ServeRelationshipProjection-based
+  // count instead). Do not reintroduce a current-status aggregate from
+  // record.serveRelationshipStatus/serveRelationshipLabel — those fields
+  // remain, but only as the deliberate, documented low-priority
+  // "legacy_resident_status" fallback input to
+  // lib/residents/serveRelationshipProjection.ts's projectServeRelationship()
+  // — never a source of current-status counts on their own.
+  //
   // Deterministically derived from active (open/in_progress)
   // resident_wellness_follow_ups rows — see getWellnessFollowUpDashboardCounts().
   // Mutually exclusive buckets: a follow-up counts in exactly one of the two.
@@ -52,7 +61,6 @@ export interface CommunityMetricCounts {
   requiresFollowUp: number;
   pendingAssessments: number;
   familiesAwaitingProposal: number;
-  formerClients: number;
   birthdaysThisWeek: number;
 }
 
@@ -112,7 +120,6 @@ export interface CommunityResidentRecord {
 export interface CommunityMetricsData {
   communityName: string;
   metrics: CommunityMetricCounts;
-  residentTabCounts: Record<ResidentTabValue, number>;
   residentRecords: CommunityResidentRecord[];
   error?: string;
   residentsError?: string;
@@ -587,41 +594,12 @@ function buildMetrics(
 ): CommunityMetricCounts {
   return {
     totalResidents: records.length,
-    serveClients: records.filter(
-      (record) => record.serveRelationshipStatus === "active_client"
-    ).length,
-    onHold: records.filter((record) => record.serveRelationshipStatus === "hold")
-      .length,
     wellnessFollowUpsDueOrOverdue: wellnessDashboardCounts.dueOrOverdue,
     wellnessFollowUpsDueThisWeek: wellnessDashboardCounts.dueThisWeek,
     requiresFollowUp: pipelineCounts.requiresFollowUp,
     pendingAssessments: pipelineCounts.pendingAssessments,
     familiesAwaitingProposal: pipelineCounts.familiesAwaitingProposal,
-    formerClients: records.filter(
-      (record) => record.serveRelationshipStatus === "former_client"
-    ).length,
     birthdaysThisWeek: 0,
-  };
-}
-
-function buildResidentTabCounts(
-  records: CommunityResidentRecord[]
-): Record<ResidentTabValue, number> {
-  return {
-    all: records.length,
-    active_clients: records.filter(
-      (record) => record.serveRelationshipStatus === "active_client"
-    ).length,
-    hold: records.filter((record) => record.serveRelationshipStatus === "hold")
-      .length,
-    former_clients: records.filter(
-      (record) => record.serveRelationshipStatus === "former_client"
-    ).length,
-    // Deterministic: at least one open/in_progress resident_wellness_follow_ups
-    // row (see getWellnessWatchSummaryByResident()). Not the legacy imported
-    // serve_relationship_status = 'wellness_watch' value.
-    wellness_watch: records.filter((record) => record.wellnessWatch !== null)
-      .length,
   };
 }
 
@@ -748,7 +726,6 @@ export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
   return {
     communityName: residents[0]?.community_name || COMMUNITY.name,
     metrics,
-    residentTabCounts: buildResidentTabCounts(residentRecords),
     residentRecords,
     error: residentsError,
     residentsError,

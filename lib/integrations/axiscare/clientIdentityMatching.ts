@@ -29,6 +29,16 @@ export type ClientMatchBasis =
   | "name_and_apartment"
   | "name_and_community"
   | "surname_and_community"
+  // A human explicitly picked this Serve resident for an AxisCare record
+  // the deterministic tiers above never produced a match for at all (see
+  // lib/integrations/axiscare/unmatchedClientCandidates.ts — the
+  // Reconciliation "Match to Existing Person" workflow's suggested or
+  // manually-searched candidates). Never produced by
+  // matchAxisCareClientToResident() itself; only ever supplied by that
+  // UI's own confirm action as the input to the existing
+  // confirmAxisCareResidentIdentity()/person_vendor_identity_links write
+  // path — no second identity mechanism.
+  | "manual_match"
   | "none";
 
 export interface ClientMatchResult {
@@ -89,6 +99,7 @@ export function toPersonVendorIdentityLinksMatchMethod(basis: ClientMatchBasis):
     case "name_and_community":
       return "normalized_name_plus_attribute";
     case "surname_and_community":
+    case "manual_match":
       return "name_similarity_pending_review";
     case "none":
       // Unreachable — callers only invoke this for a resolved match

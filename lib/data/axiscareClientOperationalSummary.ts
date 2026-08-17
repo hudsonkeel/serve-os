@@ -30,6 +30,7 @@ import {
 } from "../integrations/axiscare/clientOperationalStatus.ts";
 import type { AxisCareClientDisposition } from "../integrations/axiscare/clientDisposition.ts";
 import { getAxisCareClientDispositions } from "./axiscareClientDispositions.ts";
+import { suggestResidentMatchesForAxisCareClient, type SuggestedResidentMatch } from "../integrations/axiscare/unmatchedClientCandidates.ts";
 
 interface RawAxisCareClient {
   id: number | string;
@@ -78,6 +79,12 @@ export interface AxisCareClientOperationalRow {
     readonly requiresReview: boolean;
     readonly confirmedLinkStatus: string | null;
   };
+  // Only ever populated for identityStatus === "unmatched" — human-review
+  // suggestions for the Reconciliation "Match to Existing Person"
+  // workflow (lib/integrations/axiscare/unmatchedClientCandidates.ts).
+  // Never influences identityStatus/residentMatch above; the deterministic
+  // auto-matcher is completely untouched by this.
+  readonly suggestedMatches: readonly SuggestedResidentMatch[];
 }
 
 export interface AxisCareClientOperationalSummary {
@@ -268,12 +275,28 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
       confirmedLinkStatus: existingLink?.status ?? null,
     };
 
+    const clientClasses = (c.classes ?? []).map((cl) => cl.code);
+    const suggestedMatches =
+      resolved.residentId === null
+        ? suggestResidentMatchesForAxisCareClient(
+            {
+              normalizedName,
+              normalizedLastName: c.lastName ? normalizeLastName(c.lastName) : null,
+              normalizedEmail: email,
+              normalizedPhones: phones,
+              communityName: c.community?.name ?? null,
+              classes: clientClasses,
+            },
+            residents
+          )
+        : [];
+
     return {
       axiscareId,
       name: `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim(),
       statusActive: !!c.status?.active,
       statusLabel: c.status?.label ?? null,
-      classes: (c.classes ?? []).map((cl) => cl.code),
+      classes: clientClasses,
       communityName: c.community?.name ?? null,
       computedLifecycle,
       disposition: dispositionRow?.disposition ?? null,
@@ -284,6 +307,7 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
       exclusionReason,
       identityStatus: resolveAxisCareIdentityStatus(residentMatch),
       residentMatch,
+      suggestedMatches,
     };
   });
 

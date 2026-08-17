@@ -15,7 +15,7 @@
 import "server-only";
 import { syncOneAxisCareClientCanonicalSnapshot } from "./clientCanonicalSync.ts";
 import { applyAxisCareCanonicalSnapshotToResident, applyAxisCareTriageEvidenceToResident } from "./clientCanonicalApply.ts";
-import { classifyFieldForPreview } from "./clientCanonicalReconciliation.ts";
+import { classifyFieldForPreview, combinedAddress, normalizeBootstrapFieldForComparison, type BootstrapFieldName } from "./clientCanonicalReconciliation.ts";
 import { getAxisCareClientCanonicalSnapshot } from "../../data/axiscareClientCanonicalSnapshot.ts";
 import { createServerClient } from "../../supabase/server.ts";
 import type { ServeRelationship } from "../../residents/serveRelationshipProjection.ts";
@@ -51,11 +51,6 @@ interface ResidentFieldSnapshotShape {
 
 const RESIDENT_FIELD_COLUMNS =
   "date_of_birth, gender, date_of_admission, address, city, state, zip_code, family_contact_name, family_contact_relationship, family_contact_phone, family_contact_email";
-
-function combinedAddress(street1: string | null, street2: string | null): string | null {
-  if (!street1) return null;
-  return street2 ? `${street1}, ${street2}` : street1;
-}
 
 // One resident, one AxisCare client id, exactly the desired sequence:
 // refresh snapshot -> reconcile residents columns -> refresh triage
@@ -130,8 +125,11 @@ export async function syncAxisCareCanonicalResident(
   const fieldsAlreadyAgreeing: string[] = [];
   const fieldsSourceAbsent: string[] = [];
   if (resident) {
-    for (const field of Object.keys(axiscareValues) as (keyof ResidentFieldSnapshotShape)[]) {
-      const preview = classifyFieldForPreview(resident[field], axiscareValues[field]);
+    for (const field of Object.keys(axiscareValues) as (keyof ResidentFieldSnapshotShape & BootstrapFieldName)[]) {
+      const preview = classifyFieldForPreview(
+        normalizeBootstrapFieldForComparison(field, resident[field]),
+        normalizeBootstrapFieldForComparison(field, axiscareValues[field])
+      );
       if (preview === "ALREADY_AGREES") fieldsAlreadyAgreeing.push(field);
       if (preview === "AXISCARE_EMPTY") fieldsSourceAbsent.push(field);
     }
@@ -152,9 +150,12 @@ export async function syncAxisCareCanonicalResident(
     };
   }
 
-  const conflicts = Object.entries(applyResult.fieldOutcomes)
-    .filter(([, outcome]) => outcome === "conflict_unresolved")
-    .map(([field]) => field);
+  // openConflictFields, not a raw re-filter of fieldOutcomes — a field
+  // already reviewed (Keep Serve/Use AxisCare) against this exact
+  // AxisCare value must not keep counting as a conflict on every
+  // subsequent scheduled sync (see ApplyResult.openConflictFields's own
+  // comment).
+  const conflicts = applyResult.openConflictFields;
 
   let triageEvidence: ResidentSyncResult["triageEvidence"] = "not_attempted";
   let triageEvidenceId: string | undefined;

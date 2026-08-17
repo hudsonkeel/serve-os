@@ -10,7 +10,6 @@ import "server-only";
 import {
   getCommunityMetrics,
   type CommunityResidentRecord,
-  type ResidentTabValue,
 } from "./communityMetrics";
 import { getAxisCareClientOperationalSummary, type AxisCareClientOperationalRow } from "./axiscareClientOperationalSummary";
 import { getLatestServeRelationshipCorrections } from "./residentServeRelationshipCorrections";
@@ -43,10 +42,6 @@ export interface ResidentServeRelationshipsData {
   totalResidents: number;
   records: EnrichedResidentRecord[];
   relationshipCounts: Record<ServeRelationship, number>;
-  // Preserved for anything still reading the legacy tab shape (e.g. the
-  // wellness-watch-due query param handling already on the Residents
-  // page) — not the new primary filter set.
-  legacyResidentTabCounts: Record<ResidentTabValue, number>;
   residentsError?: string;
 }
 
@@ -145,7 +140,6 @@ export async function getResidentServeRelationships(): Promise<ResidentServeRela
     totalResidents: community.metrics.totalResidents,
     records,
     relationshipCounts,
-    legacyResidentTabCounts: community.residentTabCounts,
     residentsError: community.residentsError,
   };
 }

@@ -9,36 +9,10 @@
 // the first time.
 import { createServerClient } from "../supabase/server.ts";
 import type { PersonSubjectType } from "../supabase/types.ts";
+export { MAX_DOCUMENT_BYTES, validateDocumentFile, type FileValidationResult } from "./documentValidation.ts";
 
 export const PERSON_DOCUMENTS_BUCKET = "person-documents";
-export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024; // 10 MB
 const SIGNED_URL_TTL_SECONDS = 60;
-
-export interface FileValidationResult {
-  ok: boolean;
-  error?: string;
-}
-
-// PDF-only for this first release, per the mission's explicit requirement.
-// Pure — no I/O, easy to test independent of Supabase Storage.
-export function validateDocumentFile(input: { size: number; type: string; name: string }): FileValidationResult {
-  if (input.size === 0) {
-    return { ok: false, error: "No file provided." };
-  }
-  if (input.size > MAX_DOCUMENT_BYTES) {
-    return { ok: false, error: "File size must be under 10 MB." };
-  }
-
-  const ext = ("." + input.name.split(".").pop()).toLowerCase();
-  const mimeOk = input.type === "application/pdf";
-  const extOk = ext === ".pdf";
-
-  if (!mimeOk || !extOk) {
-    return { ok: false, error: "Please upload a PDF file." };
-  }
-
-  return { ok: true };
-}
 
 // {subjectType}/{subjectId}/{documentType}/{documentId}.pdf — the original
 // filename is never part of the storage path; it's stored only as

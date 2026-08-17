@@ -2,6 +2,7 @@ import { PageContainer } from "@/components/PageContainer";
 import { DashboardCard } from "@/components/DashboardCard";
 import { WellnessFollowUpsCard } from "@/components/WellnessFollowUpsCard";
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
+import { getResidentServeRelationships } from "@/lib/data/residentServeRelationships";
 import { getRecruitingLeads } from "@/lib/data/recruitingLeads";
 import { getActiveProspectRelationshipCount } from "@/lib/data/relationships";
 import { getIntakeQueueCounts } from "@/lib/data/intakeEngine";
@@ -20,15 +21,23 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function DashboardPage() {
-  const [profile, community, recruiting, activeProspectRelationships, intakeQueueCounts] = await Promise.all([
+  const [profile, community, canonicalRelationships, recruiting, activeProspectRelationships, intakeQueueCounts] = await Promise.all([
     getCurrentAuthorizedUser(),
     getCommunityMetrics(),
+    getResidentServeRelationships(),
     getRecruitingLeads(),
     getActiveProspectRelationshipCount(),
     getIntakeQueueCounts(),
   ]);
   const currentUser = buildCurrentUserDisplay(profile);
   const { metrics } = community;
+  // Final Canonical Truth Cleanup: metrics.serveClients (getCommunityMetrics)
+  // can be overridden by staged/imported CINCH relationship data taking
+  // priority over a resident's actual current status — CINCH must never
+  // hold current relationship authority. This headline count instead
+  // uses the same canonical ServeRelationshipProjection the /residents
+  // list itself is built on.
+  const serveClientsCount = canonicalRelationships.records.filter((r) => r.projection.relationship === "active_client").length;
   const dashboardDate = formatCentralDashboardDate();
   const greeting = getCentralTimeGreeting();
   const askServeEnabled = isContextualAskServeEnabled(currentUser.role);
@@ -40,7 +49,7 @@ export default async function DashboardPage() {
   // Community Snapshot: the state of the roster and the relationship funnel.
   const communitySnapshot = [
     { label: "Residents",        value: String(metrics.totalResidents),   description: community.communityName, accent: true, href: "/residents" },
-    { label: "Serve Clients",    value: String(metrics.serveClients),     description: "Active Serve relationships",         href: "/residents?tab=active_clients" },
+    { label: "Serve Clients",    value: String(serveClientsCount),        description: "Active Serve relationships",         href: "/residents?tab=active_clients" },
     { label: "Active Prospects", value: String(activeProspectRelationships), description: "Resident & external prospect Relationships", href: "/relationships" },
     { label: "Needs Follow-up",  value: String(metrics.requiresFollowUp), description: "Family outreach overdue",            href: "/relationships" },
   ];

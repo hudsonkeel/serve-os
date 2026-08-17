@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { AxisCareClientRow } from "@/components/peopleWeServe/AxisCareClientRow";
 import { QuickExcludeButton } from "./QuickExcludeButton";
+import { MatchToExistingPersonControl } from "./MatchToExistingPersonControl";
 import { bulkExcludeAxisCareRecords } from "@/lib/actions/reconciliation";
 import type { AxisCareClientOperationalRow } from "@/lib/data/axiscareClientOperationalSummary";
 
@@ -11,8 +12,10 @@ import type { AxisCareClientOperationalRow } from "@/lib/data/axiscareClientOper
 // data-quality surface (per "resolution follows the person" — an
 // entity-bound issue belongs on that person's record; an orphan record
 // has no person to belong to yet). Checkbox selection + one confirm step
-// for bulk exclusion of the obviously-irrelevant ones; "Match to Person"
-// is not built in this pass — flagged, not silently pretended-done.
+// for bulk exclusion of the obviously-irrelevant ones. Per-row "Match to
+// Existing Person" (MatchToExistingPersonControl) handles the common
+// case — a real person already in Serve, just not yet linked — leaving
+// Exclude for records that genuinely aren't a Serve relationship at all.
 interface UnmatchedRecordsListProps {
   rows: AxisCareClientOperationalRow[];
   canAct: boolean;
@@ -128,7 +131,15 @@ export function UnmatchedRecordsList({ rows, canAct }: UnmatchedRecordsListProps
             <div className="min-w-0 flex-1">
               <AxisCareClientRow row={row} />
               {canAct && (
-                <div className="-mt-3 px-6 pb-4">
+                <div className="-mt-3 space-y-2 px-6 pb-4">
+                  <MatchToExistingPersonControl
+                    axiscareId={row.axiscareId}
+                    vendorDisplayName={row.name}
+                    statusLabel={row.statusLabel}
+                    statusActive={row.statusActive}
+                    classes={[...row.classes]}
+                    suggestedMatches={[...row.suggestedMatches]}
+                  />
                   <QuickExcludeButton axiscareId={row.axiscareId} />
                 </div>
               )}

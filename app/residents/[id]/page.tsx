@@ -93,10 +93,16 @@ export default async function ResidentDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ from?: string; requirement?: string }>;
+  searchParams: Promise<{ from?: string; requirement?: string; editSection?: string }>;
 }) {
   const { id } = await params;
-  const { from, requirement: selectedRequirementCode } = await searchParams;
+  const { from, requirement: selectedRequirementCode, editSection } = await searchParams;
+  // Deep-link support (Closed-Loop UX Pass, Phase 1) — lets an external
+  // surface (Reconciliation's AxisCare conflict "Edit" action) land the
+  // operator directly in the Care & Contacts card's edit form instead of
+  // the top of this page. Only "family_contact" is produced today; any
+  // other/unrecognized value is ignored, never guessed at.
+  const initialEditingTarget = editSection === "family_contact" ? "contact" : null;
   const record = await getCommunityResidentById(id);
 
   if (!record) notFound();
@@ -304,13 +310,14 @@ export default async function ResidentDetailPage({
             canEdit={canEditProfile}
             contactName={contactName}
             contactRelationship={resident.family_contact_relationship ?? ""}
-            contactPhone={record.phone ?? ""}
-            contactEmail={record.email ?? ""}
+            contactPhone={resident.family_contact_phone ?? ""}
+            contactEmail={resident.family_contact_email ?? ""}
             physicianName={resident.physician_name ?? ""}
             physicianPhone={resident.physician_phone ?? ""}
             guardianName={resident.legal_guardian_name ?? ""}
             guardianPhone={resident.legal_guardian_phone ?? ""}
             guardianConfirmedNone={guardianConfirmedNone}
+            initialEditingTarget={initialEditingTarget}
             currentNeedsContent={currentNeeds?.content ?? null}
             assessmentStatus={assessmentReadinessStatus}
             ispStatus={ispStatus}

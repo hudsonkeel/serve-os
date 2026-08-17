@@ -4,6 +4,7 @@
 // exact shape: one current-state row per axiscare_client_id, upserted in
 // place, never a history log.
 import { createServerClient } from "../supabase/server.ts";
+import type { BootstrapFieldName, FieldDecisions } from "../integrations/axiscare/clientCanonicalReconciliation.ts";
 
 export type CanonicalizationStatus =
   | "not_reviewed"
@@ -46,6 +47,12 @@ export interface AxisCareClientCanonicalSnapshot {
   conflict_notes: string | null;
   applied_to_serve_at: string | null;
   applied_by: string | null;
+  // Closed-Loop UX Pass, Phase 1 (migration
+  // 20260902150000_add_field_decisions_to_axiscare_canonical_snapshot.sql
+  // — NOT YET APPLIED, pending explicit approval). Per-field "Keep
+  // Serve"/"Use AxisCare" review decisions — see that migration's own
+  // comment and computeUnresolvedFieldConflicts() for the full contract.
+  field_decisions: FieldDecisions;
   created_at: string;
   updated_at: string;
 }
@@ -185,6 +192,52 @@ export async function recordSnapshotTriageEvidenceResult(
 
   if (error) {
     return { error: `Could not record triage evidence result for snapshot ${snapshotId}: ${error.message}` };
+  }
+  return {};
+}
+
+// Records one field's explicit human review decision ("Keep Serve" /
+// "Use AxisCare") — a targeted read-modify-write merge into
+// field_decisions so recording a decision on one field can never clobber
+// a decision already on file for a different field of the same client
+// (mirrors this table's own single-row-per-client upsert discipline, just
+// scoped one level deeper). axiscareValueAtDecision is what makes the
+// decision self-expiring — see computeUnresolvedFieldConflicts().
+export async function recordFieldDecision(
+  snapshotId: string,
+  field: BootstrapFieldName,
+  decision: "keep_serve" | "use_axiscare",
+  axiscareValueAtDecision: string | null,
+  decidedBy: string
+): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+
+  const { data: current, error: readError } = await supabase
+    .from("axiscare_client_canonical_snapshot")
+    .select("field_decisions")
+    .eq("id", snapshotId)
+    .single();
+  if (readError || !current) {
+    return { error: `Could not read snapshot ${snapshotId} to record a field decision: ${readError?.message}` };
+  }
+
+  const nextFieldDecisions: FieldDecisions = {
+    ...((current.field_decisions as FieldDecisions | null) ?? {}),
+    [field]: {
+      decision,
+      axiscare_value_at_decision: axiscareValueAtDecision,
+      decided_by: decidedBy,
+      decided_at: new Date().toISOString(),
+    },
+  };
+
+  const { error } = await supabase
+    .from("axiscare_client_canonical_snapshot")
+    .update({ field_decisions: nextFieldDecisions, updated_at: new Date().toISOString() })
+    .eq("id", snapshotId);
+
+  if (error) {
+    return { error: `Could not record field decision for snapshot ${snapshotId}, field ${field}: ${error.message}` };
   }
   return {};
 }

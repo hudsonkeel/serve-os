@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { FamilyContactsCard } from "@/components/residents/FamilyContactsCard";
 import { CareContactsCard } from "@/components/residents/CareContactsCard";
@@ -93,6 +93,13 @@ interface ResidentEssentialsProps {
   assessmentStatus: AuditReadinessStatus | undefined;
   ispStatus: AuditReadinessStatus | undefined;
   residentPageHref: string;
+  // Deep-link support (Closed-Loop UX Pass, Phase 1): lets an external
+  // surface (e.g. Reconciliation's AxisCare conflict "Edit" action) land
+  // the operator directly in this card's edit form instead of the read
+  // view, so "Review on resident profile" reaches the actual disputed
+  // field rather than the top of a large page. Resolved server-side from
+  // a query param — see app/residents/[id]/page.tsx.
+  initialEditingTarget?: EditingTarget;
 }
 
 type EditingTarget = "contact" | "care" | null;
@@ -113,8 +120,21 @@ export function ResidentEssentials({
   assessmentStatus,
   ispStatus,
   residentPageHref,
+  initialEditingTarget = null,
 }: ResidentEssentialsProps) {
-  const [editing, setEditing] = useState<EditingTarget>(null);
+  const [editing, setEditing] = useState<EditingTarget>(initialEditingTarget);
+  const deepLinkedSectionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (initialEditingTarget) {
+      deepLinkedSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    // Deliberately only on mount — this is a one-time landing behavior
+    // for a deep link, never re-triggered by the user's own later clicks
+    // into edit mode (those don't need to scroll; the card is already in
+    // view).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const contactValue = contactName
     ? [contactName, formatPhone(contactPhone)].filter(Boolean).join(" · ")
@@ -130,7 +150,7 @@ export function ResidentEssentials({
   const currentNeedsValue = currentNeedsContent ? truncate(currentNeedsContent, 140) : "Not recorded yet";
 
   return (
-    <div className="rounded-xl border border-ivory-border bg-surface p-5">
+    <div className="rounded-xl border border-ivory-border bg-surface p-5" ref={initialEditingTarget ? deepLinkedSectionRef : undefined}>
       <p className="mb-2 font-sans text-label font-semibold uppercase tracking-widest text-subtle">Care &amp; Contacts</p>
 
       {editing === "contact" && (

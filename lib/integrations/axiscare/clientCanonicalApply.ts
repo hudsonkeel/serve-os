@@ -32,7 +32,14 @@
 // auto-resolved either direction.
 import "server-only";
 import { createServerClient } from "../../supabase/server.ts";
-import { decideFieldReconciliation, type CanonicalizationOutcome } from "./clientCanonicalReconciliation.ts";
+import {
+  decideFieldReconciliation,
+  computeUnresolvedFieldConflicts,
+  combinedAddress,
+  normalizeBootstrapFieldForComparison,
+  BOOTSTRAP_FIELD_NAMES,
+  type CanonicalizationOutcome,
+} from "./clientCanonicalReconciliation.ts";
 import {
   getAxisCareClientCanonicalSnapshot,
   recordSnapshotCanonicalizationResult,
@@ -61,36 +68,23 @@ interface ResidentBootstrapFields {
   family_contact_email: string | null;
 }
 
-const BOOTSTRAP_FIELD_NAMES = [
-  "date_of_birth",
-  "gender",
-  "date_of_admission",
-  "address",
-  "city",
-  "state",
-  "zip_code",
-  "family_contact_name",
-  "family_contact_relationship",
-  "family_contact_phone",
-  "family_contact_email",
-] as const;
-
 export interface ApplyResult {
   residentId: string;
   axiscareClientId: string;
   fieldOutcomes: Record<string, CanonicalizationOutcome>;
   fieldsApplied: string[];
   overallStatus: CanonicalizationStatus;
+  // Fields decideFieldReconciliation() calls a raw disagreement AND that
+  // are not currently suppressed by a still-valid human "Keep Serve"/
+  // "Use AxisCare" decision (see computeUnresolvedFieldConflicts) —
+  // distinct from fieldOutcomes, which always reflects the raw,
+  // review-blind comparison. Callers that report "how many conflicts are
+  // there right now" (e.g. the sync run summary) should use this, not a
+  // raw count of fieldOutcomes === "conflict_unresolved" — otherwise a
+  // reviewed-and-unchanged field would keep counting as a conflict
+  // forever, the exact recurring-noise defect this list exists to fix.
+  openConflictFields: string[];
   error?: string;
-}
-
-// Snapshot's street_address_1/2 collapse into residents' single `address`
-// text column (Serve models one address line, not AxisCare's two) —
-// street_address_2 is folded in only when street_address_1 is also
-// present, never surfaced alone.
-function combinedAddress(street1: string | null, street2: string | null): string | null {
-  if (!street1) return null;
-  return street2 ? `${street1}, ${street2}` : street1;
 }
 
 export async function applyAxisCareCanonicalSnapshotToResident(
@@ -108,6 +102,7 @@ export async function applyAxisCareCanonicalSnapshotToResident(
       fieldOutcomes: {},
       fieldsApplied: [],
       overallStatus: "not_reviewed",
+      openConflictFields: [],
       error: "No AxisCare canonical snapshot found — run the sync step first.",
     };
   }
@@ -127,6 +122,7 @@ export async function applyAxisCareCanonicalSnapshotToResident(
       fieldOutcomes: {},
       fieldsApplied: [],
       overallStatus: "not_reviewed",
+      openConflictFields: [],
       error: residentError?.message ?? "Resident not found.",
     };
   }
@@ -150,7 +146,14 @@ export async function applyAxisCareCanonicalSnapshotToResident(
   const updatePayload: Partial<ResidentBootstrapFields> = {};
 
   for (const field of BOOTSTRAP_FIELD_NAMES) {
-    const outcome = decideFieldReconciliation(resident[field], axiscareValues[field]);
+    // Normalized ONLY for the comparison itself — updatePayload below
+    // still writes axiscareValues[field], the raw observed value, never
+    // the normalized one. See normalizeBootstrapFieldForComparison's own
+    // comment.
+    const outcome = decideFieldReconciliation(
+      normalizeBootstrapFieldForComparison(field, resident[field]),
+      normalizeBootstrapFieldForComparison(field, axiscareValues[field])
+    );
     fieldOutcomes[field] = outcome;
     if (outcome === "apply") {
       updatePayload[field] = axiscareValues[field];
@@ -168,13 +171,25 @@ export async function applyAxisCareCanonicalSnapshotToResident(
         fieldOutcomes,
         fieldsApplied: [],
         overallStatus: "not_reviewed",
+        openConflictFields: [],
         error: `Could not apply bootstrap fields: ${updateError.message}`,
       };
     }
   }
 
   const outcomes = Object.values(fieldOutcomes);
-  const overallStatus: CanonicalizationStatus = outcomes.includes("conflict_unresolved")
+
+  // A raw disagreement (fieldOutcomes === "conflict_unresolved") only
+  // stays an OPEN conflict if no human has already reviewed it against
+  // this exact AxisCare value (see computeUnresolvedFieldConflicts's own
+  // doc comment) — this is what stops a prior "Keep Serve"/"Use
+  // AxisCare" decision from being silently re-flagged as unresolved on
+  // the very next scheduled sync, while still re-surfacing a field the
+  // moment AxisCare's value genuinely changes again after the decision.
+  const openConflicts = computeUnresolvedFieldConflicts(resident, axiscareValues, snapshot.field_decisions ?? {}, snapshot.fetched_at);
+  const openConflictFields = openConflicts.map((c) => c.field);
+
+  const overallStatus: CanonicalizationStatus = openConflictFields.length > 0
     ? "conflict_unresolved"
     : fieldsApplied.length > 0
       ? "applied_to_serve"
@@ -182,18 +197,17 @@ export async function applyAxisCareCanonicalSnapshotToResident(
         ? "skipped_serve_already_owns"
         : "not_reviewed";
 
-  const conflictFields = Object.entries(fieldOutcomes)
-    .filter(([, outcome]) => outcome === "conflict_unresolved")
-    .map(([field]) => field);
-
   await recordSnapshotCanonicalizationResult(snapshot.id, {
     status: overallStatus,
-    conflictStatus: conflictFields.length > 0 ? "value_disagrees_with_serve" : null,
-    conflictNotes: conflictFields.length > 0 ? `Serve and AxisCare disagree on: ${conflictFields.join(", ")}. Never auto-resolved — requires human review.` : null,
+    conflictStatus: openConflictFields.length > 0 ? "value_disagrees_with_serve" : null,
+    conflictNotes:
+      openConflictFields.length > 0
+        ? `Serve and AxisCare disagree on: ${openConflicts.map((c) => c.label).join(", ")}. Never auto-resolved — requires human review.`
+        : null,
     appliedBy: fieldsApplied.length > 0 ? appliedBy : null,
   });
 
-  return { residentId, axiscareClientId, fieldOutcomes, fieldsApplied, overallStatus };
+  return { residentId, axiscareClientId, fieldOutcomes, fieldsApplied, overallStatus, openConflictFields };
 }
 
 export interface TriageApplyResult {

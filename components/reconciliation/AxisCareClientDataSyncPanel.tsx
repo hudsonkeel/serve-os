@@ -3,11 +3,113 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { runAxisCareClientDataSyncNow, dismissAxisCareCanonicalConflict } from "@/lib/actions/axiscareClientSync";
+import { runAxisCareClientDataSyncNow } from "@/lib/actions/axiscareClientSync";
+import { keepServeConflictValue, adoptAxisCareConflictValue } from "@/lib/actions/axiscareCanonicalConflicts";
 import type { AxisCareClientSyncRun } from "@/lib/data/axiscareClientSyncRuns";
 import type { UnresolvedConflictWithResident } from "@/lib/data/axiscareClientSync";
 import type { BulkSyncSummary } from "@/lib/data/axiscareClientSync";
+import type { FieldConflictSummary, BootstrapFieldName } from "@/lib/integrations/axiscare/clientCanonicalReconciliation";
 import { Badge } from "@/components/ui/Badge";
+
+function compactDate(iso: string) {
+  return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+const FAMILY_CONTACT_FIELDS = new Set<BootstrapFieldName>([
+  "family_contact_name",
+  "family_contact_relationship",
+  "family_contact_phone",
+  "family_contact_email",
+]);
+
+// One field's WHAT/WHY/DO/DONE. Self-contained so each field within a
+// multi-field conflict (e.g. Michele Helsley: name AND phone) resolves
+// independently — reviewing one must never affect the other's own
+// pending state or hide it.
+function FieldConflictRow({ snapshotId, residentId, conflict }: { snapshotId: string; residentId: string; conflict: FieldConflictSummary }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  function handleKeepServe() {
+    setError(null);
+    startTransition(async () => {
+      const result = await keepServeConflictValue(snapshotId, residentId, conflict.field);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setDone("Kept Serve's value. This won't re-alert unless AxisCare's value changes again.");
+      router.refresh();
+    });
+  }
+
+  function handleUseAxisCare() {
+    setError(null);
+    startTransition(async () => {
+      const result = await adoptAxisCareConflictValue(snapshotId, residentId, conflict.field);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setDone("Adopted AxisCare's value into Serve.");
+      router.refresh();
+    });
+  }
+
+  const editHref = FAMILY_CONTACT_FIELDS.has(conflict.field)
+    ? `/residents/${residentId}?editSection=family_contact`
+    : `/residents/${residentId}`;
+
+  if (done) {
+    return (
+      <div className="rounded-lg border border-ivory-border bg-surface px-3 py-2">
+        <p className="font-sans text-sm font-medium text-body">{conflict.label}</p>
+        <p className="mt-0.5 font-sans text-sm text-success-text">{done}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-ivory-border bg-surface px-3 py-2.5">
+      <p className="font-sans text-sm font-semibold text-body">{conflict.label}</p>
+      <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="rounded-md border border-ivory-border bg-ivory px-2.5 py-1.5">
+          <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">Serve</p>
+          <p className="mt-0.5 font-sans text-sm text-body">{conflict.serveValue || "—"}</p>
+        </div>
+        <div className="rounded-md border border-ivory-border bg-ivory px-2.5 py-1.5">
+          <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">AxisCare</p>
+          <p className="mt-0.5 font-sans text-sm text-body">{conflict.axiscareValue || "—"}</p>
+          <p className="mt-0.5 font-sans text-xs text-muted">Observed {compactDate(conflict.axiscareObservedAt)}</p>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={handleKeepServe}
+          className="rounded-lg bg-navy px-3 py-1.5 font-sans text-sm font-medium text-white hover:bg-navy-light disabled:opacity-50"
+        >
+          {isPending ? "Saving…" : "Keep Serve"}
+        </button>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={handleUseAxisCare}
+          className="rounded-lg border border-navy/30 bg-surface px-3 py-1.5 font-sans text-sm font-medium text-navy hover:bg-ivory-warm disabled:opacity-50"
+        >
+          {isPending ? "Saving…" : "Use AxisCare"}
+        </button>
+        <Link href={editHref} className="font-sans text-sm font-medium text-muted hover:text-body">
+          Edit →
+        </Link>
+      </div>
+      {error && <p className="mt-1.5 font-sans text-sm text-danger-text">{error}</p>}
+    </div>
+  );
+}
 
 function compactDateTime(iso: string | null) {
   if (!iso) return "Never run yet";
@@ -40,8 +142,6 @@ export function AxisCareClientDataSyncPanel({ canAct, lastRun, lastSuccessfulRun
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [justRanSummary, setJustRanSummary] = useState<BulkSyncSummary | null>(null);
-  const [dismissingId, setDismissingId] = useState<string | null>(null);
-  const [dismissNote, setDismissNote] = useState("");
 
   function handleSyncNow() {
     setError(null);
@@ -53,24 +153,6 @@ export function AxisCareClientDataSyncPanel({ canAct, lastRun, lastSuccessfulRun
         return;
       }
       setJustRanSummary(result.summary ?? null);
-      router.refresh();
-    });
-  }
-
-  function handleDismiss(snapshotId: string) {
-    if (!dismissNote.trim()) {
-      setError("A note is required to dismiss a conflict.");
-      return;
-    }
-    setError(null);
-    startTransition(async () => {
-      const result = await dismissAxisCareCanonicalConflict(snapshotId, dismissNote.trim());
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setDismissingId(null);
-      setDismissNote("");
       router.refresh();
     });
   }
@@ -131,62 +213,47 @@ export function AxisCareClientDataSyncPanel({ canAct, lastRun, lastSuccessfulRun
       {conflicts.length > 0 && (
         <div className="mt-4 border-t border-ivory-border pt-4">
           <p className="mb-2 font-sans text-label font-semibold uppercase tracking-widest text-subtle">
-            Conflicts Requiring Review · {conflicts.length}
+            Conflicts Requiring Review · {conflicts.reduce((n, c) => n + c.fieldConflicts.length, 0)}
           </p>
-          <div className="space-y-2">
-            {conflicts.map(({ snapshot, residentId, residentName }) => (
+          <div className="space-y-3">
+            {conflicts.map(({ snapshot, residentId, residentName, fieldConflicts }) => (
               <div key={snapshot.id} className="rounded-lg border border-amber-200 bg-warning-surface px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-sans text-sm font-semibold text-body">{residentName ?? "Unknown resident"}</p>
                   {residentId && (
                     <Link href={`/residents/${residentId}`} className="font-sans text-sm font-medium text-navy hover:text-navy-light">
-                      Review on resident profile →
+                      View resident profile →
                     </Link>
                   )}
                 </div>
-                <p className="mt-1 font-sans text-sm text-body">{snapshot.conflict_notes}</p>
-                <p className="mt-1 font-sans text-xs text-muted">Serve&rsquo;s value remains authoritative until reviewed.</p>
+                <p className="mt-1 font-sans text-xs text-muted">
+                  Serve&rsquo;s value remains authoritative on every field below until reviewed.
+                </p>
 
-                {canAct && (
-                  <div className="mt-2">
-                    {dismissingId === snapshot.id ? (
-                      <div className="space-y-2">
-                        <textarea
-                          value={dismissNote}
-                          onChange={(e) => setDismissNote(e.target.value)}
-                          rows={2}
-                          placeholder="What did you confirm? (required)"
-                          className="w-full rounded-lg border border-ivory-border bg-surface px-3 py-2 font-sans text-sm text-body outline-none focus:border-gold/60"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            disabled={isPending}
-                            onClick={() => handleDismiss(snapshot.id)}
-                            className="rounded-lg bg-navy px-3 py-1.5 font-sans text-sm font-medium text-white hover:bg-navy-light disabled:opacity-50"
-                          >
-                            Confirm Reviewed
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDismissingId(null);
-                              setDismissNote("");
-                            }}
-                            className="rounded-lg border border-ivory-border bg-surface px-3 py-1.5 font-sans text-sm font-medium text-muted hover:bg-ivory"
-                          >
-                            Cancel
-                          </button>
+                {fieldConflicts.length === 0 ? (
+                  <p className="mt-2 font-sans text-sm text-muted">
+                    No fields currently differ — this record will drop off the next time this list refreshes.
+                  </p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {fieldConflicts.map((conflict) =>
+                      canAct && residentId ? (
+                        <FieldConflictRow key={conflict.field} snapshotId={snapshot.id} residentId={residentId} conflict={conflict} />
+                      ) : (
+                        <div key={conflict.field} className="rounded-lg border border-ivory-border bg-surface px-3 py-2">
+                          <p className="font-sans text-sm font-semibold text-body">{conflict.label}</p>
+                          <div className="mt-1.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <div className="rounded-md border border-ivory-border bg-ivory px-2.5 py-1.5">
+                              <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">Serve</p>
+                              <p className="mt-0.5 font-sans text-sm text-body">{conflict.serveValue || "—"}</p>
+                            </div>
+                            <div className="rounded-md border border-ivory-border bg-ivory px-2.5 py-1.5">
+                              <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">AxisCare</p>
+                              <p className="mt-0.5 font-sans text-sm text-body">{conflict.axiscareValue || "—"}</p>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setDismissingId(snapshot.id)}
-                        className="font-sans text-sm font-medium text-navy hover:text-navy-light"
-                      >
-                        Mark Reviewed
-                      </button>
+                      )
                     )}
                   </div>
                 )}

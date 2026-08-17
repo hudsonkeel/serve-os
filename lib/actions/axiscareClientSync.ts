@@ -9,7 +9,6 @@ import { revalidatePath } from "next/cache";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canPerformReconciliationActions } from "@/lib/auth/permissions";
 import { syncAllConfirmedResidentsCanonical, type BulkSyncSummary } from "@/lib/data/axiscareClientSync";
-import { recordSnapshotCanonicalizationResult } from "@/lib/data/axiscareClientCanonicalSnapshot";
 
 async function requireSyncActor(): Promise<{ actor: string } | { error: string }> {
   const profile = await getCurrentAuthorizedUser();
@@ -33,26 +32,10 @@ export async function runAxisCareClientDataSyncNow(): Promise<{ error?: string; 
   return { summary };
 }
 
-// A conflict is never auto-resolved either direction — this only records
-// that a human looked at it. The Serve value keeps governing either way;
-// dismissing just clears the review flag using the exact same governed
-// write recordSnapshotCanonicalizationResult() already performs for every
-// other canonicalization outcome (no new mechanism). To actually CHANGE
-// the Serve-owned value, use the resident's own profile edit — this
-// action never writes to residents.
-export async function dismissAxisCareCanonicalConflict(snapshotId: string, note: string): Promise<{ error?: string }> {
-  const actorResult = await requireSyncActor();
-  if ("error" in actorResult) return actorResult;
-  if (!note.trim()) return { error: "A note is required to dismiss a conflict." };
-
-  const result = await recordSnapshotCanonicalizationResult(snapshotId, {
-    status: "skipped_serve_already_owns",
-    conflictStatus: null,
-    conflictNotes: `Reviewed by ${actorResult.actor}: ${note.trim()}`,
-    appliedBy: null,
-  });
-  if (result.error) return { error: result.error };
-
-  revalidatePath("/reconciliation");
-  return {};
-}
+// Whole-row "Mark Reviewed" was replaced (Closed-Loop UX Pass, Phase 1) by
+// per-field Keep Serve / Use AxisCare decisions
+// (lib/actions/axiscareCanonicalConflicts.ts) — a snapshot row can carry
+// more than one independently-conflicting field (e.g. Michele Helsley:
+// family_contact_name AND family_contact_phone), and a single whole-row
+// dismissal used to silently swallow whichever field the operator wasn't
+// looking at.

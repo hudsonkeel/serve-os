@@ -58,6 +58,37 @@ test("5. a genuine tie on every tier still returns a deterministic, non-empty-re
   assert.ok(result.reasons.length > 0);
 });
 
+test("6. REGRESSION (Final Canonical Truth Cleanup): stale needsReview/staging_match_review metadata alone cannot flip which record is recommended canonical — the stronger record on every OTHER dimension still wins even though it carries the flag", () => {
+  // "stronger" wins on apartment (populated) and would tie on everything
+  // else except that it also carries a stale CINCH-import-era
+  // needsReview flag the "weaker" record doesn't have. Before this fix,
+  // that flag alone would have flipped the recommendation to "weaker" —
+  // historical staging noise must never outrank real identity quality
+  // (apartment/name) or outweigh it entirely on its own.
+  const stronger = record({ id: "stronger", unitNumber: "1101", needsReview: "staging_match_review", linkedRecordCount: 0 });
+  const weaker = record({ id: "weaker", unitNumber: null, needsReview: null, linkedRecordCount: 0 });
+  const result = recommendCanonicalResident(stronger, weaker);
+  assert.equal(result.canonicalResidentId, "stronger", "apartment-populated record must still win despite a stale staging flag");
+});
+
+test("7. REGRESSION: needsReview never appears in the recommendation's own explanation text — 'No outstanding data-quality flag' must not resurface", () => {
+  const a = record({ id: "a", unitNumber: "1101", needsReview: null });
+  const b = record({ id: "b", unitNumber: "1101", needsReview: "staging_match_review" });
+  const result = recommendCanonicalResident(a, b);
+  for (const reason of result.reasons) {
+    assert.ok(!reason.toLowerCase().includes("data-quality flag"), `reason "${reason}" must not reference the retired data-quality-flag signal`);
+  }
+});
+
+test("8. two records that differ ONLY by needsReview are now a genuine tie — identical apartment/name/source/history", () => {
+  const a = record({ id: "a", needsReview: null });
+  const b = record({ id: "b", needsReview: "staging_match_review" });
+  const result = recommendCanonicalResident(a, b);
+  // Ties default to the first argument (documented, stable, arbitrary) —
+  // proving needsReview no longer breaks the tie either direction.
+  assert.equal(result.canonicalResidentId, "a");
+});
+
 // ─── Runner ──────────────────────────────────────────────────────────
 
 async function run() {

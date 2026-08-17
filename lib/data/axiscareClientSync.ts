@@ -20,6 +20,7 @@ import {
   type SyncRunTrigger,
 } from "./axiscareClientSyncRuns.ts";
 import { listUnresolvedConflicts, type AxisCareClientCanonicalSnapshot } from "./axiscareClientCanonicalSnapshot.ts";
+import { computeUnresolvedFieldConflicts, combinedAddress, type FieldConflictSummary, type BootstrapFieldName } from "../integrations/axiscare/clientCanonicalReconciliation.ts";
 
 export interface BulkSyncResidentOutcome extends Partial<ResidentSyncResult> {
   residentId: string;
@@ -178,6 +179,33 @@ export interface UnresolvedConflictWithResident {
   snapshot: AxisCareClientCanonicalSnapshot;
   residentId: string | null;
   residentName: string | null;
+  // The structured WHAT/WHY the Closed-Loop UX Pass surfaces in place of
+  // conflict_notes' plain-text summary — computed live from the
+  // resident's CURRENT values (not a stale snapshot of what they were
+  // when the conflict was first recorded), using the exact same pure
+  // function the apply step itself uses to decide what's still open.
+  fieldConflicts: FieldConflictSummary[];
+}
+
+const BOOTSTRAP_FIELD_COLUMNS =
+  "id, display_name, first_name, last_name, date_of_birth, gender, date_of_admission, address, city, state, zip_code, family_contact_name, family_contact_relationship, family_contact_phone, family_contact_email";
+
+interface ResidentBootstrapRow {
+  id: string;
+  display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  date_of_birth: string | null;
+  gender: string | null;
+  date_of_admission: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  family_contact_name: string | null;
+  family_contact_relationship: string | null;
+  family_contact_phone: string | null;
+  family_contact_email: string | null;
 }
 
 // The snapshot table deliberately has no FK to residents (it's keyed by
@@ -196,16 +224,39 @@ export async function getUnresolvedConflictsWithResidents(): Promise<UnresolvedC
     .filter((id): id is string => Boolean(id));
 
   const supabase = createServerClient();
-  const nameById = new Map<string, string>();
+  const residentById = new Map<string, ResidentBootstrapRow>();
   if (residentIds.length > 0) {
-    const { data } = await supabase.from("residents").select("id, display_name, first_name, last_name").in("id", residentIds);
-    for (const r of data ?? []) {
-      nameById.set(r.id as string, (r.display_name as string) || `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || "Unknown Resident");
+    const { data } = await supabase.from("residents").select(BOOTSTRAP_FIELD_COLUMNS).in("id", residentIds);
+    for (const r of (data ?? []) as ResidentBootstrapRow[]) {
+      residentById.set(r.id, r);
     }
   }
 
   return conflicts.map((snapshot) => {
     const residentId = residentIdByAxiscareClientId.get(snapshot.axiscare_client_id) ?? null;
-    return { snapshot, residentId, residentName: residentId ? (nameById.get(residentId) ?? null) : null };
+    const resident = residentId ? residentById.get(residentId) : undefined;
+    const residentName = resident
+      ? resident.display_name || `${resident.first_name ?? ""} ${resident.last_name ?? ""}`.trim() || "Unknown Resident"
+      : null;
+
+    const axiscareValues: Partial<Record<BootstrapFieldName, string | null>> = {
+      date_of_birth: snapshot.date_of_birth,
+      gender: snapshot.gender,
+      date_of_admission: snapshot.admission_date,
+      address: combinedAddress(snapshot.street_address_1, snapshot.street_address_2),
+      city: snapshot.city,
+      state: snapshot.state,
+      zip_code: snapshot.postal_code,
+      family_contact_name: snapshot.responsible_party_name,
+      family_contact_relationship: snapshot.responsible_party_relationship,
+      family_contact_phone: snapshot.responsible_party_phone,
+      family_contact_email: snapshot.responsible_party_email,
+    };
+
+    const fieldConflicts = resident
+      ? computeUnresolvedFieldConflicts(resident, axiscareValues, snapshot.field_decisions ?? {}, snapshot.fetched_at)
+      : [];
+
+    return { snapshot, residentId, residentName, fieldConflicts };
   });
 }

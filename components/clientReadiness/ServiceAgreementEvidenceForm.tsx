@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { recordServiceAgreementEvidenceAction } from "@/lib/actions/clientReadiness";
 import { FileUploadField } from "@/components/ui/FileUploadField";
+import { validateDocumentFile } from "@/lib/workforce/documentValidation";
 
 // One upload, one document — optionally also satisfies Billing / Payment
 // Authorization from the same document (Decision 7: never a duplicate
@@ -22,6 +23,11 @@ export function ServiceAgreementEvidenceForm({ residentId }: { residentId: strin
     e.preventDefault();
     if (!file) {
       setError("A document is required.");
+      return;
+    }
+    const validation = validateDocumentFile({ size: file.size, type: file.type, name: file.name });
+    if (!validation.ok) {
+      setError(validation.error ?? "That file can't be uploaded.");
       return;
     }
     setError(null);
@@ -70,7 +76,14 @@ export function ServiceAgreementEvidenceForm({ residentId }: { residentId: strin
         />
       </label>
 
-      <FileUploadField label="Service Agreement (PDF)" accept="application/pdf" required value={file} onChange={setFile} />
+      <FileUploadField
+        label="Service Agreement (PDF)"
+        accept="application/pdf"
+        required
+        value={file}
+        onChange={setFile}
+        helpText="PDF only, up to 10 MB"
+      />
 
       <label className="flex items-start gap-2 py-1">
         <input

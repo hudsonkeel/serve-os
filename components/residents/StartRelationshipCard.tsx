@@ -102,7 +102,7 @@ export function StartRelationshipCard({
   return (
     <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
       <h3 className="mb-4 font-sans text-label font-semibold uppercase tracking-widest text-muted">
-        Relationships
+        Relationship Management
       </h3>
 
       {existingRelationships.length > 0 ? (
@@ -121,8 +121,18 @@ export function StartRelationshipCard({
           ))}
         </div>
       ) : (
+        // Closed-Loop UX Pass, Phase 2: this card reflects the separate
+        // CRM Relationship-pipeline record (relationships module — a
+        // prospect/outreach workflow), never the canonical
+        // ServeRelationshipProjection shown in the resident header. A
+        // resident can be a genuine Active Client (sourced from AxisCare
+        // or legacy status) with zero CRM pipeline records — the prior
+        // wording ("No active Serve relationship recorded") read as a
+        // direct contradiction of that header. This card is honestly
+        // about pipeline/outreach tracking, not current relationship
+        // truth — see docs/design/RELATIONSHIPS.md.
         <p className="mb-4 font-sans text-sm text-subtle">
-          No active Serve relationship recorded for this resident yet.
+          No relationship-management record started for this resident yet.
         </p>
       )}
 

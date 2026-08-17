@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { recordClientReadinessDocumentEvidenceAction } from "@/lib/actions/clientReadiness";
 import { FileUploadField } from "@/components/ui/FileUploadField";
+import { validateDocumentFile } from "@/lib/workforce/documentValidation";
 
 // Generic document-backed evidence action — ISP, Supervisory Visit,
 // Significant Event documentation, Discharge Summary. Service Agreement
@@ -32,6 +33,14 @@ export function DocumentEvidenceForm({
     e.preventDefault();
     if (!file) {
       setError("A document is required.");
+      return;
+    }
+    // Same rule the server enforces (lib/workforce/documentValidation.ts)
+    // — checked here too so an oversized file is rejected instantly,
+    // before a round trip, with the same honest message.
+    const validation = validateDocumentFile({ size: file.size, type: file.type, name: file.name });
+    if (!validation.ok) {
+      setError(validation.error ?? "That file can't be uploaded.");
       return;
     }
     setError(null);
@@ -80,7 +89,14 @@ export function DocumentEvidenceForm({
         />
       </label>
 
-      <FileUploadField label="Document (PDF)" accept="application/pdf" required value={file} onChange={setFile} />
+      <FileUploadField
+        label="Document (PDF)"
+        accept="application/pdf"
+        required
+        value={file}
+        onChange={setFile}
+        helpText="PDF only, up to 10 MB"
+      />
 
       <label className="block">
         <span className="font-sans text-[11px] font-medium text-muted">Notes (optional)</span>

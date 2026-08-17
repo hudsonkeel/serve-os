@@ -16,6 +16,17 @@ export interface CanonicalRecommendationInput {
   readonly firstName: string | null;
   readonly lastName: string | null;
   readonly unitNumber: string | null;
+  // Retained on the input shape only so callers don't need two parallel
+  // types — deliberately NEVER read by this module's own scoring below.
+  // Final Canonical Truth Cleanup: needsReview (residents.needs_review,
+  // or the synthetic "staging_match_review" value) is historical
+  // CINCH/import-era staging metadata — verified to have zero current
+  // operational meaning (nothing in this codebase writes it after
+  // import; it lives beside source_file/source_status, other pure
+  // import-provenance columns). It must never influence which current
+  // canonical Serve person survives a duplicate consolidation, and the
+  // reason text it used to produce ("No outstanding data-quality flag")
+  // falsely implied the OTHER record had a real, current problem.
   readonly needsReview: string | null;
   readonly sourceSystem: string | null;
   readonly linkedRecordCount: number;
@@ -33,7 +44,6 @@ function hasCompleteName(r: CanonicalRecommendationInput): boolean {
 function identityQualityScore(r: CanonicalRecommendationInput): number {
   let score = 0;
   if (r.unitNumber?.trim()) score++;
-  if (!r.needsReview) score++;
   if (hasCompleteName(r)) score++;
   return score;
 }
@@ -45,9 +55,6 @@ function buildReasons(winner: CanonicalRecommendationInput, loser: CanonicalReco
   }
   if (winner.unitNumber?.trim() && !loser.unitNumber?.trim()) {
     reasons.push("Apartment populated");
-  }
-  if (!winner.needsReview && loser.needsReview) {
-    reasons.push("No outstanding data-quality flag");
   }
   if (hasCompleteName(winner) && !hasCompleteName(loser)) {
     reasons.push("Better normalized name (first and last name both present)");
