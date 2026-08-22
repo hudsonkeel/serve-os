@@ -4,6 +4,16 @@
 // Phase A) — not the previously untyped discovery stub's assumptions.
 // See docs/architecture/AXISCARE_CLIENT_RECONCILIATION.md for the full
 // investigation and dry-run report this mapping was derived from.
+//
+// Prospect detection (AxisCare Community Mapping + Operational State
+// phase): now sourced from lifecycleSignals.ts's reviewed
+// AXISCARE_LIFECYCLE_CLASS_MAP rather than a flat, Frisco-only set of
+// exact strings — confirmed live that AxisCare client #40 (Firewheel)
+// used "WAFirewheel Prospect", which the old Frisco-only
+// PROSPECT_CLASS_CODES set never matched. The lifecycle SIGNAL is now
+// independent of which community the class also happens to name (see
+// communityMapping.ts for that separate, independent extraction).
+import { hasProspectLifecycleSignal } from "./lifecycleSignals.ts";
 
 export interface AxisCareClientStatus {
   readonly active: boolean;
@@ -21,13 +31,6 @@ export type ServeClientLifecycle =
   | "prospect"
   | "needs_review";
 
-// Real class codes observed live. "WAF Signed Agreement / No Visits" is
-// AxisCare's own label for AxisCare's "WAF - Active No Visits" code — a
-// household that has signed on but has no visits yet, which is Serve's
-// operating definition of a prospect (not yet actively receiving
-// service), not a former client.
-const PROSPECT_CLASS_CODES = new Set(["WAF Prospect", "WAF - Active No Visits"]);
-
 export interface ClientLifecycleInput {
   readonly status: AxisCareClientStatus;
   readonly classes: readonly AxisCareClientClass[];
@@ -40,7 +43,7 @@ export function classifyAxisCareClientLifecycle(input: ClientLifecycleInput): Se
     return "active_client";
   }
 
-  if (input.classes.some((c) => PROSPECT_CLASS_CODES.has(c.code))) {
+  if (hasProspectLifecycleSignal(input.classes.map((c) => c.code))) {
     return "prospect";
   }
 

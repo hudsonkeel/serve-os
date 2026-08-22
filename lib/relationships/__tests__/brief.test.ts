@@ -28,6 +28,7 @@ function makeRelationship(overrides: Partial<Relationship> = {}): Relationship {
     resident_id: null,
     prospect_id: null,
     community_name: null,
+    community_id: null,
     organization_name: null,
     primary_contact_name: "Cary Smith",
     primary_contact_relationship: "Daughter",

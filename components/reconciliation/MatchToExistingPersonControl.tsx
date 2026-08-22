@@ -23,6 +23,15 @@ interface MatchToExistingPersonControlProps {
   statusActive: boolean;
   classes: string[];
   suggestedMatches: SuggestedResidentMatch[];
+  // The record's own deterministically-resolved community (see
+  // communityMapping.ts), when known — search defaults to exactly this
+  // community, not whatever community the operator currently has
+  // selected (Reconciliation is a deliberately unscoped, cross-community
+  // page). Null only when the record's community is genuinely unresolved,
+  // in which case there's nothing sensible to default to and search
+  // falls back to cross-community, same as before this phase.
+  resolvedCommunityId?: string | null;
+  resolvedCommunityName?: string | null;
 }
 
 type Mode = "idle" | "searching" | "confirming";
@@ -34,12 +43,18 @@ export function MatchToExistingPersonControl({
   statusActive,
   classes,
   suggestedMatches,
+  resolvedCommunityId = null,
+  resolvedCommunityName = null,
 }: MatchToExistingPersonControlProps) {
   const [mode, setMode] = useState<Mode>("idle");
   const [pendingResident, setPendingResident] = useState<{ id: string; name: string } | null>(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ResidentSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  // Explicit opt-in only — defaults to the record's own resolved
+  // community (section 10). Falls back to cross-community by default when
+  // no community could be resolved for this record at all.
+  const [searchOtherCommunities, setSearchOtherCommunities] = useState(resolvedCommunityId === null);
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
@@ -58,7 +73,14 @@ export function MatchToExistingPersonControl({
       return;
     }
     setIsSearching(true);
-    const found = await searchResidentsForLinking(value);
+    // Defaults to the record's own resolved community; cross-community
+    // search is a deliberate, explicit opt-in for move/transfer cases
+    // (AxisCare Reconciliation + Multi-Source Identity Ingestion phase,
+    // section 10) — never silently guessing which community to search.
+    const found =
+      searchOtherCommunities || !resolvedCommunityId
+        ? await searchResidentsForLinking(value, { crossCommunity: true })
+        : await searchResidentsForLinking(value, { communityId: resolvedCommunityId });
     setResults(found);
     setIsSearching(false);
   }
@@ -92,6 +114,23 @@ export function MatchToExistingPersonControl({
     return (
       <div className="space-y-2 rounded-lg border border-ivory-border bg-ivory p-3">
         <p className="font-sans text-sm font-medium text-body">Search for the correct Serve resident</p>
+        {resolvedCommunityId && (
+          <label className="flex items-center gap-2 font-sans text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={searchOtherCommunities}
+              onChange={(e) => {
+                setSearchOtherCommunities(e.target.checked);
+                setResults([]);
+                if (query.trim().length >= 2) handleSearch(query);
+              }}
+            />
+            {searchOtherCommunities
+              ? "Searching all communities"
+              : `Searching ${resolvedCommunityName ?? "this record's community"} only`}
+            {!searchOtherCommunities && " — check to search other communities"}
+          </label>
+        )}
         <input
           type="text"
           value={query}

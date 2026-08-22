@@ -38,6 +38,26 @@ export interface ResidentProfileFieldsUpdate {
   mobility: string | null;
 }
 
+// Plain scoped update, not a new RPC — same non-invasive pattern as
+// lib/data/relationships.ts's setRelationshipCommunityId, and for the same
+// reason: the resident-creation RPCs (create_provisional_resident_from_intake,
+// convert_external_prospect_to_new_resident) predate community_id and
+// changing their signatures would mean another DDL migration this phase
+// doesn't need. Never called to silently overwrite an existing, differing
+// value — only ever a follow-up write immediately after a resident is
+// first created, while community_id is still null.
+export async function setResidentCommunityId(residentId: string, communityId: string | null): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+  const { error } = await supabase.from("residents").update({ community_id: communityId }).eq("id", residentId);
+
+  if (error) {
+    console.error("[residents:setResidentCommunityId:error]", { residentId, message: error.message });
+    return { error: "Could not set this resident's community." };
+  }
+
+  return {};
+}
+
 export async function updateResidentProfileFields(
   residentId: string,
   fields: ResidentProfileFieldsUpdate

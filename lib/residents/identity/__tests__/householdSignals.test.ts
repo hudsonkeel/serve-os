@@ -21,6 +21,7 @@ function resident(overrides: Partial<LiveResidentForIdentity> & { id: string }):
     unitNumber: null,
     building: null,
     communityCode: "watermere-frisco",
+    communityId: "c-frisco",
     phone: null,
     email: null,
     dateOfBirth: null,
@@ -39,6 +40,20 @@ test("1. same apartment is a household signal", () => {
   const b = resident({ id: "b", unitNumber: "6303" });
   const signals = generateHouseholdSignals(a, b);
   assert.ok(signals.some((s) => s.signalType === "same_apartment"));
+});
+
+test("1b. unit numbers are community-relative: the same unit number in two different communities is NOT the same apartment", () => {
+  const a = resident({ id: "a", unitNumber: "204", communityId: "c-frisco" });
+  const b = resident({ id: "b", unitNumber: "204", communityId: "c-firewheel" });
+  const signals = generateHouseholdSignals(a, b);
+  assert.ok(!signals.some((s) => s.signalType === "same_apartment"), "same_apartment must not fire across different communities");
+});
+
+test("1c. an unknown community on either side never confidently claims 'same apartment' either", () => {
+  const a = resident({ id: "a", unitNumber: "204", communityId: null });
+  const b = resident({ id: "b", unitNumber: "204", communityId: "c-firewheel" });
+  const signals = generateHouseholdSignals(a, b);
+  assert.ok(!signals.some((s) => s.signalType === "same_apartment"));
 });
 
 test("2. William Knight / Jane Knight: same phone + same apartment -> household evidence, but this module never mentions identity at all", () => {

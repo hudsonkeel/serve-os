@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { syncAllConfirmedResidentsCanonical } from "@/lib/data/axiscareClientSync";
+import { syncAxisCareOperationalState } from "@/lib/data/axiscareOperationalStateSync";
 
 // AxisCare Client Data Sync — the scheduled entry point. Server-to-server
 // only, never a browser session — mirrors app/api/intake/reconcile's
@@ -24,6 +25,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const result = await syncAllConfirmedResidentsCanonical("Scheduled AxisCare Client Data Sync", "scheduled");
-  return NextResponse.json(result);
+  // Two independent steps on the same daily trigger, not two separate
+  // scheduled jobs (AxisCare Community Mapping + Operational State
+  // phase, section 10). The demographic bootstrap sync
+  // (syncAllConfirmedResidentsCanonical) is unchanged, per-confirmed-
+  // resident, and untouched by this phase. syncAxisCareOperationalState
+  // is the new step: one roster fetch, covering every mapped community
+  // and every roster record (confirmed, candidate, or unmatched alike —
+  // e.g. AxisCare client #40) in a single run.
+  const [canonicalResult, operationalStateResult] = await Promise.all([
+    syncAllConfirmedResidentsCanonical("Scheduled AxisCare Client Data Sync", "scheduled"),
+    syncAxisCareOperationalState(),
+  ]);
+  return NextResponse.json({ canonicalResult, operationalStateResult });
 }

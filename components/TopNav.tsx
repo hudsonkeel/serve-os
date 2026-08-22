@@ -1,13 +1,15 @@
 import { Search, Bell, LogOut } from "lucide-react";
 import { logoutAction } from "@/lib/auth/actions";
+import { CommunitySwitcher, type CommunitySwitcherData } from "./CommunitySwitcher";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
 
 interface TopNavProps {
   title?: string;
   currentUser: CurrentUserDisplay;
+  communitySwitcher: CommunitySwitcherData | null;
 }
 
-export function TopNav({ title = "Dashboard", currentUser }: TopNavProps) {
+export function TopNav({ title = "Dashboard", currentUser, communitySwitcher }: TopNavProps) {
   return (
     <header className="sticky top-0 z-20 hidden h-[72px] items-center gap-6 border-b border-white/10 bg-navy px-8 md:flex">
       {/* Page title */}
@@ -16,6 +18,10 @@ export function TopNav({ title = "Dashboard", currentUser }: TopNavProps) {
           {title}
         </p>
       </div>
+
+      {/* Current community — visually clear, sized like the other TopNav
+          controls rather than a dominant banner. */}
+      {communitySwitcher && <CommunitySwitcher variant="desktop" {...communitySwitcher} />}
 
       {/* Search */}
       <div className="relative">

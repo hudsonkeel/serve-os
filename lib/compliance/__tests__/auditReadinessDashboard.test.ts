@@ -38,6 +38,7 @@ function domain(issues: DomainRequirementIssue[]): DomainReadinessRollup {
     domainId: "workforce",
     label: "Workforce",
     configured: true,
+    awaitingFirstSubject: false,
     requirementCount: issues.length,
     subjectCount: 1,
     readySubjectCount: 0,

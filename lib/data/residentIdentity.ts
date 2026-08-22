@@ -10,15 +10,23 @@ import type {
   SuppressedPair,
 } from "../residents/identity/types.ts";
 
-export async function loadResidentsForIdentityDetection(communityCode: string): Promise<LiveResidentForIdentity[]> {
+// communityCode = "all" (Phase E/F completion, section 3) scans across
+// every community — the mechanism a genuine cross-community move
+// discovery needs. A specific code keeps the original single-community
+// scan (still the default in scripts/detectResidentIdentityCandidates.ts)
+// — this is additive to that existing behavior, not a replacement of it.
+export async function loadResidentsForIdentityDetection(communityCode: string | "all"): Promise<LiveResidentForIdentity[]> {
   const supabase = createServerClient();
-  const { data, error } = await supabase
+  let query = supabase
     .from("residents")
     .select(
-      "id, first_name, last_name, middle_name, preferred_name, display_name, full_name, unit_number, building, community_code, phone, email, date_of_birth, family_contact_name, family_contact_phone, needs_review, is_active, source_system, created_at",
+      "id, first_name, last_name, middle_name, preferred_name, display_name, full_name, unit_number, building, community_code, community_id, phone, email, date_of_birth, family_contact_name, family_contact_phone, needs_review, is_active, source_system, created_at",
     )
-    .eq("community_code", communityCode)
     .eq("is_active", true);
+  if (communityCode !== "all") {
+    query = query.eq("community_code", communityCode);
+  }
+  const { data, error } = await query;
 
   if (error) throw new Error(`Could not load residents for identity detection: ${error.message}`);
 
@@ -33,6 +41,7 @@ export async function loadResidentsForIdentityDetection(communityCode: string): 
     unitNumber: r.unit_number as string | null,
     building: r.building as string | null,
     communityCode: r.community_code as string | null,
+    communityId: r.community_id as string | null,
     phone: r.phone as string | null,
     email: r.email as string | null,
     dateOfBirth: r.date_of_birth as string | null,

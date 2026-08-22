@@ -33,8 +33,14 @@ import {
   ResidentSearchResult,
 } from "@/lib/data/relationships";
 import { convertResidentProspectToActiveClient as convertResidentProspectToActiveClientRecord } from "@/lib/data/externalClients";
+import { setRelationshipCommunityId as setRelationshipCommunityIdRecord } from "@/lib/data/relationships";
 import { getResidentCurrentNeeds } from "@/lib/data/residentCurrentNeeds";
 import { findActiveResidentProspect } from "@/lib/relationships/duplicateDetection";
+import {
+  resolveRelationshipCommunityIdForCreation,
+  reconcileRelationshipCommunityIdForLinking,
+} from "@/lib/relationships/communityIntegrity";
+import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 import { generateInteractionSuggestions } from "@/lib/relationships/suggestionEngine";
 import {
   isValidActionType,
@@ -192,6 +198,20 @@ export async function createRelationship(
     return { error: "You must be signed in to create a relationship." };
   }
 
+  // Community identity (Phase E/F, section 8): the linked resident's own
+  // community wins if one is specified; otherwise the creator's current
+  // single-community context applies automatically. Resolved before the
+  // relationship exists — see communityIntegrity.ts's own contract.
+  const profile = await getCurrentAuthorizedUser();
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  const resolvedCommunity = await resolveRelationshipCommunityIdForCreation({
+    residentId: data.residentId || null,
+    currentSingleCommunityId: communityFilter.mode === "single" ? communityFilter.communityId : null,
+  });
+  if (resolvedCommunity.error) {
+    return { error: resolvedCommunity.error };
+  }
+
   // "Primary contact is the prospective client" — one authoritative value
   // (the prospective client's own contact details), copied into the
   // primary-contact fields at write time rather than kept as two
@@ -238,6 +258,15 @@ export async function createRelationship(
 
   if (result.error || !result.id) {
     return { error: result.error };
+  }
+
+  // Follow-up scoped write, not part of the create_relationship RPC's own
+  // signature — see setRelationshipCommunityId's own comment for why.
+  // Never fails the whole creation: a resident record now exists either
+  // way, and the community field can be corrected without redoing the
+  // create.
+  if (resolvedCommunity.communityId) {
+    await setRelationshipCommunityIdRecord(result.id, resolvedCommunity.communityId);
   }
 
   if (serviceAddress) {
@@ -424,6 +453,24 @@ export async function linkRelationshipToResident(data: {
     return { error: "You must be signed in to link a relationship." };
   }
 
+  // Community integrity (Phase E/F, section 9): a real mismatch between
+  // the relationship's own community and the resident's is rejected
+  // before the link RPC ever runs — never silently rewritten on either
+  // side. A relationship with no community yet correctly inherits the
+  // resident's here, since linking is exactly when that ambiguity
+  // resolves.
+  const existingRelationship = await getRelationshipByIdRecord(data.relationshipId);
+  if (!existingRelationship) {
+    return { error: "Relationship not found." };
+  }
+  const communityReconciliation = await reconcileRelationshipCommunityIdForLinking({
+    relationshipCommunityId: existingRelationship.community_id,
+    residentId: data.residentId,
+  });
+  if (!communityReconciliation.ok) {
+    return { error: communityReconciliation.error };
+  }
+
   const result = await linkRelationshipToResidentRecord(
     data.relationshipId,
     data.residentId,
@@ -437,6 +484,14 @@ export async function linkRelationshipToResident(data: {
 
   if (result.error) {
     return { error: result.error };
+  }
+
+  // Only a real write when the relationship's community was actually
+  // filled in (was null, now inherits the resident's) — when it already
+  // matched, resolvedCommunityId equals the existing value and this is a
+  // no-op update, harmless but skipped for clarity.
+  if (communityReconciliation.resolvedCommunityId !== existingRelationship.community_id) {
+    await setRelationshipCommunityIdRecord(data.relationshipId, communityReconciliation.resolvedCommunityId);
   }
 
   return {};
@@ -646,9 +701,36 @@ export async function dismissNextAction(data: {
 // ─── Resident linking search ─────────────────────────────────────────────
 
 export async function searchResidentsForLinking(
-  query: string
+  query: string,
+  options?: { readonly crossCommunity?: boolean; readonly communityId?: string }
 ): Promise<ResidentSearchResult[]> {
-  return searchResidentsForLinkingRecord(query);
+  // Phase E/F completion, section 4: single-community context searches
+  // only that community; an authorized all_communities context searches
+  // across all of them (with community identity attached to disambiguate
+  // — see ResidentSearchResult.communityName); an unassigned scope
+  // searches nothing, never silently everything.
+  //
+  // crossCommunity is one explicit override: a deliberate, explicit
+  // "search other communities" opt-in (never the default) for move/
+  // transfer reconciliation cases.
+  //
+  // communityId is the other: AxisCare Reconciliation + Multi-Source
+  // Identity Ingestion phase, section 10 — "Match to Existing Person"
+  // must default to the SOURCE RECORD's own resolved community (e.g.
+  // Firewheel for a Firewheel AxisCare prospect), which is independent of
+  // whatever community the operator currently has selected in the cookie
+  // (Reconciliation itself is a deliberately unscoped, cross-community
+  // page) — resolveCurrentCommunityQueryFilter() below would answer the
+  // wrong question here.
+  if (options?.crossCommunity) {
+    return searchResidentsForLinkingRecord(query, { mode: "all" });
+  }
+  if (options?.communityId) {
+    return searchResidentsForLinkingRecord(query, { mode: "single", communityId: options.communityId });
+  }
+  const profile = await getCurrentAuthorizedUser();
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  return searchResidentsForLinkingRecord(query, communityFilter);
 }
 
 // ─── Resident Prospect duplicate check (Part 13) ────────────────────────

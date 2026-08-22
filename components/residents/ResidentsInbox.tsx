@@ -12,6 +12,8 @@ import type { ServeRelationship } from "@/lib/residents/serveRelationshipProject
 import { FilterBanner } from "@/components/ui/FilterBanner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ResidentRelationshipRow } from "./ResidentRelationshipRow";
+import { UnresolvedExternalPersonCard } from "./UnresolvedExternalPersonCard";
+import type { UnresolvedExternalPersonItem } from "@/lib/data/axiscareOperationalState";
 
 const TABS: { value: ResidentRelationshipTabValue; label: string }[] = [
   { value: "all", label: "All Residents" },
@@ -49,6 +51,17 @@ function resultSummaryText(totalCount: number): string {
 interface ResidentsInboxProps {
   records: EnrichedResidentRecord[];
   relationshipCounts: Record<ServeRelationship, number>;
+  // Real, actionable community work Serve knows about through an external
+  // source (AxisCare) but has not yet resolved to a canonical resident —
+  // composed into the "Needs Review" tab, never merged into `records`
+  // (which stays canonical-resident-only). See this phase's own
+  // composition principle: actionable work queues may draw from more than
+  // one underlying entity type without pretending they're the same type.
+  unresolvedExternalWork?: UnresolvedExternalPersonItem[];
+  // True only in an authorized "All Communities" context — each external
+  // work card then shows its own community, since it's no longer implied
+  // by a single selected community (section 5).
+  showCommunityOnExternalWork?: boolean;
   initialTab?: ResidentRelationshipTabValue;
   initialWellnessDue?: WellnessDueFilter;
   canCorrect: boolean;
@@ -57,6 +70,8 @@ interface ResidentsInboxProps {
 export function ResidentsInbox({
   records,
   relationshipCounts,
+  unresolvedExternalWork = [],
+  showCommunityOnExternalWork = false,
   initialTab = "all",
   initialWellnessDue,
   canCorrect,
@@ -75,7 +90,13 @@ export function ResidentsInbox({
     prospect: relationshipCounts.prospect,
     inactive_client: relationshipCounts.inactive_client,
     no_current_relationship: relationshipCounts.no_current_relationship,
-    needs_review: relationshipCounts.needs_review,
+    // Composed: canonical residents whose projected relationship is
+    // needs_review, PLUS real external people Serve hasn't resolved to a
+    // canonical resident yet. The top-of-page resident count stays
+    // canonical-only (see app/residents/page.tsx) — only this one derived
+    // count is a composition, by design (this phase's own documented
+    // exception to "every counter is a subset of the same table").
+    needs_review: relationshipCounts.needs_review + unresolvedExternalWork.length,
   };
 
   const tabFiltered = filterByRelationshipTab(records, activeTab);
@@ -95,6 +116,18 @@ export function ResidentsInbox({
   }, [wellnessDueFiltered, trimmedQuery]);
 
   const wellnessWatchTotal = records.filter((record) => record.base.wellnessWatch !== null).length;
+
+  // Unresolved external work only ever appears on the Needs Review tab —
+  // it is never a resident, so it has no place under "All Residents" or
+  // any other relationship tab. Wellness Watch is a resident-only concept
+  // and never applies to it. The search box still filters it by name, for
+  // a predictable "search a name, find it regardless of source" feel.
+  const visibleExternalWork =
+    activeTab === "needs_review" && !wellnessWatchOnly
+      ? trimmedQuery
+        ? unresolvedExternalWork.filter((item) => item.vendorDisplayName.toLowerCase().includes(trimmedQuery))
+        : unresolvedExternalWork
+      : [];
 
   return (
     <div className="space-y-5">
@@ -186,12 +219,32 @@ export function ResidentsInbox({
           changes which residents are displayed; it never splits the
           population into permanent sub-groups. */}
       <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
-        {visible.length > 0 ? (
-          <div className="divide-y divide-ivory-border">
-            {visible.map((record) => (
-              <ResidentRelationshipRow key={record.base.id} record={record} canCorrect={canCorrect} />
-            ))}
-          </div>
+        {visibleExternalWork.length > 0 || visible.length > 0 ? (
+          <>
+            {visibleExternalWork.length > 0 && (
+              <div>
+                <p className="px-4 pt-4 font-sans text-label font-semibold uppercase tracking-widest text-subtle md:px-6 md:pt-6">
+                  Unresolved — not yet a Serve resident
+                </p>
+                <div className="divide-y divide-ivory-border">
+                  {visibleExternalWork.map((item) => (
+                    <UnresolvedExternalPersonCard
+                      key={`${item.source}-${item.sourceRecordId}`}
+                      item={item}
+                      showCommunity={showCommunityOnExternalWork}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            {visible.length > 0 && (
+              <div className="divide-y divide-ivory-border">
+                {visible.map((record) => (
+                  <ResidentRelationshipRow key={record.base.id} record={record} canCorrect={canCorrect} />
+                ))}
+              </div>
+            )}
+          </>
         ) : (
           <div className="px-5 py-14">
             <EmptyState

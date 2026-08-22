@@ -13,7 +13,7 @@ import { deriveAuditReadinessStatus, type AuditReadinessStatus } from "./auditRe
 import { getAllOpenCorrectiveActionsComposed, type ComposedCorrectiveAction } from "./correctiveActionComposition.ts";
 import { listRecentPersonDocuments } from "../data/personDocuments.ts";
 import { getEmergencyPreparednessReadinessEvaluation } from "../emergencyPreparedness/emergencyPreparednessReadiness.ts";
-import { getClientReadinessEvaluation } from "../clientReadiness/clientReadinessReadiness.ts";
+import { getClientReadinessEvaluation, isClientReadinessConfigured } from "../clientReadiness/clientReadinessReadiness.ts";
 import type { PersonDocument, PersonEvidence } from "../supabase/types.ts";
 // Type-only — erased at build/strip time, so this never pulls
 // residentServeRelationships.ts's live AxisCare-fetching import chain (@/
@@ -79,6 +79,17 @@ export interface DomainReadinessRollup {
   // UI must show an honest "not configured" state, never a fabricated
   // count or a false "compliant."
   configured: boolean;
+  // True only when `configured` is also true AND there are currently zero
+  // eligible subjects to evaluate — e.g. Client Readiness is fully seeded,
+  // but no resident has become an Active Client yet (Maria Matos is a
+  // Prospect, Karen Mabry is an Inactive Client — neither is eligible).
+  // Distinct from `!configured` (no requirement data seeded at all): a
+  // domain that has never been configured and a domain that is configured
+  // but has no subjects yet are different facts and must render
+  // differently, never collapsed into the same "Coming Soon" state. Always
+  // false once real subjects exist, and always false for a genuinely
+  // unconfigured domain (there `configured` itself already says so).
+  awaitingFirstSubject: boolean;
   requirementCount: number;
   subjectCount: number;
   // The person-level readiness count — "N of subjectCount are fully
@@ -99,6 +110,26 @@ function unconfiguredDomain(domainId: AuditReadinessDomainId, label: string): Do
     domainId,
     label,
     configured: false,
+    awaitingFirstSubject: false,
+    requirementCount: 0,
+    subjectCount: 0,
+    readySubjectCount: 0,
+    statusCounts: emptyStatusCounts(),
+    issues: [],
+  };
+}
+
+// Configured, real requirement data exists, but zero eligible subjects
+// exist yet — see DomainReadinessRollup.awaitingFirstSubject's own
+// contract above. subjectCount stays 0 (real, honest — never a fabricated
+// population) rather than borrowing unconfiguredDomain()'s shape, so the
+// UI can tell the two states apart.
+function awaitingFirstSubjectDomain(domainId: AuditReadinessDomainId, label: string): DomainReadinessRollup {
+  return {
+    domainId,
+    label,
+    configured: true,
+    awaitingFirstSubject: true,
     requirementCount: 0,
     subjectCount: 0,
     readySubjectCount: 0,
@@ -166,6 +197,7 @@ async function getWorkforceDomainRollup(): Promise<DomainReadinessRollup> {
     domainId: "workforce",
     label: "Workforce",
     configured: true,
+    awaitingFirstSubject: false,
     requirementCount,
     subjectCount: eligible.length,
     readySubjectCount,
@@ -213,6 +245,7 @@ async function getEmergencyPreparednessDomainRollup(): Promise<DomainReadinessRo
     domainId: "emergency_preparedness",
     label: "Emergency Preparedness",
     configured: true,
+    awaitingFirstSubject: false,
     requirementCount: evaluation.requirements.length,
     subjectCount: 1,
     readySubjectCount: evaluation.ready ? 1 : 0,
@@ -235,7 +268,16 @@ async function getEmergencyPreparednessDomainRollup(): Promise<DomainReadinessRo
 async function getClientReadinessDomainRollup(
   auditEligibleActiveClients: readonly AuditEligibleActiveClient[]
 ): Promise<DomainReadinessRollup> {
-  if (auditEligibleActiveClients.length === 0) return unconfiguredDomain("client_readiness", "Client Readiness");
+  // Configuration is checked independent of population FIRST — this is
+  // the actual fix. Previously, zero eligible active clients (a real,
+  // valid community state — e.g. Firewheel today, whose residents are a
+  // Prospect and an Inactive Client, never Active) was indistinguishable
+  // from Client Readiness never having been configured at all, because
+  // both short-circuited to unconfiguredDomain() before checking whether
+  // real requirement data actually exists.
+  const requirementSetConfigured = await isClientReadinessConfigured();
+  if (!requirementSetConfigured) return unconfiguredDomain("client_readiness", "Client Readiness");
+  if (auditEligibleActiveClients.length === 0) return awaitingFirstSubjectDomain("client_readiness", "Client Readiness");
 
   const statusCounts = emptyStatusCounts();
   const issues: DomainRequirementIssue[] = [];
@@ -279,6 +321,7 @@ async function getClientReadinessDomainRollup(
     domainId: "client_readiness",
     label: "Client Readiness",
     configured: true,
+    awaitingFirstSubject: false,
     requirementCount,
     subjectCount: auditEligibleActiveClients.length,
     readySubjectCount,

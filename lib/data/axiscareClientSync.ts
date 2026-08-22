@@ -70,7 +70,9 @@ export async function syncOneConfirmedResident(
   trigger: SyncRunTrigger
 ): Promise<ResidentSyncResult> {
   const runId = await startAxisCareClientSyncRun(trigger, actor);
-  const detail = await getResidentServeRelationshipDetail(residentId);
+  // System/batch sync, not a user-scoped read — operates on whichever
+  // resident it's given regardless of any single community selection.
+  const detail = await getResidentServeRelationshipDetail(residentId, { mode: "all" });
   const triageRequirementId = await resolveTriageRequirementId();
 
   const result = await syncAxisCareCanonicalResident(
@@ -131,7 +133,9 @@ export async function syncAllConfirmedResidentsCanonical(actor: string, trigger:
     }
 
     try {
-      const detail = await getResidentServeRelationshipDetail(residentId);
+      // System/batch sync — see the identical note in
+      // syncOneConfirmedResident() above.
+      const detail = await getResidentServeRelationshipDetail(residentId, { mode: "all" });
       const result = await syncAxisCareCanonicalResident(
         residentId,
         link.vendor_record_id,

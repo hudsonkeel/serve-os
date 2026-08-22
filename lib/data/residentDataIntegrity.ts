@@ -46,7 +46,7 @@ export async function loadResidentsForIdentityReevaluation(residentIds: readonly
   const { data, error } = await supabase
     .from("residents")
     .select(
-      "id, first_name, last_name, middle_name, preferred_name, display_name, full_name, unit_number, building, community_code, phone, email, date_of_birth, family_contact_name, family_contact_phone, needs_review, is_active, source_system, created_at",
+      "id, first_name, last_name, middle_name, preferred_name, display_name, full_name, unit_number, building, community_code, community_id, phone, email, date_of_birth, family_contact_name, family_contact_phone, needs_review, is_active, source_system, created_at",
     )
     .in("id", residentIds);
   if (error) {
@@ -64,6 +64,7 @@ export async function loadResidentsForIdentityReevaluation(residentIds: readonly
     unitNumber: r.unit_number as string | null,
     building: r.building as string | null,
     communityCode: r.community_code as string | null,
+    communityId: r.community_id as string | null,
     phone: r.phone as string | null,
     email: r.email as string | null,
     dateOfBirth: r.date_of_birth as string | null,

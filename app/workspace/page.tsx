@@ -170,9 +170,11 @@ const workspaceSections = [
 ];
 
 export default async function WorkspacePage() {
+  // Org-wide Today's Work dashboard, not the community-scoped People We
+  // Serve surface — see the identical note in app/dashboard/page.tsx.
   const [profile, community, recruiting, schedule, workItems] = await Promise.all([
     getCurrentAuthorizedUser(),
-    getCommunityMetrics(),
+    getCommunityMetrics({ mode: "all" }),
     getRecruitingLeads(),
     getAxisCareTodaysSchedule(),
     getTodaysWorkItems(),

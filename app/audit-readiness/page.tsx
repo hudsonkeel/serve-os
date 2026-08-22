@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
-import { AllClearAttentionCard, AttentionCard, ComingSoonAttentionCard } from "@/components/compliance/AttentionCard";
+import { AllClearAttentionCard, AttentionCard, AwaitingFirstSubjectAttentionCard, ComingSoonAttentionCard } from "@/components/compliance/AttentionCard";
 import { DomainReadinessCard } from "@/components/compliance/DomainReadinessCard";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canViewAuditReadiness } from "@/lib/compliance/permissions";
@@ -14,6 +14,7 @@ import {
 } from "@/lib/compliance/auditReadinessDashboard";
 import { getAuditEligibleActiveClientResidents } from "@/lib/data/residentServeRelationships";
 import type { AuditReadinessStatus } from "@/lib/compliance/auditReadinessStatus";
+import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -60,6 +61,15 @@ function allClearMessage(domain: DomainReadinessRollup): string {
   return "All applicable clients are audit-ready.";
 }
 
+// State: configured, but zero eligible subjects exist yet (see
+// DomainReadinessRollup.awaitingFirstSubject's own contract) — a real,
+// neutral "waiting for real data" fact, never phrased as a false
+// readiness claim.
+function awaitingFirstSubjectMessage(domain: DomainReadinessRollup): string {
+  const title = domain.label.endsWith("Readiness") ? domain.label : `${domain.label} Readiness`;
+  return `${title} is configured and will begin automatically when the first Serve client becomes active.`;
+}
+
 // Needs Attention identifies *where the actionable work lives*, not the
 // readiness domain concept — "Clients," not "Client Readiness" (the top
 // card's own name for itself). Workforce/Emergency Preparedness already
@@ -95,7 +105,15 @@ export default async function AuditReadinessPage() {
     );
   }
 
-  const auditEligibleActiveClients = await getAuditEligibleActiveClientResidents();
+  // Client Readiness's population is scoped to the currently selected
+  // community (Phase E/F, sections 16-17) — a single_community filter
+  // returns only that community's active clients in one query; an
+  // all_communities filter aggregates in one query too, never a loop that
+  // computes each community separately before displaying one. Workforce
+  // and Emergency Preparedness stay organization-wide, unaffected — see
+  // getAuditReadinessDashboardData's own domain composition.
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  const auditEligibleActiveClients = await getAuditEligibleActiveClientResidents(communityFilter);
   const data = await getAuditReadinessDashboardData(auditEligibleActiveClients);
 
   return (
@@ -134,6 +152,7 @@ export default async function AuditReadinessPage() {
                 key={domain.domainId}
                 label={domain.label}
                 configured={domain.configured}
+                awaitingFirstSubject={domain.awaitingFirstSubject}
                 readySubjectCount={domain.readySubjectCount}
                 subjectCount={domain.subjectCount}
                 requirementSatisfiedCount={satisfiedCount}
@@ -189,6 +208,8 @@ export default async function AuditReadinessPage() {
                 <div className="mt-2 flex flex-wrap gap-3">
                   {!domain.configured ? (
                     <ComingSoonAttentionCard />
+                  ) : domain.awaitingFirstSubject ? (
+                    <AwaitingFirstSubjectAttentionCard message={awaitingFirstSubjectMessage(domain)} />
                   ) : isAgencyLevel ? (
                     visibleAgencyIssues.length === 0 ? (
                       <AllClearAttentionCard message={allClearMessage(domain)} />

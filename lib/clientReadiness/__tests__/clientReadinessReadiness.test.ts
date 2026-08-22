@@ -46,6 +46,7 @@ function resident(overrides: Partial<Resident> = {}): Resident {
     external_source_key: null,
     community_name: null,
     community_code: null,
+    community_id: null,
     first_name: "Mary",
     middle_name: null,
     last_name: "Smith",

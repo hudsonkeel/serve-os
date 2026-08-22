@@ -25,6 +25,13 @@ import type { CandidateDraft, HouseholdLinkDraft, LiveResidentForIdentity, Suppr
 
 export const MATCHING_RULE_VERSION = "2";
 
+// True only when both residents have a known, differing communityId — an
+// unknown community on either side is never confidently "cross-community"
+// (see CandidateDraft.crossCommunity's own contract).
+function isCrossCommunity(a: LiveResidentForIdentity, b: LiveResidentForIdentity): boolean {
+  return a.communityId !== null && b.communityId !== null && a.communityId !== b.communityId;
+}
+
 export function suppressionKey(residentIdA: string, residentIdB: string): string {
   return [residentIdA, residentIdB].sort().join("|");
 }
@@ -74,6 +81,7 @@ export function detectIdentityCandidates(input: DetectCandidatesInput): DetectCa
             evidence: identityEvidence,
             householdContext: householdEvidence,
             matchingRuleVersion: MATCHING_RULE_VERSION,
+            crossCommunity: isCrossCommunity(a, b),
           });
         }
         continue;

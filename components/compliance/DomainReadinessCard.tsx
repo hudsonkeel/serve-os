@@ -10,6 +10,7 @@ import Link from "next/link";
 export function DomainReadinessCard({
   label,
   configured,
+  awaitingFirstSubject = false,
   readySubjectCount,
   subjectCount,
   requirementSatisfiedCount,
@@ -21,6 +22,13 @@ export function DomainReadinessCard({
 }: {
   label: string;
   configured: boolean;
+  // True only when `configured` is also true but there are currently zero
+  // eligible subjects (e.g. Client Readiness is seeded, but no resident
+  // has become an Active Client yet) — a real, honest "waiting for real
+  // data" state, distinct from "never configured." Default false so
+  // Workforce/Emergency Preparedness (which never pass this prop) are
+  // byte-for-byte unaffected.
+  awaitingFirstSubject?: boolean;
   readySubjectCount: number;
   subjectCount: number;
   requirementSatisfiedCount: number;
@@ -51,6 +59,18 @@ export function DomainReadinessCard({
       <div className="rounded-xl border border-ivory-border bg-white p-5">
         <p className="font-sans text-sm font-semibold text-body">{title}</p>
         <p className="mt-2 font-sans text-sm text-subtle">Coming Soon — Not Yet Configured</p>
+      </div>
+    );
+  }
+
+  if (awaitingFirstSubject) {
+    return (
+      <div className="rounded-xl border border-ivory-border bg-white p-5">
+        <p className="font-sans text-sm font-semibold text-body">{title}</p>
+        <p className="mt-2 font-sans text-sm text-subtle">Awaiting First Active Client</p>
+        <p className="mt-1 font-sans text-xs text-muted">
+          {title} is configured and will begin automatically when the first Serve client becomes active.
+        </p>
       </div>
     );
   }

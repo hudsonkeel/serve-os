@@ -43,6 +43,7 @@ import { buildAskServeContext } from "@/lib/askServe/buildContext";
 import { PEOPLE_WE_SERVE_CONTEXT } from "@/lib/askServe/areaContexts";
 import { hasTodaysWorkOrigin } from "@/lib/workspace/originMarker";
 import { BackToTodaysWorkLink } from "@/components/workspace/BackToTodaysWorkLink";
+import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -103,11 +104,18 @@ export default async function ResidentDetailPage({
   // the top of this page. Only "family_contact" is produced today; any
   // other/unrecognized value is ignored, never guessed at.
   const initialEditingTarget = editSection === "family_contact" ? "contact" : null;
-  const record = await getCommunityResidentById(id);
+
+  // Scope resolves before the resident fetch — a direct URL to a resident
+  // outside the caller's authorized community must not bypass it (Phase
+  // E/F, section 6). getCommunityResidentById scopes the query itself
+  // (WHERE community_id = ...), so a resident outside scope simply comes
+  // back null, exactly like a genuinely unknown id.
+  const profile = await getCurrentAuthorizedUser();
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  const record = await getCommunityResidentById(id, communityFilter);
 
   if (!record) notFound();
 
-  const profile = await getCurrentAuthorizedUser();
   const canEditProfile = canEditResidentProfile(profile?.role);
   const canManageEvidence = canAccessResidentEvidence(profile?.role);
   const canResolveIdentity = canPerformReconciliationActions(profile?.role);
@@ -124,7 +132,9 @@ export default async function ResidentDetailPage({
   const residentDocuments = canManageEvidence ? await getPersonDocumentsForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
   const residentEvidence = canManageEvidence ? await getPersonEvidenceForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
   const canSeeRelationshipDetail = canManageEvidence || canEditProfile;
-  const residentRelationshipDetail = canSeeRelationshipDetail ? await getResidentServeRelationshipDetail(id) : null;
+  const residentRelationshipDetail = canSeeRelationshipDetail
+    ? await getResidentServeRelationshipDetail(id, communityFilter)
+    : null;
   const clientReadiness = canManageEvidence
     ? await getClientReadinessEvaluation(id, residentRelationshipDetail?.projection.relationship ?? "no_current_relationship")
     : null;

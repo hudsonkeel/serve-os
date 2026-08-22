@@ -362,6 +362,131 @@ export async function getPersonVendorIdentityLinkDecisions(linkId: string): Prom
   return (data as PersonVendorIdentityLinkDecision[] | null) ?? [];
 }
 
+// ─── Generic external-source identity sync ────────────────────────────
+// See supabase/migrations/20260902300000_add_community_roster_reconciliation.sql.
+// Genuinely source-and-subject-generic (mirrors createResidentFromExternalSource's
+// own p_source_system parameter) — the community roster importer's
+// counterpart to syncAxisCareVendorIdentity/syncAxisCareClientIdentity
+// above, without a new per-source RPC. Never auto-confirms; only ever
+// writes a 'proposed' row or refreshes an already-confirmed one.
+export async function syncExternalPersonIdentity(input: {
+  sourceSystem: string;
+  subjectType: PersonSubjectType;
+  vendorRecordId: string;
+  vendorDisplayName: string | null;
+  matchMethod: VendorIdentityMatchMethod;
+  matchConfidence: VendorIdentityMatchConfidence;
+  candidateSubjectId: string | null;
+  approvedSourceData: Record<string, unknown>;
+}): Promise<{
+  action?: "unchanged" | "refreshed" | "skipped_existing_decision" | "proposed";
+  linkId?: string;
+  subjectId?: string | null;
+  error?: string;
+}> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .rpc("sync_external_person_identity", {
+      p_source_system: input.sourceSystem,
+      p_subject_type: input.subjectType,
+      p_vendor_record_id: input.vendorRecordId,
+      p_vendor_display_name: input.vendorDisplayName,
+      p_match_method: input.matchMethod,
+      p_match_confidence: input.matchConfidence,
+      p_candidate_subject_id: input.candidateSubjectId,
+      p_approved_source_data: input.approvedSourceData,
+    })
+    .single();
+
+  if (error || !data) {
+    return { error: `Could not sync identity for ${input.sourceSystem}:${input.vendorRecordId}: ${error?.message}` };
+  }
+
+  const row = data as { action: string; link_id: string; subject_id: string | null };
+  return {
+    action: row.action as "unchanged" | "refreshed" | "skipped_existing_decision" | "proposed",
+    linkId: row.link_id,
+    subjectId: row.subject_id,
+  };
+}
+
+// Batch lookup for the existing-source-link short-circuit (Community
+// Roster Import + Reconciliation phase, Pass 2, Part 2 item 1) — checked
+// BEFORE candidate matching runs, not after, and always as one batch
+// query keyed by vendor_record_id (never per-row) since a roster run can
+// carry hundreds of rows. Because vendor_record_id here is
+// "{importRunId}:{sourceRowNumber}[:{occurrenceIndex}]" (a roster
+// OBSERVATION identity, unique per run — see
+// lib/residents/roster/communityRosterAnalysis.ts), this naturally scopes
+// prior-rejection awareness to the SAME run only: a different upload gets
+// entirely different vendor_record_ids, so there is no cross-upload
+// correlation here, deliberate per instruction.
+// Pass 4 production-readiness fix: a single .in() call with hundreds of
+// vendor_record_id strings (each "{importRunId}:{sourceRowNumber}",
+// ~40 chars) can push the request over a practical URL-length limit —
+// caught live via the Pass 4 performance verify script at a 400-row
+// roster ("TypeError: fetch failed", silently caught below and returning
+// [], which degrades the existing-link short-circuit at exactly the
+// scale it matters most, rather than crashing). Chunked into batches so
+// this stays reliable at realistic roster sizes — still one batched
+// round trip per chunk, never per row.
+const VENDOR_RECORD_ID_BATCH_SIZE = 150;
+
+export async function getPersonVendorIdentityLinksByVendorRecordIds(
+  sourceSystem: string,
+  subjectType: PersonSubjectType,
+  vendorRecordIds: readonly string[]
+): Promise<PersonVendorIdentityLink[]> {
+  if (vendorRecordIds.length === 0) return [];
+  const supabase = createServerClient();
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < vendorRecordIds.length; i += VENDOR_RECORD_ID_BATCH_SIZE) {
+    chunks.push(vendorRecordIds.slice(i, i + VENDOR_RECORD_ID_BATCH_SIZE));
+  }
+
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data, error } = await supabase
+        .from("person_vendor_identity_links")
+        .select("*")
+        .eq("source_system", sourceSystem)
+        .eq("subject_type", subjectType)
+        .in("vendor_record_id", chunk);
+
+      if (error) {
+        console.error("[getPersonVendorIdentityLinksByVendorRecordIds]", { sourceSystem, subjectType, chunkSize: chunk.length, message: error.message });
+        return [];
+      }
+      return (data as PersonVendorIdentityLink[] | null) ?? [];
+    })
+  );
+
+  return results.flat();
+}
+
+// Community Roster Import + Reconciliation phase, Pass 3 — before
+// confirming ANY roster match (same-community or cross-community), the
+// action layer checks this first: does the target resident already have
+// a CONFIRMED, PRIMARY community_roster identity link? If so, the new
+// confirmation must be linked with linkRole 'historical', never
+// 'primary' (confirm_person_vendor_identity_link's own DB-enforced rule
+// rejects a second primary for the same subject+source outright) — this
+// is what "never erase prior community/roster history" means at the
+// identity-link layer: a resident who already has a primary roster
+// source keeps it; a later roster appearance (their own community's next
+// upload, or a genuine cross-community overlap) only ever adds a second,
+// non-driving link.
+export async function hasConfirmedPrimaryVendorIdentityLink(
+  subjectType: PersonSubjectType,
+  subjectId: string,
+  sourceSystem: string
+): Promise<boolean> {
+  const links = await getConfirmedVendorIdentityLinksForSubject(subjectType, subjectId, sourceSystem);
+  return links.some((l) => l.link_role === "primary");
+}
+
 // Other AxisCare identity links with a matching normalized name, email, or
 // phone — the duplicate-candidate surface the identity review queue shows
 // alongside each proposed link (requirement 4). Pure client-side filtering

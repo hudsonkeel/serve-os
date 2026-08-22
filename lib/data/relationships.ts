@@ -24,6 +24,7 @@ import type {
 } from "../supabase/types.ts";
 import type { RelationshipWorkspaceRow } from "../relationships/search.ts";
 import { selectPrimaryOpenAction } from "../relationships/sorting.ts";
+import type { CommunityQueryFilter } from "../auth/communityScope.ts";
 
 function residentDisplayName(row: {
   first_name: string | null;
@@ -666,23 +667,37 @@ export interface ResidentSearchResult {
   id: string;
   name: string;
   unitNumber: string | null;
+  // Populated only when the search itself spans multiple communities
+  // (an all_communities-scoped search) — where two matches could
+  // otherwise be indistinguishable. Null for a single-community search,
+  // where every result is already unambiguous.
+  communityName: string | null;
 }
 
+// Phase E/F completion, section 4: SQL-scoped by the caller's authorized
+// community filter, never a fetch-then-filter. "none" (unassigned scope)
+// short-circuits before any query runs — an unassigned user must not
+// silently search every community.
 export async function searchResidentsForLinking(
   query: string,
+  filter: CommunityQueryFilter,
   limit = 10
 ): Promise<ResidentSearchResult[]> {
   const normalized = query.trim();
   if (!normalized) return [];
+  if (filter.mode === "none") return [];
 
   const supabase = createServerClient();
-  const { data, error } = await supabase
+  let dbQuery = supabase
     .from("residents")
-    .select("id, first_name, last_name, display_name, full_name, unit_number")
+    .select("id, first_name, last_name, display_name, full_name, unit_number, community_name")
     .or(
       `first_name.ilike.%${normalized}%,last_name.ilike.%${normalized}%,display_name.ilike.%${normalized}%,full_name.ilike.%${normalized}%,unit_number.ilike.%${normalized}%`
-    )
-    .limit(limit);
+    );
+  if (filter.mode === "single") {
+    dbQuery = dbQuery.eq("community_id", filter.communityId);
+  }
+  const { data, error } = await dbQuery.limit(limit);
 
   if (error) {
     console.error("[relationships:searchResidentsForLinking:error]", {
@@ -696,6 +711,7 @@ export async function searchResidentsForLinking(
     id: row.id,
     name: residentDisplayName(row),
     unitNumber: row.unit_number,
+    communityName: filter.mode === "all" ? row.community_name : null,
   }));
 }
 
@@ -851,6 +867,31 @@ export async function linkRelationshipToResident(
       code: error.code,
     });
     return { error: "Could not link this relationship to a resident." };
+  }
+
+  return {};
+}
+
+// Plain scoped update, not a new RPC — community_id is additive (Phase B)
+// and this is the one place a relationship's canonical community gets set
+// after creation/linking. Deliberately outside create_relationship's RPC
+// signature (unchanged, avoiding another DDL migration for this phase)
+// and never called to silently overwrite an existing, differing value —
+// see lib/relationships/communityIntegrity.ts, the only caller.
+export async function setRelationshipCommunityId(
+  relationshipId: string,
+  communityId: string | null
+): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+  const { error } = await supabase.from("relationships").update({ community_id: communityId }).eq("id", relationshipId);
+
+  if (error) {
+    console.error("[relationships:setRelationshipCommunityId:error]", {
+      relationshipId,
+      message: error.message,
+      code: error.code,
+    });
+    return { error: "Could not set this relationship's community." };
   }
 
   return {};

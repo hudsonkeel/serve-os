@@ -6,6 +6,10 @@ export interface AuthorizedProfile {
   full_name: string | null;
   role: AuthRole;
   status: "active";
+  // Home/default community for this staff member — see
+  // supabase/migrations/20260827000000_clarify_user_profile_community_semantics.sql.
+  // Default/UI-context only, never an authorization boundary on its own.
+  community_id: string | null;
 }
 
 export async function getAuthorizedProfileForEmail(
@@ -19,7 +23,7 @@ export async function getAuthorizedProfileForEmail(
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("user_profiles")
-    .select("email,full_name,role,status")
+    .select("email,full_name,role,status,community_id")
     .eq("email", normalizedEmail)
     .in("role", AUTH_ROLES)
     .eq("status", "active")
@@ -28,6 +32,7 @@ export async function getAuthorizedProfileForEmail(
       full_name: string | null;
       role: string;
       status: string;
+      community_id: string | null;
     }>();
 
   if (error) {

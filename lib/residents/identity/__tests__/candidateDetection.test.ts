@@ -21,6 +21,7 @@ function resident(overrides: Partial<LiveResidentForIdentity> & { id: string }):
     unitNumber: null,
     building: null,
     communityCode: "watermere-frisco",
+    communityId: "c-frisco",
     phone: null,
     email: null,
     dateOfBirth: null,
@@ -134,6 +135,45 @@ test("9. a pair claimed by integrityClaimedPairs (Resident Data Integrity) is ex
   });
   assert.equal(result.identityCandidates.length, 0);
   assert.equal(result.householdLinks.length, 0);
+});
+
+// ─── Cross-community identity (Phase E/F completion, section 3) ────────
+
+test("cross-community: same name+DOB in two different communities still produces an identity candidate, never suppressed", () => {
+  const frisco = resident({ id: "frisco-john", firstName: "John", lastName: "Marsh", dateOfBirth: "1948-03-02", communityId: "c-frisco" });
+  const firewheel = resident({ id: "firewheel-john", firstName: "John", lastName: "Marsh", dateOfBirth: "1948-03-02", communityId: "c-firewheel" });
+  const result = detectIdentityCandidates({
+    residents: [frisco, firewheel],
+    context: emptyContext,
+    suppressedPairs: new Set(),
+  });
+  assert.equal(result.identityCandidates.length, 1, "the same identity signals must still surface the candidate — the system must remain capable of discovering a genuine cross-community move");
+  assert.equal(result.identityCandidates[0].crossCommunity, true);
+});
+
+test("cross-community candidates get identical evidence/confidence-band treatment as same-community ones -- only the flag differs", () => {
+  const sameA = resident({ id: "same-a", firstName: "John", lastName: "Marsh", dateOfBirth: "1948-03-02", communityId: "c-frisco" });
+  const sameB = resident({ id: "same-b", firstName: "John", lastName: "Marsh", dateOfBirth: "1948-03-02", communityId: "c-frisco" });
+  const crossA = resident({ id: "cross-a", firstName: "John", lastName: "Marsh", dateOfBirth: "1948-03-02", communityId: "c-frisco" });
+  const crossB = resident({ id: "cross-b", firstName: "John", lastName: "Marsh", dateOfBirth: "1948-03-02", communityId: "c-firewheel" });
+
+  const sameResult = detectIdentityCandidates({ residents: [sameA, sameB], context: emptyContext, suppressedPairs: new Set() });
+  const crossResult = detectIdentityCandidates({ residents: [crossA, crossB], context: emptyContext, suppressedPairs: new Set() });
+
+  assert.equal(sameResult.identityCandidates[0].confidenceBand, crossResult.identityCandidates[0].confidenceBand);
+  assert.deepEqual(
+    sameResult.identityCandidates[0].evidence.map((e) => e.signalType).sort(),
+    crossResult.identityCandidates[0].evidence.map((e) => e.signalType).sort()
+  );
+  assert.equal(sameResult.identityCandidates[0].crossCommunity, false);
+  assert.equal(crossResult.identityCandidates[0].crossCommunity, true);
+});
+
+test("an unknown community on either side is never confidently flagged crossCommunity", () => {
+  const a = resident({ id: "a", firstName: "John", lastName: "Marsh", dateOfBirth: "1948-03-02", communityId: null });
+  const b = resident({ id: "b", firstName: "John", lastName: "Marsh", dateOfBirth: "1948-03-02", communityId: "c-firewheel" });
+  const result = detectIdentityCandidates({ residents: [a, b], context: emptyContext, suppressedPairs: new Set() });
+  assert.equal(result.identityCandidates[0].crossCommunity, false);
 });
 
 // ─── Runner ──────────────────────────────────────────────────────────

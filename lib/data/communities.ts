@@ -6,6 +6,11 @@
 import { createServerClient } from "../supabase/server.ts";
 import type { Community } from "../supabase/types.ts";
 
+// Care-model grouping/labels live in ../communities/careModel.ts (pure,
+// no I/O) rather than here — this file pulls in the server Supabase
+// client, which a Client Component (e.g. CommunitySwitcher) must never
+// transitively import.
+
 export async function listCommunities(): Promise<Community[]> {
   const supabase = createServerClient();
 

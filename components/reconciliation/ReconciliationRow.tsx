@@ -2,6 +2,7 @@ import { AxisCareClientRow } from "@/components/peopleWeServe/AxisCareClientRow"
 import { IdentityDecisionActions } from "./IdentityDecisionActions";
 import { DispositionClassifyForm } from "./DispositionClassifyForm";
 import { RestoreRecordButton } from "./RestoreRecordButton";
+import { buildReconciliationAnchorId } from "@/lib/reconciliation/anchor";
 import type { AxisCareClientOperationalRow } from "@/lib/data/axiscareClientOperationalSummary";
 
 interface ReconciliationRowProps {
@@ -17,7 +18,10 @@ interface ReconciliationRowProps {
 // matching the "who is this / what kind of vendor record is this" split.
 export function ReconciliationRow({ row, canAct, showIdentityActions }: ReconciliationRowProps) {
   return (
-    <div>
+    <div
+      id={buildReconciliationAnchorId("axiscare", row.axiscareId)}
+      className="scroll-mt-4 target:bg-gold/5 target:ring-2 target:ring-inset target:ring-gold/40"
+    >
       <AxisCareClientRow row={row} />
       {canAct && (
         <div className="-mt-3 px-6 pb-6">

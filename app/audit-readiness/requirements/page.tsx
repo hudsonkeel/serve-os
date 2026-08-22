@@ -11,6 +11,7 @@ import {
 } from "@/lib/compliance/auditReadinessDashboard";
 import type { AuditReadinessStatus } from "@/lib/compliance/auditReadinessStatus";
 import { getAuditEligibleActiveClientResidents } from "@/lib/data/residentServeRelationships";
+import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -37,7 +38,11 @@ export default async function AuditReadinessRequirementsPage({
     );
   }
 
-  const auditEligibleActiveClients = await getAuditEligibleActiveClientResidents();
+  // Same community scoping as /audit-readiness itself (Phase E/F, sections
+  // 16-17) — this drill-down must reflect the same population, never a
+  // broader one.
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  const auditEligibleActiveClients = await getAuditEligibleActiveClientResidents(communityFilter);
   const data = await getAuditReadinessDashboardData(auditEligibleActiveClients);
   let issues = data.domains.flatMap((d) => d.issues);
   if (domain) issues = issues.filter((i) => i.domain === (domain as AuditReadinessDomainId));

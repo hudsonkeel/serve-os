@@ -25,6 +25,9 @@ import type { AssertionState } from "@/lib/assessmentIntelligence/factTypes";
 import { getRequirementByCode } from "@/lib/data/personRequirements";
 import { recordAssessmentEvidence } from "@/lib/clientReadiness/evidence";
 import { CR_ASSESSMENT_CURRENT } from "@/lib/clientReadiness/constants";
+import { getResidentById, setResidentCommunityId } from "@/lib/data/residents";
+import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
+import { resolveAssessmentCommunity } from "@/lib/assessmentIntelligence/communityResolution";
 
 // Server actions for the assessment intelligence layer — see docs/architecture/
 // ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md. Distinct from lib/actions/assessmentCapture.ts
@@ -53,10 +56,38 @@ export async function startAssessmentForExistingPerson(residentId: string): Prom
   if ("error" in authResult) return { error: authResult.error };
   if (!residentId) return { error: "Missing resident." };
 
+  // Community identity (Phase E/F completion, section 1/2): the linked
+  // resident's own community is the strongest source. No relationship is
+  // consulted here — this action only ever takes a residentId, no
+  // relationshipId exists to check (see communityResolution.ts's own
+  // priority order for when one does).
+  const resident = await getResidentById(residentId);
+  if (!resident) return { error: "Resident not found." };
+  const profile = await getCurrentAuthorizedUser();
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  const communityResolution = resolveAssessmentCommunity({
+    hasResident: true,
+    residentCommunityId: resident.community_id,
+    hasRelationship: false,
+    relationshipCommunityId: null,
+    currentContext: communityFilter,
+  });
+  if (!communityResolution.ok) {
+    return { error: communityResolution.error };
+  }
+
   const supabase = createServerClient();
   const { data: session, error } = await supabase
     .from("intake_assessment_sessions")
-    .insert([{ resident_id: residentId, status: "recording", initiated_from: "existing_person", started_by: authResult.actor }])
+    .insert([
+      {
+        resident_id: residentId,
+        status: "recording",
+        initiated_from: "existing_person",
+        started_by: authResult.actor,
+        community_id: communityResolution.communityId,
+      },
+    ])
     .select("id")
     .single();
 
@@ -71,6 +102,27 @@ export async function startAssessmentForNewProspect(displayName: string): Promis
   if ("error" in authResult) return { error: authResult.error };
   if (!displayName || !displayName.trim()) return { error: "A name is required to begin." };
 
+  // Community identity (Phase E/F completion, sections 1/2/7) — resolved
+  // BEFORE creating anything: no resident or relationship exists yet, so
+  // the creator's current context is the only available source. An
+  // all_communities context with no other source is rejected outright
+  // (explicit selection required for a partner/community assessment)
+  // rather than creating an orphaned, community-less resident record
+  // that would then have nothing to attach a session to. An unassigned
+  // context leaves both genuinely unassigned, never defaulted to Frisco.
+  const profile = await getCurrentAuthorizedUser();
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  const communityResolution = resolveAssessmentCommunity({
+    hasResident: false,
+    residentCommunityId: null,
+    hasRelationship: false,
+    relationshipCommunityId: null,
+    currentContext: communityFilter,
+  });
+  if (!communityResolution.ok) {
+    return { error: communityResolution.error };
+  }
+
   const supabase = createServerClient();
   const { data: resident, error: residentError } = await supabase.rpc("create_provisional_resident_from_intake", {
     p_display_name: displayName.trim(),
@@ -79,9 +131,21 @@ export async function startAssessmentForNewProspect(displayName: string): Promis
   if (residentError || !resident) return { error: "Could not create a new prospect record." };
 
   const residentId = (resident as { id: string }).id;
+  if (communityResolution.communityId) {
+    await setResidentCommunityId(residentId, communityResolution.communityId);
+  }
+
   const { data: session, error: sessionError } = await supabase
     .from("intake_assessment_sessions")
-    .insert([{ resident_id: residentId, status: "recording", initiated_from: "new_provisional", started_by: authResult.actor }])
+    .insert([
+      {
+        resident_id: residentId,
+        status: "recording",
+        initiated_from: "new_provisional",
+        started_by: authResult.actor,
+        community_id: communityResolution.communityId,
+      },
+    ])
     .select("id")
     .single();
   if (sessionError || !session) return { error: "Could not start the assessment session." };

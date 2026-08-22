@@ -1,6 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // xlsx has no package.json "exports" map — Next.js's server bundler
+  // resolves its ESM "module" build (xlsx.mjs), which has no default
+  // export, breaking lib/residents/roster/parseWorkbook.ts's `import XLSX
+  // from "xlsx"` (that file also runs under raw Node via
+  // scripts/importWatermereRoster.ts and its own tests, where only the
+  // default-import style reliably works — see that file's own comment).
+  // This opts xlsx out of bundling entirely so the server uses native
+  // Node `require`, resolving the same CJS "main" build raw Node already
+  // uses — one working import style everywhere, no per-runtime branching.
+  serverExternalPackages: ["xlsx"],
   experimental: {
     serverActions: {
       // Default is 1MB. Recruiting resumes (PDF/DOCX) cap at 5MB

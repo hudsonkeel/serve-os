@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canPerformReconciliationActions } from "@/lib/auth/permissions";
 import { syncAllConfirmedResidentsCanonical, type BulkSyncSummary } from "@/lib/data/axiscareClientSync";
+import { syncAxisCareOperationalState, type AxisCareOperationalStateSyncResult } from "@/lib/data/axiscareOperationalStateSync";
 
 async function requireSyncActor(): Promise<{ actor: string } | { error: string }> {
   const profile = await getCurrentAuthorizedUser();
@@ -18,18 +19,28 @@ async function requireSyncActor(): Promise<{ actor: string } | { error: string }
   return { actor: profile.full_name?.trim() || profile.email };
 }
 
-export async function runAxisCareClientDataSyncNow(): Promise<{ error?: string; summary?: BulkSyncSummary }> {
+export async function runAxisCareClientDataSyncNow(): Promise<{
+  error?: string;
+  summary?: BulkSyncSummary;
+  operationalStateSummary?: AxisCareOperationalStateSyncResult;
+}> {
   const actorResult = await requireSyncActor();
   if ("error" in actorResult) return actorResult;
 
-  const summary = await syncAllConfirmedResidentsCanonical(actorResult.actor, "manual");
+  // Same two independent steps as the scheduled trigger (see
+  // app/api/axiscare/scheduled-sync/route.ts) — the explicit manual
+  // refresh path this phase's brief asked to preserve.
+  const [summary, operationalStateSummary] = await Promise.all([
+    syncAllConfirmedResidentsCanonical(actorResult.actor, "manual"),
+    syncAxisCareOperationalState(),
+  ]);
 
   revalidatePath("/reconciliation");
   revalidatePath("/clients");
   revalidatePath("/residents");
   revalidatePath("/audit-readiness");
 
-  return { summary };
+  return { summary, operationalStateSummary };
 }
 
 // Whole-row "Mark Reviewed" was replaced (Closed-Loop UX Pass, Phase 1) by

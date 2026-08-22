@@ -21,6 +21,12 @@ export interface LiveResidentForIdentity {
   readonly unitNumber: string | null;
   readonly building: string | null;
   readonly communityCode: string | null;
+  // Canonical FK (Phase E/F completion, section 3) — the governed source
+  // for community-aware identity/household reasoning, alongside the
+  // legacy free-text communityCode above (kept for display/back-compat,
+  // never the source of truth for a same-vs-different-community
+  // decision).
+  readonly communityId: string | null;
   readonly phone: string | null;
   readonly email: string | null;
   readonly dateOfBirth: string | null;
@@ -98,6 +104,17 @@ export interface CandidateDraft {
   // band above. Empty when no household evidence exists for this pair.
   readonly householdContext: readonly HouseholdEvidenceSignal[];
   readonly matchingRuleVersion: string;
+  // Phase E/F completion, section 3 — true when both residents have a
+  // known, different communityId. The identity signals/confidence band
+  // above are computed exactly the same way regardless of this flag
+  // (matching name+DOB is never suppressed just because communities
+  // differ — the system must remain capable of discovering a genuine
+  // cross-community move). This is metadata for how a reviewer should
+  // FRAME the candidate — a possible move/transfer, not an ordinary
+  // same-site duplicate — never a different detection algorithm. False
+  // when either resident's community is unknown (null): a confident
+  // same/different call requires both.
+  readonly crossCommunity: boolean;
 }
 
 // ─── Household links — a separate, non-identity concept ────────────────

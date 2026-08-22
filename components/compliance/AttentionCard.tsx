@@ -65,6 +65,22 @@ export function ComingSoonAttentionCard() {
   );
 }
 
+// A fourth, distinct state from ComingSoonAttentionCard above: the domain
+// IS configured (real requirement data exists), but there are currently
+// zero eligible subjects to evaluate — e.g. Client Readiness before any
+// resident has become an Active Client. Never "Coming Soon" (that would
+// misreport a real, working configuration as unbuilt) and never
+// AllClearAttentionCard's success-green "no current actions" (there is
+// nothing to be clear about yet — no false positive claim of readiness).
+export function AwaitingFirstSubjectAttentionCard({ message }: { message: string }) {
+  return (
+    <div className={`${CARD_BASE} border-ivory-border bg-ivory-warm`}>
+      <span className="font-sans text-sm font-semibold text-subtle">No Active Clients Yet</span>
+      <span className="font-sans text-xs text-muted">{message}</span>
+    </div>
+  );
+}
+
 // The shared "summary card -> selecting it reveals the detail" grammar,
 // generalized beyond Needs Attention: a compact card for a single
 // requirement's CURRENT status (any AuditReadinessStatus, not just

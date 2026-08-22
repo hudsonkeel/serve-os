@@ -1,6 +1,10 @@
 export const AUTH_ACCESS_COOKIE = "serve_os_access_token";
 export const AUTH_REFRESH_COOKIE = "serve_os_refresh_token";
 export const AUTH_USER_EMAIL_COOKIE = "serve_os_user_email";
+// Current-community context (Phase D) — server-visible, not a session/auth
+// token, but reuses AUTH_COOKIE_OPTIONS below for the same httpOnly/
+// sameSite/secure discipline as the real auth cookies.
+export const CURRENT_COMMUNITY_COOKIE = "serve_os_current_community";
 
 export const AUTH_ROLES = ["admin", "manager", "executive", "operations"] as const;
 export type AuthRole = (typeof AUTH_ROLES)[number];

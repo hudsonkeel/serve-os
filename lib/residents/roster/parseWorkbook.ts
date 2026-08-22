@@ -9,7 +9,15 @@
 // xlsx is a CommonJS package whose Node-only members (readFile, etc.) are
 // added to module.exports in a way Node's CJS/ESM interop does not
 // statically detect as named exports — only the default import carries
-// them reliably. Never switch this to `import * as XLSX`.
+// them reliably. Never switch this to `import * as XLSX` or named
+// imports (`import { readFile } from "xlsx"`) — both were tried and both
+// fail under raw Node's ESM loader (confirmed: named imports throw
+// "Named export 'readFile' not found" — Node's cjs-module-lexer detects
+// some of xlsx's exports but not others). The Next.js bundler side of
+// this same tension (it resolves xlsx's ESM build, which has no default
+// export at all) is handled by marking xlsx as a serverExternalPackages
+// entry in next.config.ts instead, so this file's import style never has
+// to change.
 import XLSX from "xlsx";
 import { looksLikeEmail } from "./normalization.ts";
 import type { DirectoryRow, RawRosterRow } from "./types.ts";
@@ -121,4 +129,34 @@ export function parseDirectorySheet(workbook: XLSX.WorkBook): DirectoryRow[] {
 
 export function loadRosterWorkbook(filePath: string): XLSX.WorkBook {
   return XLSX.readFile(filePath);
+}
+
+// Community Roster Import + Reconciliation phase — the web upload path
+// receives file bytes (from Supabase Storage / a browser upload), never a
+// local filesystem path, so it needs read() rather than readFile(). Also
+// handles a plain CSV buffer (SheetJS's read() auto-detects CSV text and
+// produces a single-sheet workbook) — the same function serves both formats.
+//
+// raw: true (Pass 3) — without it, SheetJS's CSV type-inference silently
+// converts a date-shaped cell (e.g. a DOB column's "1999-12-31") into a
+// numeric Excel serial date, and that round-trip is not even faithful:
+// confirmed live that it can come back a full calendar day off (a
+// timezone-conversion artifact in SheetJS's own CSV date inference, not
+// this codebase's math) — a real data-corruption risk for any date-like
+// column, not just a display nuisance. raw: true keeps every CSV cell as
+// its original text, matching how every other field here already
+// behaves; this only affects CSV/text inference, not a binary .xlsx
+// file's own already-typed cells, so the Watermere Building-sheet path
+// (real .xlsx uploads) is unaffected. Never applied to loadRosterWorkbook()
+// above (scripts/importWatermereRoster.ts's own readFile() call) — the
+// untouched legacy CLI path stays exactly as it always was.
+export function loadRosterWorkbookFromBuffer(buffer: Buffer | ArrayBuffer): XLSX.WorkBook {
+  return XLSX.read(buffer, { type: "buffer", raw: true });
+}
+
+// True when the workbook has at least one "Building N" sheet — the
+// signal used to route to the specialized Watermere parser above rather
+// than the generic single-sheet column-mapper (parseGenericRoster.ts).
+export function hasBuildingSheets(workbook: XLSX.WorkBook): boolean {
+  return workbook.SheetNames.some((name) => BUILDING_SHEET_PATTERN.test(name));
 }

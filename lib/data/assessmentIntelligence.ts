@@ -18,6 +18,10 @@ export interface AssessmentSessionRecord {
   started_by: string;
   started_at: string;
   finished_at: string | null;
+  // Canonical FK, additive alongside community_name_snapshot. Null is
+  // structurally valid (see
+  // supabase/migrations/20260902220000_add_community_id_to_intake_assessment_sessions.sql).
+  community_id: string | null;
 }
 
 export async function getAssessmentSession(assessmentSessionId: string): Promise<AssessmentSessionRecord | null> {

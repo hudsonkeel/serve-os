@@ -165,6 +165,21 @@ export function evaluateDischarge(
   return { status: r.status, explanation: r.explanation, requirement, latestEvidence: r.requirementEvaluation.latestEvidence };
 }
 
+// Audit Readiness zero-active-client state correction — whether Client
+// Readiness's requirement set exists at all, independent of population.
+// getClientReadinessEvaluation() always needs a specific resident, so it
+// cannot itself distinguish "no requirement data has ever been seeded"
+// from "seeded, but this community/scope currently has zero eligible
+// active clients." This is the population-independent check the
+// dashboard rollup needs to make that distinction correctly (see
+// lib/compliance/auditReadinessDashboard.ts's own comment on the bug this
+// fixes: Firewheel with zero Active Clients was rendering "Coming Soon —
+// Not Yet Configured" even though Client Readiness itself is fully seeded).
+export async function isClientReadinessConfigured(): Promise<boolean> {
+  const set = await getRequirementSetWithRequirements(CLIENT_RECORD_READINESS_SET_CODE);
+  return Boolean(set && set.requirements.length > 0);
+}
+
 // projectedRelationship is the canonical ServeRelationshipProjection value
 // for this resident (relationship field only — human_correction/AxisCare/
 // CRM/legacy-fallback precedence already resolved) — always resolved by

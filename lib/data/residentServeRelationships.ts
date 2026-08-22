@@ -1,17 +1,30 @@
 // Enriches the existing Residents directory (getCommunityMetrics(), left
 // completely unchanged) with the unified Serve relationship projection
-// (lib/residents/serveRelationshipProjection.ts), joining in the
-// AxisCare client operational summary
-// (lib/data/axiscareClientOperationalSummary.ts) that the Residents
-// page previously had zero awareness of. This is the single place a
-// resident's AxisCare match is resolved for display purposes — no new
-// identity-matching logic here, only reuse of what already exists.
+// (lib/residents/serveRelationshipProjection.ts), joining in a
+// resident's AxisCare match for display purposes — no new identity-
+// matching logic here, only reuse of what already exists.
+//
+// AxisCare Community Mapping + Operational State phase, section 18: this
+// now reads the STORED axiscare_client_operational_state table
+// (refreshed by the daily sync) instead of calling AxisCare live via
+// getAxisCareClientOperationalSummary() — that function still exists,
+// unchanged, and is still exactly what the Reconciliation workflow uses
+// (it needs live, real-time identity-matching against fresh contact
+// data to discover NEW unmatched candidates; normal /residents reads
+// never did, they only need each already-known resident's own match
+// result, which the sync already computed and stored). Disposition
+// overrides are still looked up live here (a fast, internal Supabase
+// query, not a live AxisCare call) so a human excluding a record stays
+// immediately responsive, exactly as it already was.
 import "server-only";
 import {
   getCommunityMetrics,
   type CommunityResidentRecord,
 } from "./communityMetrics";
-import { getAxisCareClientOperationalSummary, type AxisCareClientOperationalRow } from "./axiscareClientOperationalSummary";
+import { getAxisCareOperationalStateForResidents, type AxisCareOperationalStateRow } from "./axiscareOperationalState";
+import { getAxisCareClientDispositions } from "./axiscareClientDispositions";
+import { resolveAxisCareClientOperationalBucket } from "@/lib/integrations/axiscare/clientOperationalStatus";
+import type { AxisCareClientDispositionRow } from "@/lib/integrations/axiscare/clientDisposition";
 import { getLatestServeRelationshipCorrections } from "./residentServeRelationshipCorrections";
 import {
   projectServeRelationship,
@@ -21,7 +34,9 @@ import {
   type AxisCareRelationshipMatch,
 } from "@/lib/residents/serveRelationshipProjection";
 import { isAuditEligibleActiveClient } from "@/lib/residents/auditEligibleActiveClient";
+import type { CommunityQueryFilter } from "@/lib/auth/communityScope";
 import type { Resident } from "@/lib/supabase/types";
+import type { AxisCareIdentityStatus } from "@/lib/integrations/axiscare/clientOperationalStatus";
 
 export interface EnrichedResidentRecord {
   readonly base: CommunityResidentRecord;
@@ -47,58 +62,69 @@ export interface ResidentServeRelationshipsData {
 
 // Ranks which AxisCare match "wins" if more than one AxisCare client row
 // somehow matched the same resident (e.g. a legacy duplicate client
-// record) — confirmed human decisions outrank unconfirmed matches.
-const IDENTITY_PRIORITY: Record<AxisCareClientOperationalRow["identityStatus"], number> = {
+// record) — confirmed human decisions outrank unconfirmed matches. Same
+// tie-break the live path always used; unchanged.
+const IDENTITY_PRIORITY: Record<AxisCareIdentityStatus, number> = {
   confirmed: 3,
   candidate: 2,
   needs_identity_review: 1,
   unmatched: 0,
 };
 
-function buildResidentAxisCareMatches(
-  axiscareRows: readonly AxisCareClientOperationalRow[]
+function buildResidentAxisCareMatchesFromStoredState(
+  storedRows: readonly AxisCareOperationalStateRow[],
+  dispositions: Map<string, AxisCareClientDispositionRow>
 ): Map<string, AxisCareRelationshipMatch> {
   const byResident = new Map<string, AxisCareRelationshipMatch>();
 
-  for (const row of axiscareRows) {
-    // An excluded AxisCare record (disposition-driven, e.g. a related
-    // person mistakenly created as a client) never represents a real
-    // client relationship for the matched resident — see
-    // serveRelationshipProjection.ts's AxisCareRelationshipBucket
-    // contract.
-    if (row.operationalBucket === "excluded") continue;
+  for (const row of storedRows) {
+    if (!row.matchedResidentId) continue;
 
-    const residentId = row.residentMatch.residentId;
-    if (!residentId) continue;
+    // Disposition combined live (Serve's own data, cheap — not a live
+    // AxisCare call) so a human override stays immediately responsive,
+    // exactly as the live path already did.
+    const disposition = dispositions.get(row.axiscareClientId)?.disposition ?? null;
+    const operationalBucket = resolveAxisCareClientOperationalBucket(row.computedLifecycle, disposition);
+    if (operationalBucket === "excluded") continue;
 
-    const existing = byResident.get(residentId);
+    const existing = byResident.get(row.matchedResidentId);
     if (existing && IDENTITY_PRIORITY[existing.identityStatus] >= IDENTITY_PRIORITY[row.identityStatus]) {
       continue;
     }
 
-    byResident.set(residentId, {
-      axiscareId: row.axiscareId,
-      operationalBucket: row.operationalBucket,
+    byResident.set(row.matchedResidentId, {
+      axiscareId: row.axiscareClientId,
+      operationalBucket,
       identityStatus: row.identityStatus,
-      vendorDisplayName: row.name,
-      matchBasis: row.residentMatch.basis,
+      vendorDisplayName: row.vendorDisplayName ?? undefined,
+      matchBasis: row.matchBasis ?? undefined,
       statusLabel: row.statusLabel,
       statusActive: row.statusActive,
-      classes: row.classes,
+      classes: row.classCodes,
     });
   }
 
   return byResident;
 }
 
-export async function getResidentServeRelationships(): Promise<ResidentServeRelationshipsData> {
-  const [community, axiscareSummary, corrections] = await Promise.all([
-    getCommunityMetrics(),
-    getAxisCareClientOperationalSummary(),
+export async function getResidentServeRelationships(
+  filter: CommunityQueryFilter
+): Promise<ResidentServeRelationshipsData> {
+  // community must resolve first — the stored-state lookup below is
+  // scoped to exactly this page's resident ids, not a live roster call,
+  // so it genuinely depends on knowing which residents are in scope
+  // first (unlike the old live path, which fetched everything
+  // regardless and only filtered by resident id afterward).
+  const community = await getCommunityMetrics(filter);
+  const residentIds = community.residentRecords.map((r) => r.id);
+
+  const [storedAxisCareRows, dispositions, corrections] = await Promise.all([
+    getAxisCareOperationalStateForResidents(residentIds),
+    getAxisCareClientDispositions(),
     getLatestServeRelationshipCorrections(),
   ]);
 
-  const axiscareMatchesByResident = buildResidentAxisCareMatches(axiscareSummary.rows);
+  const axiscareMatchesByResident = buildResidentAxisCareMatchesFromStoredState(storedAxisCareRows, dispositions);
 
   const relationshipCounts: Record<ServeRelationship, number> = {
     prospect: 0,
@@ -154,10 +180,21 @@ export interface ResidentServeRelationshipDetail {
 // basis, vendor display name) — for pages that need both the relationship
 // AND identity-resolution display data in one call, avoiding a second
 // full live AxisCare fetch for what's already computed here.
+//
+// Scope enforcement falls out of this unchanged: `filter` scopes which
+// residents getResidentServeRelationships() returns, so a resident id
+// outside the caller's authorized community simply isn't in `records` —
+// this resolves to null exactly like a genuinely unknown id, which is
+// what a caller pasting a same-app resident URL from another community
+// must see (see this phase's brief, section 6). The known
+// getResidentServeRelationships()-recompute cost here is unchanged —
+// already flagged in the performance baseline, not addressed in this
+// pass per its own "no broad optimization" scope.
 export async function getResidentServeRelationshipDetail(
-  residentId: string
+  residentId: string,
+  filter: CommunityQueryFilter
 ): Promise<ResidentServeRelationshipDetail | null> {
-  const { records } = await getResidentServeRelationships();
+  const { records } = await getResidentServeRelationships(filter);
   const record = records.find((r) => r.base.id === residentId);
   if (!record) return null;
   return { projection: record.projection, axiscareMatch: record.axiscareMatch };
@@ -177,8 +214,10 @@ export interface AuditEligibleActiveClient {
 // residents simply never enter this list — they are not a Client
 // Readiness failure, and remain visible/actionable on the existing
 // /reconciliation page instead.
-export async function getAuditEligibleActiveClientResidents(): Promise<AuditEligibleActiveClient[]> {
-  const { records } = await getResidentServeRelationships();
+export async function getAuditEligibleActiveClientResidents(
+  filter: CommunityQueryFilter
+): Promise<AuditEligibleActiveClient[]> {
+  const { records } = await getResidentServeRelationships(filter);
   return records
     .filter((r) => isAuditEligibleActiveClient(r.projection, r.axiscareMatch?.identityStatus ?? null))
     .map((r) => ({ resident: r.base.resident, projection: r.projection, axiscareMatch: r.axiscareMatch }));

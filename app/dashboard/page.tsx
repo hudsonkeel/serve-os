@@ -21,10 +21,15 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function DashboardPage() {
+  // Org-wide executive dashboard, not the community-scoped People We Serve
+  // surface — deliberately all_communities regardless of current selection
+  // (Phase E/F, section 25: aggregate views work where intended). Preserves
+  // this page's pre-existing behavior; not adjusted to respect community
+  // context in this phase.
   const [profile, community, canonicalRelationships, recruiting, activeProspectRelationships, intakeQueueCounts] = await Promise.all([
     getCurrentAuthorizedUser(),
-    getCommunityMetrics(),
-    getResidentServeRelationships(),
+    getCommunityMetrics({ mode: "all" }),
+    getResidentServeRelationships({ mode: "all" }),
     getRecruitingLeads(),
     getActiveProspectRelationshipCount(),
     getIntakeQueueCounts(),

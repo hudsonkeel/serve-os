@@ -21,6 +21,9 @@ import { setAxisCareClientDisposition } from "@/lib/data/axiscareClientDispositi
 import { toPersonVendorIdentityLinksMatchMethod, type ClientMatchBasis } from "@/lib/integrations/axiscare/clientIdentityMatching";
 import type { AxisCareClientDisposition } from "@/lib/integrations/axiscare/clientDisposition";
 import { syncOneConfirmedResident } from "@/lib/data/axiscareClientSync";
+import { updateAxisCareOperationalStateIdentityMatch } from "@/lib/data/axiscareOperationalState";
+import { findFreshCredibleResidentMatch } from "@/lib/data/axiscareClientOperationalSummary";
+import { createResidentFromExternalSource } from "@/lib/data/residentCreationFromSource";
 
 type ReconciliationActionResult = { error?: string; success?: boolean; syncWarning?: string };
 
@@ -122,6 +125,25 @@ export async function confirmAxisCareResidentIdentity(
     }
   } catch (err) {
     syncWarning = `Identity confirmed, but AxisCare data sync could not complete: ${err instanceof Error ? err.message : "unknown error"}. It will retry on the next sync.`;
+  }
+
+  // Immediate freshness for normal /residents page reads, which now
+  // consume stored operational state rather than a live AxisCare call
+  // (AxisCare Community Mapping + Operational State phase, section 18).
+  // No fresh AxisCare fetch here — only updates the identity-match
+  // portion of an already-synced row; a no-op if this client hasn't been
+  // through a daily sync yet, in which case the next one picks it up
+  // with full, correctly-sourced data. Never blocks the confirmation
+  // itself, matching the same non-blocking discipline as the sync above.
+  try {
+    await updateAxisCareOperationalStateIdentityMatch({
+      axiscareClientId: input.axiscareId,
+      matchedResidentId: input.residentId,
+      identityStatus: "confirmed",
+      matchBasis: input.matchBasis,
+    });
+  } catch {
+    // Non-blocking by design — see comment above.
   }
 
   revalidatePeopleWeServe(input.residentId);
@@ -256,4 +278,93 @@ export async function restoreAxisCareRecord(axiscareId: string, rationale?: stri
     disposition: "needs_review",
     rationale: rationale?.trim() || DEFAULT_RESTORE_RATIONALE,
   });
+}
+
+// ─── Create New Resident — the third resolution path ───────────────────
+//
+// AxisCare Reconciliation + Multi-Source Identity Ingestion phase. For a
+// record where no credible existing person was found (identityStatus ===
+// "unmatched"), the operator's alternative to Match to Existing Person: a
+// human reviews the source and intentionally creates a new canonical
+// resident. Never automatic — always an explicit action.
+export interface CreateResidentFromAxisCareRecordInput {
+  readonly axiscareId: string;
+  readonly vendorDisplayName: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly communityId: string;
+  readonly communityName: string;
+  // Name+community re-check inputs only — the stored/live AxisCare
+  // summary deliberately never exposes raw email/phone to this UI layer
+  // (PHI-minimization decision, prior phase). This means the fresh
+  // duplicate check below can catch a same-name/same-community race but
+  // not an email/phone-only match discovered since page load — the full
+  // email/phone-tier check already ran once, server-side, when this row's
+  // identityStatus was computed as "unmatched" at page load (which is the
+  // only reason Create New Resident is offered on it at all). Documented
+  // limitation, not a silent gap.
+  readonly classes: readonly string[];
+}
+
+export async function createResidentFromAxisCareRecord(
+  input: CreateResidentFromAxisCareRecordInput,
+  rationale?: string
+): Promise<ReconciliationActionResult & { residentId?: string; existingMatch?: { residentId: string; residentName: string | null } }> {
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+
+  if (!input.firstName.trim() || !input.lastName.trim()) {
+    return { error: "First and last name are required to create a resident." };
+  }
+
+  // Duplicate check before insertion (section 12) — never bypassed, never
+  // trusting client-submitted "no match" state (section 43). A credible
+  // match found here means someone else likely already created or linked
+  // this exact person since the page loaded; the operator is redirected
+  // to Match to Existing Person instead of silently creating a duplicate.
+  const freshMatch = await findFreshCredibleResidentMatch({
+    firstName: input.firstName,
+    lastName: input.lastName,
+    communityName: input.communityName,
+  });
+  if (freshMatch) {
+    return {
+      error: `${freshMatch.residentName ?? "An existing resident"} in ${input.communityName} appears to already match this record. Use Match to Existing Person instead.`,
+      existingMatch: { residentId: freshMatch.residentId, residentName: freshMatch.residentName },
+    };
+  }
+
+  const createResult = await createResidentFromExternalSource({
+    sourceSystem: "axiscare",
+    sourceRecordId: input.axiscareId,
+    vendorDisplayName: input.vendorDisplayName,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    communityId: input.communityId,
+    communityName: input.communityName,
+    actor: actorResult.actor,
+    rationale: rationale?.trim() || null,
+  });
+  if (createResult.error || !createResult.residentId) {
+    return { error: createResult.error ?? "Could not create a resident from this record." };
+  }
+
+  // Best-effort freshness for the stored operational-state cache — same
+  // non-blocking discipline confirmAxisCareResidentIdentity() already
+  // uses. A failure here is self-healing (the next scheduled sync
+  // corrects it) and never treated as if the creation itself failed — the
+  // resident and the durable identity link are already committed atomically.
+  try {
+    await updateAxisCareOperationalStateIdentityMatch({
+      axiscareClientId: input.axiscareId,
+      matchedResidentId: createResult.residentId,
+      identityStatus: "confirmed",
+      matchBasis: "manual_match",
+    });
+  } catch {
+    // Non-blocking by design — see comment above.
+  }
+
+  revalidatePeopleWeServe(createResult.residentId);
+  return { success: true, residentId: createResult.residentId };
 }

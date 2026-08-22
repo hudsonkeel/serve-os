@@ -92,10 +92,22 @@ export interface WorkforceMember {
 // The first normalized Community entity in Serve OS — every other domain
 // still uses a free-text community_name/community_code pair (residents,
 // relationships), untouched by this migration.
+//
+// Care model (Phase D.5) — the durable hierarchy is
+// Serve -> Care Model -> Operating Context -> Person/Client. `communities`
+// rows are real partner/community environments under EITHER model
+// (Watermere today, Frisco Lakes/Heritage Ranch as Traditional Care
+// partner developments) — never a stand-in for an individual private
+// household, which has no canonical community at all. Stored explicitly
+// per row (20260902210000_add_care_model_to_communities.sql) — never
+// inferred from `name` at runtime.
+export type CareModel = "community_care" | "traditional_care";
+
 export interface Community {
   id: string;
   code: string;
   name: string;
+  care_model: CareModel;
   is_active: boolean;
   created_at: string;
 }
@@ -227,14 +239,27 @@ export type VendorIdentityMatchConfidence = "high" | "medium" | "low";
 export type PersonVendorIdentityLinkStatus = "proposed" | "confirmed" | "rejected" | "deferred";
 
 // link_role only ever applies once status = 'confirmed' — see
-// supabase/migrations/20260811000000_add_vendor_identity_lineage.sql.
+// supabase/migrations/20260811000000_add_vendor_identity_lineage.sql and
+// 20260902330000_add_concurrent_vendor_identity_link_role.sql.
 //   primary    — the current, profile/lifecycle-driving record for this
 //                subject+source. At most one, DB-enforced.
-//   duplicate  — confirmed same person, kept in sync, not profile-driving.
+//   duplicate  — confirmed same person, a same-source data artifact (e.g.
+//                two vendor records for one person within one source
+//                system), kept in sync, not profile-driving.
 //   retired    — explicitly retired from active tracking by a reviewer.
-//   historical — reserved for future lineage use; no Phase 1 action assigns
-//                this value yet.
-export type LinkRole = "primary" | "duplicate" | "retired" | "historical";
+//   historical — reserved for a future lineage/chronology model — no
+//                action assigns this value today. Never use this for "a
+//                second confirmed source we don't know the order of" —
+//                that's what 'concurrent' is for; 'historical' asserts a
+//                chronological claim this system cannot yet make.
+//   concurrent — confirmed same person, a second GENUINE non-driving
+//                source observation with no claim about which is more
+//                current (e.g. Community Roster Import: a legitimate
+//                cross-community/move overlap). A future residency-
+//                episode/transfer model will resolve current-vs-historical
+//                community affiliation from effective dates and source
+//                chronology; link_role alone never asserts it.
+export type LinkRole = "primary" | "duplicate" | "retired" | "historical" | "concurrent";
 
 export interface PersonVendorIdentityLink {
   id: string;
@@ -790,6 +815,10 @@ export interface Resident {
   external_source_key: string | null;
   community_name: string | null;
   community_code: string | null;
+  // Canonical FK, additive alongside the free-text fields above — see
+  // supabase/migrations/20260902190000_add_community_id_to_residents_and_relationships.sql.
+  // Null means not yet confidently assigned, never a silent default.
+  community_id: string | null;
   first_name: string | null;
   middle_name: string | null;
   last_name: string | null;
@@ -1509,6 +1538,10 @@ export interface Relationship {
   resident_id: string | null;
   prospect_id: string | null;
   community_name: string | null;
+  // Independent of residents.community_id -- a relationship can exist
+  // before any resident record does. See
+  // supabase/migrations/20260902190000_add_community_id_to_residents_and_relationships.sql.
+  community_id: string | null;
   organization_name: string | null;
   primary_contact_name: string | null;
   primary_contact_relationship: string | null;

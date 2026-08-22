@@ -1,9 +1,22 @@
 import { IntakeFormData, FormErrors } from "../../types";
 import { FormField, FormSelect, FormTextarea, FormInput } from "../../FormField";
 
+// NOT CURRENTLY LIVE — this component is not imported by
+// components/intake/ServeIntakeFlow.tsx (the actual live flow behind
+// app/get-started), which submits community: null unconditionally. Kept
+// current for whenever it (or an equivalent step in the live flow) is
+// wired back in — see this phase's checkpoint report for the real,
+// currently-live gap and the companion-repository work it likely
+// requires. Values match communities.code exactly (Phase E/F completion,
+// section 5) so a canonical resolution step downstream has something
+// real to map against, rather than another free-text label.
 const communityOptions = [
   { value: "watermere_frisco", label: "Watermere at Frisco" },
-  { value: "other",            label: "Other / Not listed" },
+  { value: "watermere_firewheel", label: "Watermere at Firewheel" },
+  { value: "watermere_mckinney", label: "Watermere at McKinney" },
+  { value: "frisco_lakes", label: "Frisco Lakes" },
+  { value: "heritage_ranch", label: "Heritage Ranch" },
+  { value: "other", label: "Other / Direct Private Home" },
 ];
 
 interface ClientCommunityStepProps {

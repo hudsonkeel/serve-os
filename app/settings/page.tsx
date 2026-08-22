@@ -85,9 +85,11 @@ function FutureCapabilities({ items }: { items: string[] }) {
 }
 
 export default async function SettingsPage() {
+  // Org-wide settings context, not the community-scoped People We Serve
+  // surface — see the identical note in app/dashboard/page.tsx.
   const [profile, community] = await Promise.all([
     getCurrentAuthorizedUser(),
-    getCommunityMetrics(),
+    getCommunityMetrics({ mode: "all" }),
   ]);
   const currentUser = buildCurrentUserDisplay(profile);
 

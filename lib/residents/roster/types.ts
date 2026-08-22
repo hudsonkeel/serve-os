@@ -19,6 +19,13 @@ export interface RawRosterRow {
   // email (e.g. "6/8/26 Move In") — preserved, never discarded, never
   // treated as a real email/phone.
   readonly noteRaw: string | null;
+  // Community Roster Import + Reconciliation phase — optional, additive.
+  // The Watermere Building-sheet format never carries a DOB column, so
+  // parseBuildingSheets() never sets this; the new generic single-sheet
+  // parser sets it when a recognized DOB-shaped column exists. Not yet
+  // consumed by matching (Pass 1 is parse/preview only) — carried through
+  // so it's available without a second parse pass once it is.
+  readonly dobRaw?: string | null;
 }
 
 // A row from the "Directory" sheet, used only for cross-check — never a
@@ -49,6 +56,14 @@ export interface NormalizedPerson {
   // halves of a couple row, since the roster only lists one number per
   // apartment.
   readonly phoneRaw: string | null;
+  // Community Roster Import + Reconciliation phase, Pass 2 — carried
+  // through from RawRosterRow.dobRaw (optional/additive; undefined for
+  // every Watermere Building-sheet row, which has no DOB column) so the
+  // canonical-identity-signal orchestration layer
+  // (communityRosterReconciliation.ts) can use it. Never consumed by
+  // matchPerson()/reconcileRoster() themselves — those stay exactly the
+  // tested, unit-only/name-only engine they always were.
+  readonly dobRaw?: string | null;
 }
 
 // ─── Live resident snapshot ────────────────────────────────────────────
@@ -65,6 +80,19 @@ export interface LiveResident {
   readonly building: string | null;
   readonly communityCode: string | null;
   readonly isActive: boolean;
+  // Community Roster Import + Reconciliation phase, Pass 2 — optional,
+  // additive. Only loadLiveResidentsForCommunity/loadLiveResidentsExcludingCommunity
+  // (the new web-import path) populate this; loadLiveWatermereResidents
+  // (the untouched legacy CLI path) leaves it undefined, and
+  // matchPerson()/reconcileRoster() never read it — DOB corroboration is
+  // used only by the new canonical-identity-signal orchestration layer.
+  readonly dateOfBirth?: string | null;
+  // Pass 4 — same discipline as dateOfBirth above: optional, additive,
+  // only populated by the new web-import path. Consumed only as HOUSEHOLD
+  // corroboration (lib/residents/identity/householdSignals.ts's own
+  // same_phone signal), never as identity evidence on its own — matching
+  // this codebase's existing, deliberate phone/identity separation.
+  readonly phone?: string | null;
 }
 
 // ─── Matching ──────────────────────────────────────────────────────────

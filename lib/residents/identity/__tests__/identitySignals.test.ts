@@ -21,6 +21,7 @@ function resident(overrides: Partial<LiveResidentForIdentity> & { id: string }):
     unitNumber: null,
     building: null,
     communityCode: "watermere-frisco",
+    communityId: "c-frisco",
     phone: null,
     email: null,
     dateOfBirth: null,

@@ -2,12 +2,19 @@ import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { WellnessObservationQuickAction } from "@/components/residents/WellnessObservationQuickAction";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function RecordWellnessObservationPage() {
-  const community = await getCommunityMetrics();
+  // Part of the community-scoped People We Serve surface — picking a
+  // resident to record an observation for should offer the current
+  // community's residents, same as /residents itself.
+  const profile = await getCurrentAuthorizedUser();
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  const community = await getCommunityMetrics(communityFilter);
 
   return (
     <PageContainer title="Record Wellness Observation">

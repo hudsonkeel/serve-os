@@ -1,4 +1,4 @@
-import { getAxisCareClientOperationalSummary } from "@/lib/data/axiscareClientOperationalSummary";
+import { getStoredAxisCareClientOperationalSummary } from "@/lib/data/axiscareClientOperationalSummary";
 import { PageContainer } from "@/components/PageContainer";
 import { PeopleWeServeTabs } from "@/components/peopleWeServe/PeopleWeServeTabs";
 import { AxisCareClientRoster } from "@/components/peopleWeServe/AxisCareClientRoster";
@@ -15,7 +15,7 @@ export const revalidate = 0;
 // — a related person, an administrative record, a test placeholder)
 // are not shown here at all; they live in Reconciliation (/reconciliation).
 export default async function ClientsPage() {
-  const summary = await getAxisCareClientOperationalSummary();
+  const summary = await getStoredAxisCareClientOperationalSummary();
   const clientCount = summary.rows.filter((row) => row.operationalBucket !== "excluded").length;
 
   return (

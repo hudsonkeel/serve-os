@@ -33,8 +33,17 @@ export default async function ResidentIdentityCandidatePage({
   // roster (see communityMetrics.ts) — an inactive/archived duplicate
   // naturally has none, which the comparison UI shows honestly rather
   // than guessing.
+  //
+  // Deliberately all_communities, not the viewer's current selection —
+  // this is a cross-community identity-reconciliation surface by design
+  // (Phase E/F, section 10: same name+DOB across two communities is a
+  // possible move/transfer, not an ordinary duplicate, and a reviewer
+  // must be able to see both candidates regardless of which single
+  // community they currently have selected).
   const relationshipDetails = Object.fromEntries(
-    await Promise.all(residents.map(async (r) => [r.id, await getResidentServeRelationshipDetail(r.id)] as const)),
+    await Promise.all(
+      residents.map(async (r) => [r.id, await getResidentServeRelationshipDetail(r.id, { mode: "all" })] as const),
+    ),
   );
   const documentEvidenceCounts = Object.fromEntries(
     await Promise.all(

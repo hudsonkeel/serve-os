@@ -41,6 +41,7 @@ export function normalizeRawRowToPersons(row: RawRosterRow): NormalizedPerson[] 
     displayLabel: `${firstNameRaw.trim()} ${row.lastNameRaw.trim()}`.trim(),
     isPartOfCouple,
     phoneRaw: row.phoneRaw,
+    dobRaw: row.dobRaw ?? null,
   }));
 }
 

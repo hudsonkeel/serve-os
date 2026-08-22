@@ -12,15 +12,21 @@ import type { HouseholdEvidenceSignal, LiveResidentForIdentity } from "./types.t
 export function generateHouseholdSignals(a: LiveResidentForIdentity, b: LiveResidentForIdentity): HouseholdEvidenceSignal[] {
   const signals: HouseholdEvidenceSignal[] = [];
 
+  // Unit numbers are community-relative (Phase E/F completion, section
+  // 3): "Frisco / 204" and "Firewheel / 204" are two different locations,
+  // not the same apartment. Requires both communities known and equal —
+  // an unknown community on either side never fires this signal, since a
+  // confident "same location" claim needs both.
   const unitA = normalizeUnit(a.unitNumber);
   const unitB = normalizeUnit(b.unitNumber);
-  const sameApartment = unitA !== "" && unitA === unitB;
+  const sameCommunity = a.communityId !== null && a.communityId === b.communityId;
+  const sameApartment = unitA !== "" && unitA === unitB && sameCommunity;
   if (sameApartment) {
     signals.push({
       signalType: "same_apartment",
       residentIdA: a.id,
       residentIdB: b.id,
-      description: `Both records list the same current apartment (${a.unitNumber}).`,
+      description: `Both records list the same current apartment (${a.unitNumber}) within the same community.`,
     });
   }
 
@@ -58,7 +64,7 @@ export function generateHouseholdSignals(a: LiveResidentForIdentity, b: LiveResi
   // apartment, same phone, or a shared family contact), exactly like
   // `apartment_differs` was gated in the identity engine.
   const hasSpecificHouseholdSignal = sameApartment || samePhone || sharedFamilyContact;
-  if (!sameApartment && hasSpecificHouseholdSignal && a.building && b.building && a.building === b.building && a.communityCode && a.communityCode === b.communityCode) {
+  if (!sameApartment && hasSpecificHouseholdSignal && a.building && b.building && a.building === b.building && sameCommunity) {
     signals.push({
       signalType: "same_building_and_community",
       residentIdA: a.id,

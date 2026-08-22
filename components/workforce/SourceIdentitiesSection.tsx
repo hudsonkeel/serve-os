@@ -10,6 +10,7 @@ const ROLE_LABELS: Record<LinkRole, string> = {
   duplicate: "Duplicate",
   retired: "Retired",
   historical: "Historical",
+  concurrent: "Concurrent",
 };
 
 const ROLE_STYLES: Record<LinkRole, string> = {
@@ -17,6 +18,7 @@ const ROLE_STYLES: Record<LinkRole, string> = {
   duplicate: "bg-amber-50 text-amber-700",
   retired: "bg-ivory-warm text-muted",
   historical: "bg-ivory-warm text-subtle",
+  concurrent: "bg-blue-pale text-blue",
 };
 
 interface AxisCareIdentityFields {

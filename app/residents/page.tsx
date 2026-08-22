@@ -1,17 +1,19 @@
-import Link from "next/link";
 import {
   getResidentServeRelationships,
   type ResidentRelationshipTabValue,
 } from "@/lib/data/residentServeRelationships";
+import { getUnresolvedAxisCareWorkForCommunity } from "@/lib/data/axiscareOperationalState";
 import { PageContainer } from "@/components/PageContainer";
 import { ResidentsInbox } from "@/components/residents/ResidentsInbox";
 import { PeopleWeServeTabs } from "@/components/peopleWeServe/PeopleWeServeTabs";
+import { AddClientButton } from "@/components/residents/AddClientButton";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canEditResidentProfile } from "@/lib/auth/permissions";
 import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
 import { buildAskServeContext } from "@/lib/askServe/buildContext";
 import { PEOPLE_WE_SERVE_CONTEXT } from "@/lib/askServe/areaContexts";
+import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -30,8 +32,24 @@ export default async function ResidentsPage({
 }: {
   searchParams: Promise<{ tab?: string; wellnessDue?: string }>;
 }) {
-  const community = await getResidentServeRelationships();
+  // Profile/scope must resolve before the residents query — the query
+  // itself is the SQL-first community filter (residents.community_id),
+  // never a fetch-then-filter. PageContainer resolves this same context
+  // again independently for the shell/switcher; the redundant resolution
+  // mirrors the existing getCurrentAuthorizedUser() double-call already
+  // flagged in the performance baseline, not a new regression.
   const profile = await getCurrentAuthorizedUser();
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  // Unresolved external work (e.g. an AxisCare prospect with no resident
+  // match yet) is fetched alongside — never folded into
+  // getResidentServeRelationships() itself, which stays resident-only so
+  // every other caller (getAuditEligibleActiveClientResidents, etc.) is
+  // unaffected. See lib/data/axiscareOperationalState.ts's own header
+  // comment on why this is composed, not merged, into Needs Review.
+  const [community, unresolvedExternalWork] = await Promise.all([
+    getResidentServeRelationships(communityFilter),
+    getUnresolvedAxisCareWorkForCommunity(communityFilter),
+  ]);
   const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
   const canCorrect = canEditResidentProfile(profile?.role);
   const params = await searchParams;
@@ -58,6 +76,7 @@ export default async function ResidentsPage({
             <span className="font-sans text-base font-medium text-muted">
               {community.totalResidents} residents
             </span>
+            <AddClientButton />
             {askServeEnabled && (
               <AskServeTrigger
                 context={buildAskServeContext(PEOPLE_WE_SERVE_CONTEXT, {
@@ -88,12 +107,7 @@ export default async function ResidentsPage({
           >
             Find a Person
           </a>
-          <Link
-            href="/relationships"
-            className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-navy px-4 font-sans text-button font-medium text-white shadow-card"
-          >
-            New Prospect
-          </Link>
+          <AddClientButton className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-navy px-4 font-sans text-button font-medium text-white shadow-card" />
         </div>
       </div>
 
@@ -103,9 +117,17 @@ export default async function ResidentsPage({
         </div>
       )}
 
+      {communityFilter.mode === "none" && (
+        <div className="rounded-lg border border-navy/15 bg-navy/5 px-4 py-3 font-sans text-sm text-body">
+          Select a community above to see its residents. No community is currently selected.
+        </div>
+      )}
+
       <ResidentsInbox
         records={community.records}
         relationshipCounts={community.relationshipCounts}
+        unresolvedExternalWork={unresolvedExternalWork}
+        showCommunityOnExternalWork={communityFilter.mode === "all"}
         initialTab={initialTab}
         initialWellnessDue={initialWellnessDue}
         canCorrect={canCorrect}

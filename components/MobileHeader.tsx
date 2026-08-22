@@ -5,11 +5,13 @@ import Link from "next/link";
 import { Menu } from "lucide-react";
 import { Logo } from "./Logo";
 import { MobileNavDrawer } from "./MobileNavDrawer";
+import { CommunitySwitcher, type CommunitySwitcherData } from "./CommunitySwitcher";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
 
 interface MobileHeaderProps {
   title?: string;
   currentUser: CurrentUserDisplay;
+  communitySwitcher: CommunitySwitcherData | null;
 }
 
 // Phone-width-only compact app header (hidden at md: and above — TopNav.tsx
@@ -19,7 +21,7 @@ interface MobileHeaderProps {
 // enough to answer "where am I" (title) and "how do I get somewhere else"
 // (the hamburger). The 44px touch target on the trigger is a real hit area,
 // not just the visible icon size.
-export function MobileHeader({ title, currentUser }: MobileHeaderProps) {
+export function MobileHeader({ title, currentUser, communitySwitcher }: MobileHeaderProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   return (
@@ -44,6 +46,16 @@ export function MobileHeader({ title, currentUser }: MobileHeaderProps) {
         <Link href="/residents" aria-label="Go to The People We Serve" className="shrink-0">
           <Logo width={84} />
         </Link>
+
+        {/* Current community — visible without opening the drawer, since
+            "where am I" matters as much on mobile as desktop. Sits ahead of
+            the title in the tight 56px bar; the title keeps truncating in
+            whatever space remains. */}
+        {communitySwitcher && (
+          <div className="shrink-0">
+            <CommunitySwitcher variant="mobile" {...communitySwitcher} />
+          </div>
+        )}
 
         {title && (
           <p className="min-w-0 flex-1 truncate text-right font-sans text-label font-semibold uppercase tracking-[0.14em] text-white/55">

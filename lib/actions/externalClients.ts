@@ -10,7 +10,8 @@ import {
   reactivateExternalClient as reactivateExternalClientRecord,
 } from "@/lib/data/externalClients";
 import { findActiveResidentProspect } from "@/lib/relationships/duplicateDetection";
-import { getRelationshipsByResident } from "@/lib/data/relationships";
+import { getRelationshipsByResident, getRelationshipById } from "@/lib/data/relationships";
+import { setResidentCommunityId } from "@/lib/data/residents";
 import { isValidActionType } from "@/lib/relationships/constants";
 import { isValidOpenActionDisposition } from "@/lib/externalClients/constants";
 import { normalizeOptionalText, parseOptionalDate } from "@/lib/relationships/validation";
@@ -171,6 +172,20 @@ export async function convertExternalProspectToNewResident(data: {
     conversionNote: normalizeOptionalText(data.conversionNote),
     actor,
   });
+
+  // Community identity (Phase E/F, section 7): a resident created through
+  // this partner/community workflow inherits the originating
+  // relationship's community_id — the strongest available source, since
+  // that relationship is exactly what's being converted. Never defaults
+  // to Frisco or any other community when the relationship itself has
+  // none (a genuinely community-less external prospect stays that way
+  // for its new resident record too, rather than guessing).
+  if (!result.error && result.residentId) {
+    const originatingRelationship = await getRelationshipById(data.relationshipId);
+    if (originatingRelationship?.community_id) {
+      await setResidentCommunityId(result.residentId, originatingRelationship.community_id);
+    }
+  }
 
   if (!result.error && result.residentId && !phoneValidation.valid) {
     const evidence = detectMalformedPhone(phoneRaw);

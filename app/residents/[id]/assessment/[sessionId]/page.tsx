@@ -5,6 +5,7 @@ import { getAssessmentReviewData } from "@/lib/actions/assessmentIntelligence";
 import { AssessmentReviewPanel } from "@/components/assessment/AssessmentReviewPanel";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canEditResidentProfile } from "@/lib/auth/permissions";
+import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,10 +17,13 @@ export default async function AssessmentReviewPage({
 }) {
   const { id, sessionId } = await params;
 
-  const record = await getCommunityResidentById(id);
+  // Resident-specific URL — must not bypass scope, same as
+  // /residents/[id] itself (Phase E/F, section 6).
+  const profile = await getCurrentAuthorizedUser();
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  const record = await getCommunityResidentById(id, communityFilter);
   if (!record) notFound();
 
-  const profile = await getCurrentAuthorizedUser();
   if (!profile || !canEditResidentProfile(profile.role)) {
     return (
       <PageContainer title="Assessment Review">

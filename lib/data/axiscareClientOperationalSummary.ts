@@ -31,6 +31,9 @@ import {
 import type { AxisCareClientDisposition } from "../integrations/axiscare/clientDisposition.ts";
 import { getAxisCareClientDispositions } from "./axiscareClientDispositions.ts";
 import { suggestResidentMatchesForAxisCareClient, type SuggestedResidentMatch } from "../integrations/axiscare/unmatchedClientCandidates.ts";
+import { resolveAxisCareCommunityCode } from "../integrations/axiscare/communityMapping.ts";
+import { listCommunities } from "./communities.ts";
+import { getAllAxisCareOperationalState } from "./axiscareOperationalState.ts";
 
 interface RawAxisCareClient {
   id: number | string;
@@ -41,7 +44,7 @@ interface RawAxisCareClient {
   homePhone?: string | null;
   mobilePhone?: string | null;
   otherPhone?: string | null;
-  community?: { name?: string | null } | null;
+  community?: { id?: number | null; name?: string | null } | null;
   status?: { active?: boolean; label?: string } | null;
   classes?: { code: string; label?: string }[] | null;
   startDate?: string | null;
@@ -51,6 +54,8 @@ interface RawAxisCareClient {
 export interface AxisCareClientOperationalRow {
   readonly axiscareId: string;
   readonly name: string;
+  readonly firstName: string;
+  readonly lastName: string;
   readonly statusActive: boolean;
   readonly statusLabel: string | null;
   readonly classes: readonly string[];
@@ -60,6 +65,14 @@ export interface AxisCareClientOperationalRow {
   // AxisCare's own community field for this record, whatever community
   // that happens to be.
   readonly communityName: string | null;
+  // The DETERMINISTIC resolved community (community.id -> community.name
+  // -> exact class code -> unresolved; see communityMapping.ts), display-
+  // only here — never used to change matching/identity logic, only to
+  // default the "Create New Resident" form's community and to show a
+  // community even for the class-code-fallback case where communityName
+  // above is null (e.g. Linda Kaplan). Null when genuinely unresolved.
+  readonly resolvedCommunityId: string | null;
+  readonly resolvedCommunityName: string | null;
   readonly computedLifecycle: ServeClientLifecycle;
   readonly disposition: AxisCareClientDisposition | null;
   readonly dispositionRationale: string | null;
@@ -194,10 +207,78 @@ export function buildAxisCareMatchCandidates(
   return candidates;
 }
 
+// AxisCare Reconciliation + Multi-Source Identity Ingestion phase, section
+// 12/43: "Create New Resident" must never bypass identity matching, and
+// must never trust a client-submitted "no match" state — a second
+// operator, or new data, could have appeared since the page loaded. This
+// re-fetches residents fresh and re-runs the exact same deterministic
+// matcher the live summary/sync paths use, immediately before a create
+// action is allowed to proceed. Returns null only when the fresh
+// computation genuinely finds nothing credible.
+export async function findFreshCredibleResidentMatch(input: {
+  readonly firstName: string | null;
+  readonly lastName: string | null;
+  readonly personalEmail?: string | null;
+  readonly billingEmail?: string | null;
+  readonly homePhone?: string | null;
+  readonly mobilePhone?: string | null;
+  readonly otherPhone?: string | null;
+  readonly communityName: string | null;
+}): Promise<{ residentId: string; residentName: string | null; basis: ClientMatchBasis } | null> {
+  const supabase = createServerClient();
+  const [{ data: residentsRaw }, { data: redirectsRaw }, { data: aliasesRaw }] = await Promise.all([
+    supabase
+      .from("residents")
+      .select("id, first_name, last_name, display_name, full_name, email, phone, phone_raw, unit_number, community_name"),
+    supabase.from("resident_identity_redirects").select("duplicate_resident_id, canonical_resident_id"),
+    supabase.from("resident_identity_aliases").select("canonical_resident_id, normalized_value"),
+  ]);
+
+  const candidates = buildAxisCareMatchCandidates(residentsRaw ?? [], redirectsRaw ?? [], aliasesRaw ?? []);
+  const email = normalizeEmail(input.personalEmail ?? input.billingEmail ?? null);
+  const phones = [input.homePhone, input.mobilePhone, input.otherPhone].map(normalizePhone).filter((p): p is string => p !== null);
+
+  const match = matchAxisCareClientToResident(
+    {
+      normalizedEmail: email,
+      normalizedPhones: phones,
+      normalizedName: normalizeName(input.firstName ?? "", input.lastName ?? ""),
+      normalizedLastName: input.lastName ? normalizeLastName(input.lastName) : null,
+      unitNumber: null,
+      communityName: input.communityName,
+    },
+    candidates
+  );
+
+  if (match.residentId === null) return null;
+  const residentNamesById = new Map(candidates.map((c) => [c.id, c.displayName]));
+  return { residentId: match.residentId, residentName: residentNamesById.get(match.residentId) ?? null, basis: match.basis };
+}
+
+// KNOWN, DELIBERATE GAP (Phase E/F, section 18) — investigated, not
+// overlooked. This still makes a live AxisCare getAllClients() call on
+// every /residents and /residents/[id] render (previously flagged in the
+// performance baseline). A clean removal was attempted this phase: the
+// only existing stored/synced AxisCare table, axiscare_client_canonical_snapshot,
+// was checked directly against the live schema and holds only demographic
+// gap-fill fields (date_of_birth, address, triage level, responsible
+// party) — never status/active, classes, community, or lifecycle, which
+// this function's identityStatus/operationalBucket/axiscareMatch
+// computation genuinely needs, and which serveRelationshipProjection.ts
+// feeds directly into every resident's Active Client/Prospect/etc. status.
+// Swapping to that table would silently degrade relationship-status
+// correctness for every resident, not just remove a live call — worse than
+// the performance cost it would fix. Not attempted. What IS confirmed:
+// this phase's community scoping does not multiply this call — it is
+// still exactly one getAllClients() call regardless of how many
+// communities exist or which one is selected, since AxisCare tenancy
+// (one tenant vs. per-community credentials) remains the unresolved
+// question from Phase D.5, deferred to a dedicated AxisCare integration
+// phase alongside a real stored-operational-status table.
 export async function getAxisCareClientOperationalSummary(): Promise<AxisCareClientOperationalSummary> {
   const supabase = createServerClient();
 
-  const [{ data: residentsRaw }, { data: existingLinksRaw }, { data: redirectsRaw }, { data: aliasesRaw }, dispositions, clientsResult] =
+  const [{ data: residentsRaw }, { data: existingLinksRaw }, { data: redirectsRaw }, { data: aliasesRaw }, dispositions, clientsResult, communities] =
     await Promise.all([
       supabase
         .from("residents")
@@ -207,9 +288,12 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
       supabase.from("resident_identity_aliases").select("canonical_resident_id, normalized_value"),
       getAxisCareClientDispositions(),
       getAllClients(),
+      listCommunities(),
     ]);
 
   const residents = buildAxisCareMatchCandidates(residentsRaw ?? [], redirectsRaw ?? [], aliasesRaw ?? []);
+  const communityIdByCode = new Map(communities.map((c) => [c.code, c.id]));
+  const communityNameById = new Map(communities.map((c) => [c.id, c.name]));
 
   const existingLinks = new Map(
     (existingLinksRaw ?? []).map((l) => [String(l.vendor_record_id), l as { subject_id: string | null; status: string }])
@@ -276,6 +360,21 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
     };
 
     const clientClasses = (c.classes ?? []).map((cl) => cl.code);
+
+    // Display-only deterministic community resolution (communityMapping.ts)
+    // — never used above for matching/identity/lifecycle, only to default
+    // the "Create New Resident" form's community and to show a real
+    // community even where the raw communityName field (below) is null
+    // (the class-code-fallback case).
+    const communityResolution = resolveAxisCareCommunityCode({
+      communityId: c.community?.id ?? null,
+      communityName: c.community?.name ?? null,
+      classCodes: clientClasses,
+    });
+    const resolvedCommunityId = communityResolution.communityCode
+      ? (communityIdByCode.get(communityResolution.communityCode) ?? null)
+      : null;
+
     const suggestedMatches =
       resolved.residentId === null
         ? suggestResidentMatchesForAxisCareClient(
@@ -294,10 +393,14 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
     return {
       axiscareId,
       name: `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim(),
+      firstName: c.firstName ?? "",
+      lastName: c.lastName ?? "",
       statusActive: !!c.status?.active,
       statusLabel: c.status?.label ?? null,
       classes: clientClasses,
       communityName: c.community?.name ?? null,
+      resolvedCommunityId,
+      resolvedCommunityName: resolvedCommunityId ? (communityNameById.get(resolvedCommunityId) ?? null) : null,
       computedLifecycle,
       disposition: dispositionRow?.disposition ?? null,
       dispositionRationale: dispositionRow?.rationale ?? null,
@@ -308,6 +411,95 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
       identityStatus: resolveAxisCareIdentityStatus(residentMatch),
       residentMatch,
       suggestedMatches,
+    };
+  });
+
+  return { fetchedAt: new Date().toISOString(), rows, counts };
+}
+
+// ─── Stored-state summary — /clients' ordinary render path ────────────────
+//
+// AxisCare Reconciliation + Multi-Source Identity Ingestion phase, section
+// 30/52. Same AxisCareClientOperationalSummary shape as the live function
+// above, built entirely from axiscare_client_operational_state (refreshed
+// daily/on manual sync) plus a live, fast, internal disposition lookup — no
+// getAllClients() call. This is now sufficient because the prior gap (the
+// live path's name-denylist exclusion was never persisted) is closed by
+// is_name_denylisted (see 20260902240000). suggestedMatches is always []
+// here — only Reconciliation's unmatched-record UI needs fresh candidate
+// suggestions; /clients never rendered them. Reconciliation itself
+// deliberately keeps calling the LIVE function above — discovering
+// brand-new, not-yet-synced roster records is its whole purpose.
+export async function getStoredAxisCareClientOperationalSummary(): Promise<AxisCareClientOperationalSummary> {
+  const supabase = createServerClient();
+
+  const [storedRows, dispositions, communities] = await Promise.all([
+    getAllAxisCareOperationalState(),
+    getAxisCareClientDispositions(),
+    listCommunities(),
+  ]);
+  const communityNameById = new Map(communities.map((c) => [c.id, c.name]));
+
+  const matchedResidentIds = [...new Set(storedRows.map((r) => r.matchedResidentId).filter((id): id is string => id !== null))];
+  const { data: residentsRaw } =
+    matchedResidentIds.length > 0
+      ? await supabase.from("residents").select("id, display_name, full_name, first_name, last_name").in("id", matchedResidentIds)
+      : { data: [] as { id: string; display_name: string | null; full_name: string | null; first_name: string | null; last_name: string | null }[] };
+  const residentNamesById = new Map(
+    (residentsRaw ?? []).map((r) => [r.id, r.display_name || r.full_name || `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim()])
+  );
+
+  const counts: Record<AxisCareClientOperationalBucket, number> = {
+    active_client: 0,
+    inactive_client: 0,
+    prospect: 0,
+    needs_review: 0,
+    excluded: 0,
+  };
+
+  const rows: AxisCareClientOperationalRow[] = storedRows.map((row) => {
+    const dispositionRow = dispositions.get(row.axiscareClientId) ?? null;
+
+    let operationalBucket: AxisCareClientOperationalBucket;
+    let exclusionReason: string | null;
+    if (row.isNameDenylisted) {
+      operationalBucket = "excluded";
+      exclusionReason = "name_denylist";
+    } else {
+      operationalBucket = resolveAxisCareClientOperationalBucket(row.computedLifecycle, dispositionRow?.disposition ?? null);
+      exclusionReason = operationalBucket === "excluded" ? `disposition:${dispositionRow?.disposition}` : null;
+    }
+    counts[operationalBucket] += 1;
+
+    const [firstName, ...lastParts] = (row.vendorDisplayName ?? "").split(" ");
+
+    return {
+      axiscareId: row.axiscareClientId,
+      name: row.vendorDisplayName ?? `AxisCare #${row.axiscareClientId}`,
+      firstName: firstName ?? "",
+      lastName: lastParts.join(" "),
+      statusActive: row.statusActive,
+      statusLabel: row.statusLabel,
+      classes: row.classCodes,
+      communityName: row.axiscareCommunityName,
+      resolvedCommunityId: row.resolvedCommunityId,
+      resolvedCommunityName: row.resolvedCommunityId ? (communityNameById.get(row.resolvedCommunityId) ?? null) : null,
+      computedLifecycle: row.computedLifecycle,
+      disposition: dispositionRow?.disposition ?? null,
+      dispositionRationale: dispositionRow?.rationale ?? null,
+      dispositionSetBy: dispositionRow?.setBy ?? null,
+      dispositionSetAt: dispositionRow?.setAt ?? null,
+      operationalBucket,
+      exclusionReason,
+      identityStatus: row.identityStatus,
+      residentMatch: {
+        residentId: row.matchedResidentId,
+        residentName: row.matchedResidentId ? (residentNamesById.get(row.matchedResidentId) ?? null) : null,
+        basis: row.matchBasis ?? "none",
+        requiresReview: row.identityStatus === "needs_identity_review",
+        confirmedLinkStatus: row.identityStatus === "confirmed" ? "confirmed" : null,
+      },
+      suggestedMatches: [],
     };
   });
 

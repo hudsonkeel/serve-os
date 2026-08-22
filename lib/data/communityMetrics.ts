@@ -19,6 +19,7 @@ import {
   ResidentRelationshipSummary,
 } from "@/lib/data/relationships";
 import { collapseLegacyProspectStatus, deriveServeRelationshipStatus } from "@/lib/residents/search";
+import type { CommunityQueryFilter } from "@/lib/auth/communityScope";
 import {
   Resident,
   ResidentContactImport,
@@ -603,16 +604,20 @@ function buildMetrics(
   };
 }
 
-async function fetchSupabaseResidents(): Promise<{
+// SQL-first community scoping — the one query this whole module's resident
+// population ultimately comes from. A "none" filter never even reaches the
+// database: there is no community-owned population to return, and the
+// caller (getCommunityMetrics) short-circuits before this runs.
+async function fetchSupabaseResidents(filter: CommunityQueryFilter): Promise<{
   residents: Resident[];
   error?: string;
 }> {
   const supabase = createServerClient();
-  const { data, error } = await supabase
-    .from("residents")
-    .select("*")
-    .eq("is_active", true)
-    .order("display_name", { ascending: true });
+  let query = supabase.from("residents").select("*").eq("is_active", true);
+  if (filter.mode === "single") {
+    query = query.eq("community_id", filter.communityId);
+  }
+  const { data, error } = await query.order("display_name", { ascending: true });
 
   if (error) {
     console.error("[getCommunityMetrics:residents:error]", {
@@ -668,10 +673,32 @@ async function fetchContactImports(): Promise<ResidentContactImport[]> {
   return data ?? [];
 }
 
-export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
+const EMPTY_COMMUNITY_METRICS: CommunityMetricsData = {
+  communityName: COMMUNITY.name,
+  metrics: {
+    totalResidents: 0,
+    wellnessFollowUpsDueOrOverdue: 0,
+    wellnessFollowUpsDueThisWeek: 0,
+    requiresFollowUp: 0,
+    pendingAssessments: 0,
+    familiesAwaitingProposal: 0,
+    birthdaysThisWeek: 0,
+  },
+  residentRecords: [],
+};
+
+export async function getCommunityMetrics(filter: CommunityQueryFilter): Promise<CommunityMetricsData> {
   await connection();
 
-  const { residents, error: residentsError } = await fetchSupabaseResidents();
+  // No community-owned population is returned for "none" — never a fetch
+  // that gets filtered away client-side. See communityScopeToQueryFilter()'s
+  // own contract: unassigned/non_community/unauthorized scope resolves
+  // here, not to every resident.
+  if (filter.mode === "none") {
+    return EMPTY_COMMUNITY_METRICS;
+  }
+
+  const { residents, error: residentsError } = await fetchSupabaseResidents(filter);
   const [
     pipelineCounts,
     relationshipImports,
@@ -732,21 +759,32 @@ export async function getCommunityMetrics(): Promise<CommunityMetricsData> {
   };
 }
 
-export async function getCommunityResidentById(id: string) {
+// SQL-first scope enforcement, not fetch-then-check: a resident outside the
+// caller's authorized filter simply never comes back from this query — the
+// same "not found" a genuinely missing id would produce. See section 6 of
+// this phase's brief: a direct URL to a resident in another community must
+// not bypass scope, and the caller (the resident detail page) already
+// treats a null result as notFound().
+export async function getCommunityResidentById(id: string, filter: CommunityQueryFilter) {
   await connection();
 
+  if (filter.mode === "none") {
+    return null;
+  }
+
   const supabase = createServerClient();
+  let residentQuery = supabase.from("residents").select("*").eq("id", id);
+  if (filter.mode === "single") {
+    residentQuery = residentQuery.eq("community_id", filter.communityId);
+  }
+
   const [
     { data, error },
     relationshipImports,
     contactImports,
     profile,
   ] = await Promise.all([
-    supabase
-      .from("residents")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle<Resident>(),
+    residentQuery.maybeSingle<Resident>(),
     fetchRelationshipImports(),
     fetchContactImports(),
     getRelationshipProfile(id),

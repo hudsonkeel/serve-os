@@ -4,7 +4,9 @@ import { useState, useTransition } from "react";
 import { AxisCareClientRow } from "@/components/peopleWeServe/AxisCareClientRow";
 import { QuickExcludeButton } from "./QuickExcludeButton";
 import { MatchToExistingPersonControl } from "./MatchToExistingPersonControl";
+import { CreateNewResidentControl } from "./CreateNewResidentControl";
 import { bulkExcludeAxisCareRecords } from "@/lib/actions/reconciliation";
+import { buildReconciliationAnchorId } from "@/lib/reconciliation/anchor";
 import type { AxisCareClientOperationalRow } from "@/lib/data/axiscareClientOperationalSummary";
 
 // Orphan AxisCare records — no canonical Serve person identified yet.
@@ -118,7 +120,11 @@ export function UnmatchedRecordsList({ rows, canAct }: UnmatchedRecordsListProps
 
       <div className="divide-y divide-ivory-border">
         {rows.map((row) => (
-          <div key={row.axiscareId} className="flex items-start gap-3 px-4 py-2">
+          <div
+            key={row.axiscareId}
+            id={buildReconciliationAnchorId("axiscare", row.axiscareId)}
+            className="flex scroll-mt-4 items-start gap-3 px-4 py-2 target:bg-gold/5 target:ring-2 target:ring-inset target:ring-gold/40"
+          >
             {canAct && (
               <input
                 type="checkbox"
@@ -131,7 +137,7 @@ export function UnmatchedRecordsList({ rows, canAct }: UnmatchedRecordsListProps
             <div className="min-w-0 flex-1">
               <AxisCareClientRow row={row} />
               {canAct && (
-                <div className="-mt-3 space-y-2 px-6 pb-4">
+                <div className="-mt-3 flex flex-wrap items-start gap-2 px-6 pb-4">
                   <MatchToExistingPersonControl
                     axiscareId={row.axiscareId}
                     vendorDisplayName={row.name}
@@ -139,6 +145,17 @@ export function UnmatchedRecordsList({ rows, canAct }: UnmatchedRecordsListProps
                     statusActive={row.statusActive}
                     classes={[...row.classes]}
                     suggestedMatches={[...row.suggestedMatches]}
+                    resolvedCommunityId={row.resolvedCommunityId}
+                    resolvedCommunityName={row.resolvedCommunityName}
+                  />
+                  <CreateNewResidentControl
+                    axiscareId={row.axiscareId}
+                    vendorDisplayName={row.name}
+                    firstName={row.firstName}
+                    lastName={row.lastName}
+                    classes={[...row.classes]}
+                    resolvedCommunityId={row.resolvedCommunityId}
+                    resolvedCommunityName={row.resolvedCommunityName}
                   />
                   <QuickExcludeButton axiscareId={row.axiscareId} />
                 </div>
