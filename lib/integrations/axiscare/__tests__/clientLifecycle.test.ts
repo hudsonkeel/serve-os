@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { classifyAxisCareClientLifecycle } from "../clientLifecycle.ts";
+import { classifyAxisCareClientLifecycle, hasServiceStarted } from "../clientLifecycle.ts";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -77,6 +77,35 @@ test("inactive with contact info but no start date -> needs_review, not assumed 
     }),
     "needs_review"
   );
+});
+
+// ─── hasServiceStarted — the 2026-08-23 fix ────────────────────────────
+
+test("hasServiceStarted: null/undefined start date -> false", () => {
+  assert.equal(hasServiceStarted(null), false);
+  assert.equal(hasServiceStarted(undefined), false);
+});
+
+test("hasServiceStarted: a past start date -> true", () => {
+  assert.equal(hasServiceStarted("2026-01-01", new Date("2026-08-23T00:00:00Z")), true);
+});
+
+test("hasServiceStarted: today's date -> true (the day service begins already counts as started)", () => {
+  assert.equal(hasServiceStarted("2026-08-23", new Date("2026-08-23T00:00:00Z")), true);
+});
+
+test("REGRESSION (Karen Mabry / AxisCare #44 live case): a future start date -> false, service has not begun", () => {
+  assert.equal(hasServiceStarted("2026-08-28", new Date("2026-08-23T00:00:00Z")), false);
+});
+
+test("REGRESSION: classifyAxisCareClientLifecycle with a future-dated start (via hasServiceStarted) is needs_review, never inactive_client", () => {
+  const result = classifyAxisCareClientLifecycle({
+    status: { active: false, label: "Inactive" },
+    classes: [],
+    hasContactInfo: true,
+    hasStartDate: hasServiceStarted("2026-08-28", new Date("2026-08-23T00:00:00Z")),
+  });
+  assert.equal(result, "needs_review");
 });
 
 let passed = 0;

@@ -7,7 +7,7 @@
 //
 //   node --experimental-strip-types --conditions=react-server lib/clientReadiness/__tests__/clientReadinessReadiness.test.ts
 import assert from "node:assert/strict";
-import { evaluateClientProfile, evaluateDischarge, evaluateSignificantEvents } from "../clientReadinessReadiness.ts";
+import { evaluateClientProfile, evaluateDischarge, evaluateSignificantEvents, isOutsideClientReadinessPopulation } from "../clientReadinessReadiness.ts";
 import { CR_CLIENT_PROFILE_ON_FILE, CR_DISCHARGE_SUMMARY_ON_FILE, CR_SIGNIFICANT_EVENTS_DOCUMENTED } from "../constants.ts";
 import type { PersonEvidence, PersonRequirement, Resident } from "../../supabase/types.ts";
 
@@ -175,6 +175,17 @@ test("Client Profile ignores a superseded 'confirmed no guardian' attestation �
   assert.equal(result.status, "missing_evidence");
 });
 
+test("REGRESSION (2026-08-22 date-semantics correction): a missing admission/start-of-care date never blocks Client Profile compliance — P&P §301(a) does not name it", () => {
+  const r = resident({
+    date_of_admission: null,
+    legal_guardian_name: "John Smith",
+    legal_guardian_phone: "5555550199",
+  });
+  const result = evaluateClientProfile(r, requirement(), []);
+  assert.equal(result.status, "compliant");
+  assert.doesNotMatch(result.explanation, /admission/i);
+});
+
 // ─── Significant Events — zero events is not_applicable, never a failure ──
 
 test("Significant Events is not_applicable when zero events have been recorded — never a failure", () => {
@@ -240,6 +251,30 @@ test("Discharge is compliant for inactive_client with verified discharge evidenc
   const dischargeEvidence = evidence({ requirement_id: req.id, document_id: "doc-1" });
   const result = evaluateDischarge("inactive_client", req, [dischargeEvidence]);
   assert.equal(result.status, "compliant");
+});
+
+// ─── isOutsideClientReadinessPopulation — 2026-08-23 semantic graft ──────
+// (Category A from the Audit-Readiness -> Multi-Community inventory,
+// ported from the preserved sibling implementation, commit 6500be6.)
+
+test("REGRESSION (Maria Matos bucket): prospect is outside the Client Readiness population", () => {
+  assert.equal(isOutsideClientReadinessPopulation("prospect"), true);
+});
+
+test("no_current_relationship is outside the Client Readiness population", () => {
+  assert.equal(isOutsideClientReadinessPopulation("no_current_relationship"), true);
+});
+
+test("REGRESSION (Karen Mabry bucket): needs_review is outside the Client Readiness population", () => {
+  assert.equal(isOutsideClientReadinessPopulation("needs_review"), true);
+});
+
+test("active_client is NOT outside the population -- receives full standard evaluation", () => {
+  assert.equal(isOutsideClientReadinessPopulation("active_client"), false);
+});
+
+test("REGRESSION: inactive_client is deliberately NOT swept into the broad gate -- historical/discharge-related readiness stays visible", () => {
+  assert.equal(isOutsideClientReadinessPopulation("inactive_client"), false);
 });
 
 async function run() {

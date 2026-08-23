@@ -4,6 +4,7 @@ import { getCommunityResidentById } from "@/lib/data/communityMetrics";
 import { getResidentConnections } from "@/lib/data/connections";
 import { PageContainer } from "@/components/PageContainer";
 import { GettingToKnow } from "@/components/residents/GettingToKnow";
+import { summarizeGettingToKnow } from "@/lib/gettingToKnow/summarize";
 import { ResidentProfileCard } from "@/components/residents/ResidentProfileCard";
 import { WellnessNotes } from "@/components/residents/WellnessNotes";
 import { getWellnessNotes } from "@/lib/data/wellnessNotes";
@@ -11,14 +12,15 @@ import { getOpenResidentWellnessFollowUps } from "@/lib/data/wellnessFollowUps";
 import { getResidentCurrentNeeds } from "@/lib/data/residentCurrentNeeds";
 import { getResidentWorkingNotes } from "@/lib/data/residentWorkingNotes";
 import { getRelationshipsByResident, getRelationshipActions } from "@/lib/data/relationships";
-import { StartRelationshipCard } from "@/components/residents/StartRelationshipCard";
+import { findActiveResidentProspect } from "@/lib/relationships/duplicateDetection";
 import { ResidentRelationshipSummary } from "@/components/residents/ResidentRelationshipSummary";
 import { ResidentEssentials } from "@/components/residents/ResidentEssentials";
 import { CollapsibleSection } from "@/components/residents/CollapsibleSection";
 import { getResidentTimeline } from "@/lib/data/residentTimeline";
-import { ResidentMemory } from "@/components/residents/ResidentMemory";
+import { CurrentPicture } from "@/components/residents/CurrentPicture";
+import { WorkWithThisPersonStrip } from "@/components/residents/WorkWithThisPersonStrip";
+import { ResidentTimeline } from "@/components/residents/ResidentTimeline";
 import { AssessmentSection } from "@/components/residents/AssessmentSection";
-import { AssessmentCaptureButton } from "@/components/residents/AssessmentCaptureButton";
 import { getAssessmentSessionsForResident } from "@/lib/data/assessmentIntelligence";
 import { Badge } from "@/components/ui/Badge";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
@@ -27,7 +29,14 @@ import { canAccessResidentEvidence, canEditResidentProfile, canPerformReconcilia
 import { ResidentEvidenceSection } from "@/components/residents/ResidentEvidenceSection";
 import { ServeRelationshipCorrectionControl } from "@/components/residents/ServeRelationshipCorrectionControl";
 import { ClientReadinessBoard, type ClientReadinessBoardItem } from "@/components/clientReadiness/ClientReadinessBoard";
-import { getClientReadinessEvaluation } from "@/lib/clientReadiness/clientReadinessReadiness";
+import { ClientReadinessSection } from "@/components/clientReadiness/ClientReadinessSection";
+import { getClientReadinessEvaluation, isOutsideClientReadinessPopulation } from "@/lib/clientReadiness/clientReadinessReadiness";
+import { buildTriageClassificationDetail } from "@/lib/clientReadiness/triageClassificationDetail";
+import {
+  getCurrentResidentTriageClassification,
+  getResidentTriageClassificationHistory,
+} from "@/lib/data/residentTriageClassifications";
+import { getAxisCareClientCanonicalSnapshot } from "@/lib/data/axiscareClientCanonicalSnapshot";
 import { getResidentServeRelationshipDetail } from "@/lib/data/residentServeRelationships";
 import { getOpenDuplicateCandidateForResident } from "@/lib/data/residentIdentity";
 import {
@@ -135,8 +144,31 @@ export default async function ResidentDetailPage({
   const residentRelationshipDetail = canSeeRelationshipDetail
     ? await getResidentServeRelationshipDetail(id, communityFilter)
     : null;
+  // Structured triage classification — resolved independent of whether
+  // Serve has recorded anything yet, so a recognized (or legacy/
+  // unrecognized) AxisCare value can still render on its own. Only trust
+  // the AxisCare match once identity is confirmed, matching the same gate
+  // already used for the header's "AxisCare #..." display below. Resolved
+  // BEFORE getClientReadinessEvaluation so it can be passed straight in —
+  // this page is the one caller that supplies it, getting the atomicity
+  // guarantee documented on evaluateTriageClassification().
+  const triageHistory = canManageEvidence ? await getResidentTriageClassificationHistory(id) : [];
+  const currentTriageClassification = canManageEvidence ? await getCurrentResidentTriageClassification(id) : null;
+  const axiscareTriageSnapshot =
+    canManageEvidence && residentRelationshipDetail?.axiscareMatch?.identityStatus === "confirmed"
+      ? await getAxisCareClientCanonicalSnapshot(residentRelationshipDetail.axiscareMatch.axiscareId)
+      : null;
+  const triageDetail = buildTriageClassificationDetail({
+    serveCurrent: currentTriageClassification,
+    axiscareRawDescription: axiscareTriageSnapshot?.triage_level_description ?? null,
+  });
+
   const clientReadiness = canManageEvidence
-    ? await getClientReadinessEvaluation(id, residentRelationshipDetail?.projection.relationship ?? "no_current_relationship")
+    ? await getClientReadinessEvaluation(
+        id,
+        residentRelationshipDetail?.projection.relationship ?? "no_current_relationship",
+        currentTriageClassification
+      )
     : null;
 
   const resident = record.resident;
@@ -157,6 +189,17 @@ export default async function ResidentDetailPage({
   const clientReadinessSatisfiedCount = clientReadinessApplicable.filter(
     (r) => r.status === "compliant" || r.status === "satisfied_by_event" || r.status === "exception"
   ).length;
+  // The same predicate getClientReadinessEvaluation() itself gates
+  // standard requirements on (isOutsideClientReadinessPopulation) — never
+  // a second, independently-maintained check. Deliberately NOT "anything
+  // but active_client": inactive_client (a real former/discharged client)
+  // stays inside the population here too, matching Discharge/Transfer's
+  // own applicability rule — their historical compliance record should
+  // never collapse into the same "not applicable" messaging a prospect
+  // who's never been served gets.
+  const clientReadinessOutsidePopulation = isOutsideClientReadinessPopulation(
+    residentRelationshipDetail?.projection.relationship ?? "no_current_relationship"
+  );
   const guardianConfirmedNone = Boolean(
     clientReadiness?.requirements.find((r) => r.requirement.requirement_code === "CR_CLIENT_PROFILE_ON_FILE")?.latestEvidence
       ?.satisfaction_context === "guardian_confirmed_none"
@@ -179,6 +222,26 @@ export default async function ResidentDetailPage({
       })[0] ?? null;
   const recentWorkingNote = workingNotes[0] ?? null;
 
+  // Reused, not re-derived: findActiveResidentProspect() is the same
+  // duplicate-prevention rule the old "Start Relationship" flow already
+  // used, so "Add to Prospect Pipeline" never offers to create a second
+  // open prospect record.
+  const activeProspectRelationship = findActiveResidentProspect(
+    relationships.map((r) => ({
+      id: r.id,
+      relationshipType: r.relationship_type,
+      residentId: r.resident_id,
+      status: r.status,
+      updatedAt: r.updated_at,
+    })),
+    id
+  );
+
+  // Reused, not re-derived: the same approved/operationalized status
+  // vocabulary AssessmentSection.tsx's own StatusBadge already treats as
+  // "successfully completed" — no new assessment-state logic.
+  const hasCompletedAssessment = assessmentSessions.some((s) => s.status === "approved" || s.status === "operationalized");
+
   const ispStatus = clientReadinessBoardItems.find((r) => r.requirementCode === "CR_ISP_ON_FILE_AND_CURRENT")?.status;
   const assessmentReadinessStatus = clientReadinessBoardItems.find((r) => r.requirementCode === "CR_ASSESSMENT_CURRENT")?.status;
 
@@ -193,7 +256,16 @@ export default async function ResidentDetailPage({
 
   return (
     <PageContainer title={record.residentName}>
-      <div className="mx-auto max-w-3xl">
+      {/* The one shared width constraint for the whole resident-profile
+          composition — PageContainer's own <main> has no max-width of its
+          own (just page padding), so this single div was the entire
+          "narrow centered column" root cause. Widened from max-w-3xl
+          (768px) to max-w-6xl (1152px): enough for Current Picture's
+          Current Needs/Working Notes to sit side-by-side on desktop
+          without individual cards needing their own hardcoded widths, and
+          still a deliberate, bounded reading width — not viewport-stretch —
+          on very wide monitors. */}
+      <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex items-center gap-4">
           <Link href="/residents" className="inline-flex h-9 items-center font-sans text-sm font-medium text-navy transition-colors hover:text-navy-light">
             ← Back to Residents
@@ -223,10 +295,6 @@ export default async function ResidentDetailPage({
           </div>
 
           <div className="flex gap-3 sm:shrink-0">
-            <AssessmentCaptureButton
-              residentId={id}
-              className="flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg bg-navy px-4 font-sans text-button font-medium text-white shadow-card transition-colors hover:bg-navy/90 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
-            />
             {askServeEnabled && (
               <AskServeTrigger
                 context={buildAskServeContext(PEOPLE_WE_SERVE_CONTEXT, {
@@ -242,6 +310,24 @@ export default async function ResidentDetailPage({
               />
             )}
           </div>
+        </div>
+
+        {/* Work With This Person — the obvious "where do I click to
+            capture something" strip, near the top per the resident-profile
+            UX simplification. */}
+        <div className="mb-6">
+          <WorkWithThisPersonStrip
+            residentId={id}
+            residentDisplayName={record.residentDisplayName}
+            relationshipId={primaryRelationship?.id ?? null}
+            hasCompletedAssessment={hasCompletedAssessment}
+            canAddToProspectPipeline={activeProspectRelationship === null}
+            communityName={resident.community_name}
+            contactName={contactName}
+            contactRelationship={resident.family_contact_relationship ?? ""}
+            contactPhone={record.phone ?? ""}
+            contactEmail={record.email ?? ""}
+          />
         </div>
 
         {/* One concise alert, only when something genuinely needs a
@@ -265,8 +351,11 @@ export default async function ResidentDetailPage({
         )}
 
         <div className="space-y-6">
-          {/* B — Relationship / CRM summary */}
-          {primaryRelationship ? (
+          {/* B — Relationship / CRM summary. Renders nothing when no
+              relationship record exists yet — "Add to Prospect Pipeline"
+              (in the Work With This Person strip's More menu) is the
+              creation entry point instead of a prominent empty card. */}
+          {primaryRelationship && (
             <ResidentRelationshipSummary
               residentId={id}
               residentDisplayName={record.residentDisplayName}
@@ -274,29 +363,31 @@ export default async function ResidentDetailPage({
               nextAction={openRelationshipAction}
               recentNote={recentWorkingNote}
             />
-          ) : (
-            <StartRelationshipCard
-              residentId={id}
-              residentName={record.residentName}
-              communityName={resident.community_name}
-              initialContactName={contactName}
-              initialContactRelationship={resident.family_contact_relationship ?? ""}
-              initialContactPhone={record.phone ?? ""}
-              initialContactEmail={record.email ?? ""}
-              existingRelationships={relationships}
-            />
           )}
 
-          {/* C — Client Readiness. The requirement cards ARE the work
-              queue — no separate Needs Attention checklist duplicating
-              them. */}
+          {/* Current Picture — what's true right now and what's in motion.
+              Promoted to primary visibility per the resident-profile UX
+              simplification; the full Timeline and full Wellness history
+              live under Record & History below instead. */}
+          <CurrentPicture
+            residentId={id}
+            currentNeeds={currentNeeds}
+            workingNotes={workingNotes}
+            wellnessNotes={wellnessNotes}
+            openFollowUps={openFollowUps}
+          />
+
+          {/* C — Client Readiness. Collapsed by default (this is a CRM/
+              working-memory profile first) — the requirement cards ARE
+              the work queue once opened, no separate Needs Attention
+              checklist duplicating them. */}
           {canManageEvidence && clientReadiness && (
-            <div className="rounded-xl border border-ivory-border bg-surface p-5">
-              <p className="mb-1 font-sans text-label font-semibold uppercase tracking-widest text-subtle">Client Readiness</p>
-              <p className="mb-4 font-sans text-sm text-body">
-                <span className="font-semibold text-success-text">{clientReadinessSatisfiedCount}</span> of{" "}
-                {clientReadinessApplicable.length} applicable requirements satisfied
-              </p>
+            <ClientReadinessSection
+              isOutsidePopulation={clientReadinessOutsidePopulation}
+              applicableCount={clientReadinessApplicable.length}
+              satisfiedCount={clientReadinessSatisfiedCount}
+              defaultOpen={Boolean(selectedRequirementCode)}
+            >
               <ClientReadinessBoard
                 residentId={id}
                 items={clientReadinessBoardItems}
@@ -310,8 +401,10 @@ export default async function ResidentDetailPage({
                   guardianPhone: resident.legal_guardian_phone ?? "",
                   guardianConfirmedNone,
                 }}
+                triageDetail={triageDetail}
+                triageHistory={triageHistory}
               />
-            </div>
+            </ClientReadinessSection>
           )}
 
           {/* D — Essential client details */}
@@ -334,20 +427,28 @@ export default async function ResidentDetailPage({
             residentPageHref={residentPageHref}
           />
 
+          {/* About This Person — collapsed by default; a compact summary
+              stands in for the four largely-empty category boxes this used
+              to always render. Full content (personal details, interests,
+              milestones, capture forms) is unchanged behind the expand. */}
+          <CollapsibleSection title="About This Person" description={summarizeGettingToKnow(connections)}>
+            <GettingToKnow residentId={id} connections={connections} />
+          </CollapsibleSection>
+
           {/* E — Record & History. Everything detail-heavy or
               provenance-oriented, preserved in full but collapsed by
               default. */}
           <CollapsibleSection
             title="Record &amp; History"
-            description="Notes, assessments, documents, imported source data, and provenance — kept for auditability, not primary work."
+            description="Timeline, assessments, documents, imported source data, and provenance — kept for auditability, not primary work."
           >
-            <ResidentMemory residentId={id} currentNeeds={currentNeeds} workingNotes={workingNotes} timelineEvents={timelineEvents} />
+            <div id="timeline">
+              <ResidentTimeline events={timelineEvents} />
+            </div>
 
             <AssessmentSection residentId={id} residentName={record.residentDisplayName} sessions={assessmentSessions} />
 
             <WellnessNotes residentId={id} notes={wellnessNotes} openFollowUps={openFollowUps} />
-
-            <GettingToKnow residentId={id} connections={connections} />
 
             {canManageEvidence && (
               <div>

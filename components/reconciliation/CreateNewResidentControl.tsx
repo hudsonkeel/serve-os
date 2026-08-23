@@ -39,7 +39,7 @@ export function CreateNewResidentControl({
   const [lastName, setLastName] = useState(initialLastName);
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<
-    { type: "error"; text: string } | { type: "success"; residentId: string } | null
+    { type: "error"; text: string } | { type: "success"; residentId: string; syncWarning?: string } | null
   >(null);
 
   function submit() {
@@ -59,7 +59,7 @@ export function CreateNewResidentControl({
         setResult({ type: "error", text: outcome.error ?? "Could not create a resident." });
         return;
       }
-      setResult({ type: "success", residentId: outcome.residentId });
+      setResult({ type: "success", residentId: outcome.residentId, syncWarning: outcome.syncWarning });
       setMode("idle");
     });
   }
@@ -71,6 +71,7 @@ export function CreateNewResidentControl({
         <Link href={`/residents/${result.residentId}`} className="font-medium text-navy hover:text-navy-light">
           View resident →
         </Link>
+        {result.syncWarning && <span className="mt-1 block font-sans text-xs text-warning-text">{result.syncWarning}</span>}
       </p>
     );
   }

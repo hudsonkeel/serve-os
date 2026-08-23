@@ -20,7 +20,7 @@ import {
   type NormalizedResidentCandidate,
   type ClientMatchBasis,
 } from "../integrations/axiscare/clientIdentityMatching.ts";
-import { classifyAxisCareClientLifecycle, type ServeClientLifecycle } from "../integrations/axiscare/clientLifecycle.ts";
+import { classifyAxisCareClientLifecycle, hasServiceStarted, type ServeClientLifecycle } from "../integrations/axiscare/clientLifecycle.ts";
 import {
   resolveAxisCareClientOperationalBucket,
   resolveAxisCareIdentityStatus,
@@ -319,7 +319,7 @@ export async function getAxisCareClientOperationalSummary(): Promise<AxisCareCli
       status: { active: !!c.status?.active, label: c.status?.label ?? "" },
       classes: (c.classes ?? []).map((cl) => ({ code: cl.code, label: cl.label ?? "" })),
       hasContactInfo,
-      hasStartDate: !!c.startDate,
+      hasStartDate: hasServiceStarted(c.startDate),
     });
 
     const dispositionRow = dispositions.get(axiscareId) ?? null;

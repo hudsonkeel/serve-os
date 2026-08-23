@@ -23,7 +23,7 @@ import {
   isKnownNonResidentAxisCareClient,
   type ClientMatchBasis,
 } from "../integrations/axiscare/clientIdentityMatching.ts";
-import { classifyAxisCareClientLifecycle } from "../integrations/axiscare/clientLifecycle.ts";
+import { classifyAxisCareClientLifecycle, hasServiceStarted } from "../integrations/axiscare/clientLifecycle.ts";
 import { resolveAxisCareResidentMatch } from "../integrations/axiscare/clientOperationalStatus.ts";
 import { resolveAxisCareCommunityCode } from "../integrations/axiscare/communityMapping.ts";
 import { isAxisCareCommunityPlaceholderRecord } from "../integrations/axiscare/placeholderRecords.ts";
@@ -106,7 +106,7 @@ export async function syncAxisCareOperationalState(): Promise<AxisCareOperationa
     const email = normalizeEmail(c.personalEmail ?? c.billingEmail);
     const phones = [c.homePhone, c.mobilePhone, c.otherPhone].map(normalizePhone).filter((p): p is string => p !== null);
     const hasContactInfo = !!(email || phones.length);
-    const hasStartDate = !!c.startDate;
+    const hasStartDate = hasServiceStarted(c.startDate);
 
     const computedLifecycle = classifyAxisCareClientLifecycle({
       status: { active: !!c.status?.active, label: c.status?.label ?? "" },

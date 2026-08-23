@@ -38,6 +38,26 @@ export interface ClientLifecycleInput {
   readonly hasStartDate: boolean;
 }
 
+// A start date that hasn't arrived yet is not evidence of "actually
+// received service at some point" — it's the opposite: service hasn't
+// begun. Comparing the raw YYYY-MM-DD strings directly (never parsed
+// through a timezone-sensitive Date) is safe and sufficient for this
+// format — lexicographic and chronological order agree. Callers must
+// compute hasStartDate through this, never a bare `!!startDate`
+// existence check — that was the actual defect (fixed 2026-08-23):
+// AxisCare client #44 (Karen Mabry), status.active=false, a real start
+// date of 2026-08-28 (nearly a week in the future, service not yet
+// begun), was classified inactive_client — "a genuine former client" —
+// purely because SOME start date value existed, with no thought to
+// whether it had passed. That incorrectly made Discharge/Transfer
+// applicable for someone who hadn't even started, let alone ended,
+// service.
+export function hasServiceStarted(startDate: string | null | undefined, now: Date = new Date()): boolean {
+  if (!startDate) return false;
+  const today = now.toISOString().slice(0, 10);
+  return startDate <= today;
+}
+
 export function classifyAxisCareClientLifecycle(input: ClientLifecycleInput): ServeClientLifecycle {
   if (input.status.active) {
     return "active_client";

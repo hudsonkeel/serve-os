@@ -8,6 +8,9 @@ import { ClientProfileRemediationForm } from "@/components/clientReadiness/Clien
 import { ServiceAgreementEvidenceForm } from "@/components/clientReadiness/ServiceAgreementEvidenceForm";
 import { MedicationListAttestationForm } from "@/components/clientReadiness/MedicationListAttestationForm";
 import { CareDocumentationAttestationForm } from "@/components/clientReadiness/CareDocumentationAttestationForm";
+import { TriageClassificationControl } from "@/components/clientReadiness/TriageClassificationControl";
+import type { TriageClassificationDetail } from "@/lib/clientReadiness/triageClassificationDetail";
+import type { ResidentTriageClassification } from "@/lib/data/residentTriageClassifications";
 import {
   CR_ASSESSMENT_CURRENT,
   CR_BILLING_AGREEMENT_ON_FILE,
@@ -44,7 +47,7 @@ function isSatisfiedStatus(status: AuditReadinessStatus): boolean {
 // label depends on which of physician/guardian is actually missing.
 const REQUIREMENT_ACTION_LABELS: Record<string, string> = {
   [CR_ASSESSMENT_CURRENT]: "Start or Upload Assessment",
-  [EP_CLIENT_TRIAGE_CLASSIFIED]: "Upload Triage Classification",
+  [EP_CLIENT_TRIAGE_CLASSIFIED]: "Record Triage Classification",
   [CR_ISP_ON_FILE_AND_CURRENT]: "Upload ISP",
   [CR_SERVICE_AGREEMENT_AND_DISCLOSURE_SIGNED]: "Upload Service Agreement",
   [CR_BILLING_AGREEMENT_ON_FILE]: "Upload Billing Document",
@@ -88,11 +91,15 @@ function RequirementActions({
   residentId,
   canManage,
   careContacts,
+  triageDetail,
+  triageHistory,
 }: {
   item: ClientReadinessBoardItem;
   residentId: string;
   canManage: boolean;
   careContacts: ClientReadinessCareContacts;
+  triageDetail: TriageClassificationDetail;
+  triageHistory: ResidentTriageClassification[];
 }) {
   if (!canManage) return null;
 
@@ -133,10 +140,7 @@ function RequirementActions({
   }
 
   if (item.requirementCode === EP_CLIENT_TRIAGE_CLASSIFIED) {
-    if (isSatisfiedStatus(item.status)) {
-      return <p className="font-sans text-xs text-muted">Satisfied — evidence on file{item.evidenceSummary ? ` (${item.evidenceSummary})` : ""}.</p>;
-    }
-    return <DocumentEvidenceForm residentId={residentId} requirementCode={item.requirementCode} label="Upload Triage Classification" />;
+    return <TriageClassificationControl residentId={residentId} triageDetail={triageDetail} triageHistory={triageHistory} />;
   }
 
   if (item.requirementCode === CR_ISP_ON_FILE_AND_CURRENT) {
@@ -198,6 +202,8 @@ export function ClientReadinessBoard({
   canViewDocuments,
   initialSelectedCode,
   careContacts,
+  triageDetail,
+  triageHistory,
 }: {
   residentId: string;
   items: ClientReadinessBoardItem[];
@@ -205,6 +211,8 @@ export function ClientReadinessBoard({
   canViewDocuments: boolean;
   initialSelectedCode?: string;
   careContacts: ClientReadinessCareContacts;
+  triageDetail: TriageClassificationDetail;
+  triageHistory: ResidentTriageClassification[];
 }) {
   const [selectedCode, setSelectedCode] = useState<string | null>(initialSelectedCode ?? null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -284,7 +292,14 @@ export function ClientReadinessBoard({
           </div>
 
           <div className="mt-4 border-t border-ivory-border pt-4">
-            <RequirementActions item={selected} residentId={residentId} canManage={canManage} careContacts={careContacts} />
+            <RequirementActions
+              item={selected}
+              residentId={residentId}
+              canManage={canManage}
+              careContacts={careContacts}
+              triageDetail={triageDetail}
+              triageHistory={triageHistory}
+            />
           </div>
         </div>
       )}

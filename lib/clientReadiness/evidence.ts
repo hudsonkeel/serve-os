@@ -5,7 +5,10 @@
 // satisfaction_context is validated against this domain's own closed
 // vocabulary before it reaches the database.
 import { createPersonEvidence, getPersonEvidenceForSubject, verifyPersonEvidence } from "../data/personEvidence.ts";
-import { ASSESSMENT_VALIDITY_DAYS } from "./constants.ts";
+import { getCurrentResidentTriageClassification } from "../data/residentTriageClassifications.ts";
+import { linkEvidenceToRequirement } from "../data/requirementEvidenceLinks.ts";
+import { ASSESSMENT_VALIDITY_DAYS, ISP_VALIDITY_DAYS } from "./constants.ts";
+import { TRIAGE_LEVEL_LABELS } from "./triageClassification.ts";
 import type { ClientReadinessSatisfactionContext } from "./satisfactionContext.ts";
 import type { AttestationResult, AuthoritativeSourceSystem, PersonEvidence } from "../supabase/types.ts";
 
@@ -121,6 +124,123 @@ export async function recordAssessmentEvidence(input: {
   return { evidence: result.evidence, alreadyRecorded: false };
 }
 
+// ─── Assessment → ISP composition (Client Readiness evidence-composition
+// correction) ───────────────────────────────────────────────────────────
+// Serve's signed Assessment/Care Plan IS the operational ISP — its
+// daily_life (task list), when (frequency/duration/schedule), mobility_
+// safety (equipment), and what_why.primary_goals fields are the service
+// plan's actual content (confirmed against lib/assessmentIntelligence/
+// domainRegistry.ts's own field registry, not inferred from a filename).
+// Same composition pattern already proven for Service Agreement ->
+// Billing (recordServiceAgreementEvidenceAction in lib/actions/
+// clientReadiness.ts): a second, independent person_evidence row — own
+// requirement_id (so the standard evaluator reads it directly, no engine
+// change needed), same session reference — plus a
+// requirement_evidence_links row back to the original Assessment evidence
+// for audit traceability. Never a duplicate assessment/upload. Idempotent
+// the same way recordAssessmentEvidence() is: dedupes on (requirementId,
+// assessmentSessionId).
+export async function recordAssessmentIspEvidence(input: {
+  residentId: string;
+  requirementId: string; // CR_ISP_ON_FILE_AND_CURRENT's id — resolved by the caller
+  assessmentEvidenceId: string; // the CR_ASSESSMENT_CURRENT evidence row this composes from
+  assessmentSessionId: string;
+  effectiveDate: string; // same as the Assessment evidence's own effective date
+  assessor: string;
+  approvingActor: string;
+}): Promise<{ evidence?: PersonEvidence; alreadyRecorded?: boolean; error?: string }> {
+  const existing = await getPersonEvidenceForSubject("resident", input.residentId);
+  const already = existing.find(
+    (e) => e.requirement_id === input.requirementId && e.external_reference === input.assessmentSessionId
+  );
+  if (already) {
+    return { evidence: already, alreadyRecorded: true };
+  }
+
+  const priorForRequirement = existing
+    .filter((e) => e.requirement_id === input.requirementId && e.lifecycle_status === "active")
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+  const result = await createVerifiedResidentEvidence({
+    residentId: input.residentId,
+    requirementId: input.requirementId,
+    documentId: null,
+    effectiveDate: input.effectiveDate,
+    expirationDate: addDays(new Date(input.effectiveDate), ISP_VALIDITY_DAYS),
+    satisfactionContext: "isp_satisfied_by_assessment",
+    supersedesEvidenceId: priorForRequirement?.id ?? null,
+    enteredBy: input.assessor,
+    verifiedBy: input.approvingActor,
+    collectionMethod: "structured_import",
+    externalReference: input.assessmentSessionId,
+    notes: `ISP satisfied by the approved Serve Assessment/Care Plan (session ${input.assessmentSessionId}) — the same session's daily_life/when/mobility_safety/goals content is the service plan.`,
+  });
+  if (result.error || !result.evidence) return { error: result.error };
+
+  await linkEvidenceToRequirement({
+    requirementId: input.requirementId,
+    evidenceId: input.assessmentEvidenceId,
+    rationale: "The approved Assessment/Care Plan session is also the operational ISP — one artifact, two governed requirements.",
+    linkedBy: input.approvingActor,
+  });
+
+  return { evidence: result.evidence, alreadyRecorded: false };
+}
+
+// ─── Assessment / Care Plan (manual document upload) → ISP composition ───
+// The generic, requirement-agnostic manual-upload path
+// (recordClientReadinessDocumentEvidenceAction in lib/actions/
+// clientReadiness.ts) is the real, predominant way CR_ASSESSMENT_CURRENT
+// evidence gets accepted in this deployment — not only the structured
+// assessment-intelligence pipeline recordAssessmentIspEvidence() above
+// composes from. Same rule, same composition principle, different
+// artifact reference: here the shared governed artifact is the uploaded
+// document itself (documentId), not an assessment session id. One
+// document, two independent person_evidence rows (own requirement_id
+// each, so the standard evaluator reads both directly), linked via
+// requirement_evidence_links for traceability. Never a second upload. A
+// re-upload of a newer Assessment/Care Plan correctly supersedes the
+// prior ISP evidence too (via supersedesEvidenceId), the same way it
+// already supersedes the prior Assessment evidence — this is a real new
+// artifact, not a retry, so supersession (not the session-based
+// function's dedup-by-key) is the correct idempotency shape here.
+export async function recordAssessmentIspEvidenceFromDocument(input: {
+  residentId: string;
+  requirementId: string; // CR_ISP_ON_FILE_AND_CURRENT's id
+  assessmentEvidenceId: string; // the CR_ASSESSMENT_CURRENT evidence row this composes from
+  documentId: string; // the same uploaded document — never re-uploaded
+  effectiveDate: string;
+  expirationDate: string | null;
+  supersedesEvidenceId: string | null;
+  actor: string;
+  notes: string | null;
+}): Promise<{ evidence?: PersonEvidence; error?: string }> {
+  const result = await createVerifiedResidentEvidence({
+    residentId: input.residentId,
+    requirementId: input.requirementId,
+    documentId: input.documentId,
+    effectiveDate: input.effectiveDate,
+    expirationDate: input.expirationDate,
+    satisfactionContext: "isp_satisfied_by_assessment",
+    supersedesEvidenceId: input.supersedesEvidenceId,
+    enteredBy: input.actor,
+    verifiedBy: input.actor,
+    collectionMethod: "document_upload",
+    verificationMethod: "document_review",
+    notes: input.notes ?? "ISP satisfied by the same Assessment/Care Plan document.",
+  });
+  if (result.error || !result.evidence) return { error: result.error };
+
+  await linkEvidenceToRequirement({
+    requirementId: input.requirementId,
+    evidenceId: input.assessmentEvidenceId,
+    rationale: "The uploaded Assessment/Care Plan document is also the operational ISP — one artifact, two governed requirements.",
+    linkedBy: input.actor,
+  });
+
+  return { evidence: result.evidence };
+}
+
 // ─── Emergency Triage Classification — AxisCare-sourced governed evidence ──
 // Leadership confirmed (2026-08-17) that AxisCare's Client Profile Triage
 // Level field IS the same triage classification EP_CLIENT_TRIAGE_CLASSIFIED
@@ -170,6 +290,74 @@ export async function recordAxisCareTriageEvidence(input: {
   });
   if (result.error) return { error: result.error };
   return { evidence: result.evidence, alreadyOwnedByServe: false };
+}
+
+// ─── Emergency Triage Classification — Serve-recorded governed evidence ───
+// Companion to recordAxisCareTriageEvidence above, for the new structured
+// Serve-native recording path (resident_triage_classifications). Two
+// deliberate differences from that function:
+//
+//   1. It is driven by the RESOLVED CURRENT classification
+//      (getCurrentResidentTriageClassification — effective_date <= today,
+//      never a future-dated row), not by "whatever row was just inserted."
+//      Recording a future-dated classification ahead of time must not
+//      flip evidence (or the requirement's satisfaction) early.
+//
+//   2. Unlike recordAxisCareTriageEvidence's block-if-any-evidence-exists
+//      rule, this ALWAYS supersedes prior active evidence for the
+//      requirement when the current classification has changed — a fresh
+//      Serve recording is a genuine update event, not a bootstrap that
+//      must defer to whatever Serve already owns. This does not weaken
+//      the existing rule that AxisCare's own sync must never silently
+//      supersede Serve: that rule is untouched, lives entirely in
+//      recordAxisCareTriageEvidence's own existing-evidence check, and
+//      still applies against whatever this function writes.
+//
+// IMPORTANT: this requirement's actual satisfaction is read directly from
+// resident_triage_classifications (evaluateTriageClassification() in
+// clientReadinessReadiness.ts), never from this evidence row's mere
+// existence. This function is best-effort, for the audit trail and for
+// evidenceSummary display only — if it fails after the governed
+// classification row was already committed, the requirement is still
+// correctly satisfied; recomputing from "current" each call also makes a
+// later retry self-healing rather than needing special repair logic.
+export async function syncCurrentTriageClassificationEvidence(input: {
+  residentId: string;
+  requirementId: string; // EP_CLIENT_TRIAGE_CLASSIFIED's id
+  actor: string;
+}): Promise<{ evidence?: PersonEvidence; skipped?: "no_current_classification" | "already_current"; error?: string }> {
+  const current = await getCurrentResidentTriageClassification(input.residentId);
+  if (!current) {
+    return { skipped: "no_current_classification" };
+  }
+
+  const existing = await getPersonEvidenceForSubject("resident", input.residentId);
+  const priorActive = existing
+    .filter((e) => e.requirement_id === input.requirementId && e.lifecycle_status === "active")
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+  if (priorActive?.external_reference === current.id) {
+    return { evidence: priorActive, skipped: "already_current" };
+  }
+
+  const result = await createVerifiedResidentEvidence({
+    residentId: input.residentId,
+    requirementId: input.requirementId,
+    documentId: null,
+    effectiveDate: current.effectiveDate,
+    expirationDate: null, // no cadence of its own — non-expiring until superseded by a later recording
+    satisfactionContext: "triage_classification_serve_recorded",
+    supersedesEvidenceId: priorActive?.id ?? null,
+    enteredBy: current.actor,
+    verifiedBy: current.actor,
+    authoritativeSourceSystem: "other_authorized_source",
+    collectionMethod: "human_attestation",
+    verificationMethod: "direct_source_review",
+    externalReference: current.id,
+    notes: `${TRIAGE_LEVEL_LABELS[current.levelCode]}${current.notes ? ` — ${current.notes}` : ""}`,
+  });
+  if (result.error) return { error: result.error };
+  return { evidence: result.evidence };
 }
 
 // ─── Client Profile — guardian applicability attestation ─────────────────

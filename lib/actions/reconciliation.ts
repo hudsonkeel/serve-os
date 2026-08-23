@@ -349,6 +349,34 @@ export async function createResidentFromAxisCareRecord(
     return { error: createResult.error ?? "Could not create a resident from this record." };
   }
 
+  // Identity is confirmed the instant create_resident_from_external_source
+  // commits (it writes the person_vendor_identity_links row as already
+  // 'confirmed', match_method='created_new_subject') — this new resident
+  // is exactly as eligible for the AxisCare canonical-snapshot bootstrap
+  // (date_of_birth/gender/date_of_admission/address/family_contact_*, plus
+  // triage evidence) as one confirmed via confirmAxisCareIdentityCandidate()
+  // above, which already triggers this same sync. Missing this call here
+  // was a real bug (confirmed live: 100% of match_method='created_new_subject'
+  // residents had no canonical snapshot at all, vs 0% for every other
+  // confirmation path) — a newly-created resident showed Client Readiness's
+  // Client Profile requirement as missing sex/gender and admission date
+  // even when AxisCare unambiguously had both, because nothing had ever
+  // populated residents.gender/date_of_admission from the confirmed
+  // source. Same non-blocking discipline as above: a sync failure never
+  // means the resident creation failed — it already committed — and the
+  // resident stays picked up by the next scheduled/manual sync regardless.
+  let syncWarning: string | undefined;
+  try {
+    const syncResult = await syncOneConfirmedResident(createResult.residentId, input.axiscareId, actorResult.actor, "identity_confirmation");
+    if (syncResult.status === "failed") {
+      syncWarning = `Resident created, but AxisCare data sync could not complete: ${syncResult.error ?? "unknown error"}. It will retry on the next sync.`;
+    } else if (syncResult.status === "synced_with_conflicts") {
+      syncWarning = `Resident created. AxisCare data synced, but ${syncResult.conflicts.length} field${syncResult.conflicts.length === 1 ? "" : "s"} disagree with Serve's existing values and need review.`;
+    }
+  } catch (err) {
+    syncWarning = `Resident created, but AxisCare data sync could not complete: ${err instanceof Error ? err.message : "unknown error"}. It will retry on the next sync.`;
+  }
+
   // Best-effort freshness for the stored operational-state cache — same
   // non-blocking discipline confirmAxisCareResidentIdentity() already
   // uses. A failure here is self-healing (the next scheduled sync
@@ -366,5 +394,5 @@ export async function createResidentFromAxisCareRecord(
   }
 
   revalidatePeopleWeServe(createResult.residentId);
-  return { success: true, residentId: createResult.residentId };
+  return { success: true, residentId: createResult.residentId, syncWarning };
 }

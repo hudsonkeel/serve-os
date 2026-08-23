@@ -23,8 +23,8 @@ import { computeAxisCareReadiness, buildAxisCarePayloadPreview } from "@/lib/ass
 import { buildCinchProjection } from "@/lib/assessmentIntelligence/cinchProjection";
 import type { AssertionState } from "@/lib/assessmentIntelligence/factTypes";
 import { getRequirementByCode } from "@/lib/data/personRequirements";
-import { recordAssessmentEvidence } from "@/lib/clientReadiness/evidence";
-import { CR_ASSESSMENT_CURRENT } from "@/lib/clientReadiness/constants";
+import { recordAssessmentEvidence, recordAssessmentIspEvidence } from "@/lib/clientReadiness/evidence";
+import { CR_ASSESSMENT_CURRENT, CR_ISP_ON_FILE_AND_CURRENT } from "@/lib/clientReadiness/constants";
 import { getResidentById, setResidentCommunityId } from "@/lib/data/residents";
 import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 import { resolveAssessmentCommunity } from "@/lib/assessmentIntelligence/communityResolution";
@@ -263,6 +263,29 @@ export async function approveAssessment(input: {
     });
     if (evidenceResult.error) {
       clientReadinessError = `Assessment approved, but Client Readiness evidence could not be recorded: ${evidenceResult.error}`;
+    } else if (evidenceResult.evidence) {
+      // Same approved session also serves as the operational ISP — see
+      // recordAssessmentIspEvidence()'s own comment for why this is
+      // substantiated, not a filename-based guess. A failure here is
+      // surfaced honestly, same discipline as the Assessment evidence
+      // write above — it never masks itself as a false "success," and
+      // reconcileClientReadinessAssessmentEvidence() below can close the
+      // gap later without re-approving.
+      const ispRequirement = await getRequirementByCode(CR_ISP_ON_FILE_AND_CURRENT);
+      if (ispRequirement) {
+        const ispResult = await recordAssessmentIspEvidence({
+          residentId: session.resident_id,
+          requirementId: ispRequirement.id,
+          assessmentEvidenceId: evidenceResult.evidence.id,
+          assessmentSessionId: input.assessmentSessionId,
+          effectiveDate: (session.finished_at ?? session.started_at).slice(0, 10),
+          assessor: session.started_by,
+          approvingActor: authResult.actor,
+        });
+        if (ispResult.error) {
+          clientReadinessError = `Assessment approved, but ISP evidence could not be recorded: ${ispResult.error}`;
+        }
+      }
     }
   }
 
@@ -329,6 +352,23 @@ export async function reconcileClientReadinessAssessmentEvidence(
     approvingActor: authResult.actor,
   });
   if (result.error) return { error: result.error };
+
+  if (result.evidence) {
+    const ispRequirement = await getRequirementByCode(CR_ISP_ON_FILE_AND_CURRENT);
+    if (ispRequirement) {
+      const ispResult = await recordAssessmentIspEvidence({
+        residentId: session.resident_id,
+        requirementId: ispRequirement.id,
+        assessmentEvidenceId: result.evidence.id,
+        assessmentSessionId,
+        effectiveDate: (session.finished_at ?? session.started_at).slice(0, 10),
+        assessor: session.started_by,
+        approvingActor: authResult.actor,
+      });
+      if (ispResult.error) return { error: ispResult.error };
+    }
+  }
+
   return { alreadyRecorded: result.alreadyRecorded };
 }
 

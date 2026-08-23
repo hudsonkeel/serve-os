@@ -28,6 +28,14 @@ export const BESPOKE_COMPOSITION_CODES: ReadonlySet<string> = new Set([
   CR_CLIENT_PROFILE_ON_FILE,
   CR_SIGNIFICANT_EVENTS_DOCUMENTED,
   CR_DISCHARGE_SUMMARY_ON_FILE,
+  // EP_CLIENT_TRIAGE_CLASSIFIED — satisfaction is read directly from the
+  // governed resident_triage_classifications table (its own
+  // effective-date-aware "current" resolution), not from the standard
+  // evidence-currency engine, so a person_evidence write that fails after
+  // the governed row already committed can never leave the requirement
+  // incorrectly showing Missing Evidence. See
+  // evaluateTriageClassification() in clientReadinessReadiness.ts.
+  EP_CLIENT_TRIAGE_CLASSIFIED,
 ]);
 
 // Cadence-gated requirements (expiration_date set at write time) — every
