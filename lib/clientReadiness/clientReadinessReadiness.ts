@@ -159,26 +159,46 @@ export function evaluateSignificantEvents(
   };
 }
 
-// Discharge / Transfer — not_applicable for every projected relationship
-// except 'inactive_client' (the canonical projection's equivalent of an
-// actual completed discharge/transfer — see
-// serveRelationshipProjection.ts's own former_client -> inactive_client
-// mapping), never merely "not active" (prospect/no_current_relationship
-// are not discharges). Takes the CANONICAL projected relationship, not
+// Discharge / Transfer — a separate event/state from inactive_client
+// (Frisco Needs Review investigation, 2026-08-23: inactive_client means
+// "established client, currently no scheduled visits" — it is NOT
+// synonymous with "former/discharged client." An established standby
+// client who has never been discharged or transferred must never see a
+// Discharge/Transfer deficiency). Never merely "not active"
+// (prospect/no_current_relationship are not discharges either).
+//
+// isStandbyInactiveClient is the caller-resolved signal distinguishing
+// the two ways a resident can be inactive_client:
+//   - a reviewed AxisCare class-code signal (e.g. "WAFrisco - Active No
+//     Visits" — see lifecycleSignals.ts) established the client as
+//     standby/inactive directly, with no implication of a discharge —
+//     isStandbyInactiveClient = true, Discharge/Transfer stays
+//     not_applicable.
+//   - inactive_client was reached any other way (the legacy
+//     former_client status, a CRM relationship, or the date-based
+//     "contact info + a passed start date" fallback in
+//     clientLifecycle.ts) — isStandbyInactiveClient = false (the
+//     default for every caller that hasn't resolved this), and
+//     Discharge/Transfer's normal applicability/evidence rule applies,
+//     unchanged.
+// Takes the CANONICAL projected relationship, not
 // residents.serve_relationship_status directly — that raw column is only
 // ever one last-resort fallback input into the real projection (see
 // lib/residents/serveRelationshipProjection.ts), and reading it here
-// directly would silently diverge from what /residents itself considers a
-// former client. Once applicable, evaluated the standard way.
+// directly would silently diverge from what /residents itself shows.
+// Once applicable, evaluated the standard way.
 export function evaluateDischarge(
   relationship: ServeRelationship,
   requirement: PersonRequirement,
-  evidence: readonly PersonEvidence[]
+  evidence: readonly PersonEvidence[],
+  isStandbyInactiveClient: boolean = false
 ): ClientReadinessRequirementEvaluation {
-  if (relationship !== "inactive_client") {
+  if (relationship !== "inactive_client" || isStandbyInactiveClient) {
     return {
       status: "not_applicable",
-      explanation: "Applicable only once the client is no longer active (discharged/transferred).",
+      explanation: isStandbyInactiveClient
+        ? "Not applicable — an established client on standby (no scheduled visits) has not been discharged or transferred."
+        : "Applicable only once the client is no longer active (discharged/transferred).",
       requirement,
       latestEvidence: null,
     };
@@ -257,15 +277,34 @@ export function evaluateTriageClassification(
 // actually due from someone who was never an active client.
 //
 // Scoped deliberately narrow: only 'prospect', 'no_current_relationship',
-// and 'needs_review' are gated to not_applicable here.
-// 'inactive_client' (a real former/discharged client) is NOT included —
-// their historical compliance record while they WERE active is exactly
-// what an auditor needs to see, and Discharge Summary's own applicability
-// rule already depends on that same evidence staying visible for that
-// relationship. 'active_client' is unaffected — full evaluation, as
-// today. No second active-client flag: this reads the same canonical
-// projectedRelationship parameter every other bespoke rule here already
-// takes.
+// and 'needs_review' are gated to not_applicable here. 'inactive_client'
+// is NOT included, and this is intentional and confirmed (Frisco Needs
+// Review investigation, 2026-08-23) — inactive_client covers two real
+// cases, both of which get the full standard evaluation on purpose:
+//   - a resident who was genuinely active and has since stopped, whose
+//     historical compliance record an auditor needs to see (Discharge
+//     Summary's own applicability rule depends on that same evidence
+//     staying visible), and
+//   - an established standby client (see clientLifecycle.ts's header)
+//     who hasn't been served yet — their record readiness (Assessment,
+//     Service Agreement, etc.) is operationally valuable to evaluate
+//     RIGHT NOW on the resident profile, precisely because they can be
+//     activated and served on request. A missing_evidence result here is
+//     real, useful signal, not a false wall.
+// This resident-level evaluation is deliberately independent of Audit
+// Readiness, which uses a SEPARATE, stricter population
+// (isAuditEligibleActiveClient() / getAuditEligibleActiveClientResidents()
+// in lib/residents/auditEligibleActiveClient.ts and
+// lib/data/residentServeRelationships.ts) that requires
+// relationship === 'active_client' outright — inactive_client (standby or
+// former) never enters that population, so nothing evaluated here ever
+// affects Current Client Readiness %, requirement-completion counts, or
+// Needs Attention issues. Never conflate the two: this gate governs what
+// a resident's OWN profile page shows; the Audit Readiness gate governs
+// the audit-relevant population, and is not this one.
+// 'active_client' is unaffected — full evaluation, as today. No second
+// active-client flag: this reads the same canonical projectedRelationship
+// parameter every other bespoke rule here already takes.
 const RELATIONSHIPS_WITHOUT_APPLICABLE_CLIENT_READINESS: ReadonlySet<ServeRelationship> = new Set([
   "prospect",
   "no_current_relationship",
@@ -314,7 +353,17 @@ export async function getClientReadinessEvaluation(
   // pass the real value (or explicit `null`) from any context that has
   // already resolved it, to get the atomicity guarantee documented on
   // evaluateTriageClassification() above.
-  currentTriageClassification?: ResidentTriageClassification | null
+  currentTriageClassification?: ResidentTriageClassification | null,
+  // Resolved by the caller (via lifecycleSignals.ts's
+  // getAxisCareLifecycleSignal() against the resident's AxisCare match
+  // classes) exactly when projectedRelationship === 'inactive_client' and
+  // that value came from an explicit standby class-code signal, not a
+  // discharge. Defaults to false for every caller that hasn't resolved
+  // this — the safe default, since it preserves the pre-existing
+  // Discharge/Transfer applicability rule for every other path to
+  // inactive_client (legacy former_client status, CRM relationship, the
+  // date-based fallback). See evaluateDischarge()'s own comment.
+  isStandbyInactiveClient: boolean = false
 ): Promise<ClientReadinessEvaluation | null> {
   const resident = await getResidentById(residentId);
   if (!resident) return null;
@@ -359,7 +408,7 @@ export async function getClientReadinessEvaluation(
   if (eventsRequirement) requirements.push(evaluateSignificantEvents(eventsRequirement, evidence));
 
   const dischargeRequirement = bespokeByCode.get(CR_DISCHARGE_SUMMARY_ON_FILE);
-  if (dischargeRequirement) requirements.push(evaluateDischarge(projectedRelationship, dischargeRequirement, evidence));
+  if (dischargeRequirement) requirements.push(evaluateDischarge(projectedRelationship, dischargeRequirement, evidence, isStandbyInactiveClient));
 
   // Triage is one of the standard requirements the population gate above
   // was designed to cover (see its own comment) — it's only bespoke here

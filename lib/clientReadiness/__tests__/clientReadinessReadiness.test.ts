@@ -227,10 +227,15 @@ test("Significant Events excludes superseded/entered-in-error rows from the even
   assert.match(result.explanation, /1 significant event documented/);
 });
 
-// ─── Discharge — not_applicable while active, required once former ──────
-// Now driven by the canonical ServeRelationshipProjection value directly
-// (never residents.serve_relationship_status — see
-// clientReadinessReadiness.ts's own comment on evaluateDischarge).
+// ─── Discharge — not_applicable while active, required once a real ──────
+// discharge/transfer has actually occurred. Now driven by the canonical
+// ServeRelationshipProjection value directly (never
+// residents.serve_relationship_status — see clientReadinessReadiness.ts's
+// own comment on evaluateDischarge). inactive_client is NOT synonymous
+// with "former/discharged" (Frisco Needs Review investigation,
+// 2026-08-23) — an established standby client with no scheduled visits is
+// also inactive_client, and must never see a Discharge deficiency; see
+// the isStandbyInactiveClient tests below.
 
 test("Discharge applicability follows the projected relationship — not_applicable for every value except inactive_client", () => {
   const req = requirement({ id: "req-discharge", requirement_code: CR_DISCHARGE_SUMMARY_ON_FILE });
@@ -240,7 +245,7 @@ test("Discharge applicability follows the projected relationship — not_applica
   }
 });
 
-test("Discharge is missing_evidence for inactive_client (canonical 'former client') with no discharge summary on file", () => {
+test("Discharge is missing_evidence for inactive_client (a genuinely former/discharged client) with no discharge summary on file", () => {
   const req = requirement({ id: "req-discharge", requirement_code: CR_DISCHARGE_SUMMARY_ON_FILE });
   const result = evaluateDischarge("inactive_client", req, []);
   assert.equal(result.status, "missing_evidence");
@@ -251,6 +256,22 @@ test("Discharge is compliant for inactive_client with verified discharge evidenc
   const dischargeEvidence = evidence({ requirement_id: req.id, document_id: "doc-1" });
   const result = evaluateDischarge("inactive_client", req, [dischargeEvidence]);
   assert.equal(result.status, "compliant");
+});
+
+// ─── REGRESSION: standby inactive_client never acquires a false Discharge deficiency ──
+// (Frisco Needs Review investigation, 2026-08-23)
+
+test("REGRESSION: inactive_client + isStandbyInactiveClient=true is not_applicable, even with zero discharge evidence", () => {
+  const req = requirement({ id: "req-discharge", requirement_code: CR_DISCHARGE_SUMMARY_ON_FILE });
+  const result = evaluateDischarge("inactive_client", req, [], true);
+  assert.equal(result.status, "not_applicable");
+  assert.match(result.explanation, /standby/i);
+});
+
+test("isStandbyInactiveClient defaults to false — unresolved callers keep the original discharge-applicable behavior", () => {
+  const req = requirement({ id: "req-discharge", requirement_code: CR_DISCHARGE_SUMMARY_ON_FILE });
+  const result = evaluateDischarge("inactive_client", req, []);
+  assert.equal(result.status, "missing_evidence");
 });
 
 // ─── isOutsideClientReadinessPopulation — 2026-08-23 semantic graft ──────

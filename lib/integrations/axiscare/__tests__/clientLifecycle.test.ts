@@ -31,15 +31,33 @@ test("inactive with WAF Prospect class -> prospect", () => {
   );
 });
 
-test("inactive with WAF Signed Agreement / No Visits class -> prospect, not inactive_client", () => {
+// "Active No Visits" (both the legacy "WAF -" and current "WAFrisco -"
+// naming) means an established client deliberately kept Inactive in
+// AxisCare until service is requested — inactive_client, not prospect,
+// and no start date is required (Frisco Needs Review investigation,
+// 2026-08-23 — see lifecycleSignals.ts's header for the confirmed
+// business meaning).
+test("inactive with 'WAF - Active No Visits' class -> inactive_client, no start date required", () => {
   assert.equal(
     classifyAxisCareClientLifecycle({
       status: { active: false, label: "Inactive" },
-      classes: [{ code: "WAF - Active No Visits", label: "WAF Signed Agreement / No Visits" }],
+      classes: [{ code: "WAF - Active No Visits", label: "WAF - Active No Visits" }],
       hasContactInfo: true,
       hasStartDate: false,
     }),
-    "prospect"
+    "inactive_client"
+  );
+});
+
+test("inactive with 'WAFrisco - Active No Visits' class -> inactive_client, no start date required", () => {
+  assert.equal(
+    classifyAxisCareClientLifecycle({
+      status: { active: false, label: "Inactive" },
+      classes: [{ code: "WAFrisco - Active No Visits", label: "WAFrisco - Active No Visits" }],
+      hasContactInfo: true,
+      hasStartDate: false,
+    }),
+    "inactive_client"
   );
 });
 
@@ -102,6 +120,24 @@ test("REGRESSION: classifyAxisCareClientLifecycle with a future-dated start (via
   const result = classifyAxisCareClientLifecycle({
     status: { active: false, label: "Inactive" },
     classes: [],
+    hasContactInfo: true,
+    hasStartDate: hasServiceStarted("2026-08-28", new Date("2026-08-23T00:00:00Z")),
+  });
+  assert.equal(result, "needs_review");
+});
+
+// ─── REGRESSION (Frisco Needs Review investigation, 2026-08-23): Karen ──
+// Mabry's real class codes (["Watermere Firewheel", "PC"]) carry no
+// AxisCare lifecycle class signal at all, so the new "Active No Visits" ->
+// inactive_client class-signal path must never catch her — her
+// classification stays governed entirely by her future start date.
+test("REGRESSION (Karen Mabry / AxisCare #44 live case): real classes + future start date -> needs_review, not inactive_client", () => {
+  const result = classifyAxisCareClientLifecycle({
+    status: { active: false, label: "Inactive" },
+    classes: [
+      { code: "Watermere Firewheel", label: "Watermere Firewheel" },
+      { code: "PC", label: "Personal Care" },
+    ],
     hasContactInfo: true,
     hasStartDate: hasServiceStarted("2026-08-28", new Date("2026-08-23T00:00:00Z")),
   });

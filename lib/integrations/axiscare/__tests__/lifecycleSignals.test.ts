@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { hasProspectLifecycleSignal } from "../lifecycleSignals.ts";
+import { hasProspectLifecycleSignal, getAxisCareLifecycleSignal } from "../lifecycleSignals.ts";
 import { classifyAxisCareClientLifecycle } from "../clientLifecycle.ts";
 
 type Test = { name: string; fn: () => void };
@@ -104,6 +104,32 @@ test("inactive, no prospect class, no start date -> needs_review (unchanged fall
 
 test("an unrecognized class string never triggers the prospect signal via partial/substring matching", () => {
   assert.equal(hasProspectLifecycleSignal(["WAMcKinney Prospect Something Else"]), false);
+});
+
+// ─── inactive_client signal (Frisco Needs Review investigation, 2026-08-23) ──
+// "Active No Visits" means an established client deliberately kept
+// Inactive in AxisCare until service is requested — inactive_client, not
+// prospect and not a former/discharged client. See lifecycleSignals.ts's
+// header for the confirmed business meaning.
+
+test("'WAFrisco - Active No Visits' carries the inactive_client lifecycle signal", () => {
+  assert.equal(getAxisCareLifecycleSignal(["Watermere Frisco", "WAFrisco - Active No Visits"]), "inactive_client");
+});
+
+test("CORRECTED: 'WAF - Active No Visits' (the pre-per-community naming) also carries the inactive_client signal, not prospect", () => {
+  assert.equal(getAxisCareLifecycleSignal(["WAF - Active No Visits"]), "inactive_client");
+});
+
+test("'WAFrisco - Active No Visits' does NOT carry the prospect signal", () => {
+  assert.equal(hasProspectLifecycleSignal(["WAFrisco - Active No Visits"]), false);
+});
+
+test("an unrecognized class string never triggers the inactive_client signal via partial/substring matching", () => {
+  assert.equal(getAxisCareLifecycleSignal(["WAF - Active No Visits Something Else"]), null);
+});
+
+test("a class list with no reviewed signal at all returns null (never guessed)", () => {
+  assert.equal(getAxisCareLifecycleSignal(["Watermere Frisco", "PC", "CINCH"]), null);
 });
 
 let passed = 0;

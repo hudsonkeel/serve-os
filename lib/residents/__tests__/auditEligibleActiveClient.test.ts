@@ -54,7 +54,20 @@ test("human-corrected active client -> included; a reviewed human correction alr
   assert.equal(isAuditEligibleActiveClient(projection("active_client", "human_correction"), "candidate"), true);
 });
 
-test("former/inactive client -> excluded", () => {
+test("inactive_client -> excluded (covers both a genuinely former/discharged client and an established standby client — the gate reads only relationship, never why it's inactive)", () => {
+  assert.equal(isAuditEligibleActiveClient(projection("inactive_client", "axiscare"), "confirmed"), false);
+});
+
+// REGRESSION (Frisco Needs Review investigation, 2026-08-23): standby
+// inactive_client residents (e.g. an AxisCare "Active No Visits" class
+// signal) must stay fully excluded from the Audit Readiness population —
+// their record readiness is resident-profile-only, never an Audit
+// Readiness denominator/numerator, requirement-completion count, or Needs
+// Attention issue. isAuditEligibleActiveClient() requires
+// relationship === 'active_client' as its very first check, so this is
+// already guaranteed with no code change: an inactive_client resident
+// never passes that check regardless of identity status.
+test("REGRESSION: an established standby inactive_client (confirmed AxisCare identity) is still excluded from the Audit Readiness population", () => {
   assert.equal(isAuditEligibleActiveClient(projection("inactive_client", "axiscare"), "confirmed"), false);
 });
 

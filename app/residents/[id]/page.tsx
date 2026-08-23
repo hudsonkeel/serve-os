@@ -31,6 +31,8 @@ import { ServeRelationshipCorrectionControl } from "@/components/residents/Serve
 import { ClientReadinessBoard, type ClientReadinessBoardItem } from "@/components/clientReadiness/ClientReadinessBoard";
 import { ClientReadinessSection } from "@/components/clientReadiness/ClientReadinessSection";
 import { getClientReadinessEvaluation, isOutsideClientReadinessPopulation } from "@/lib/clientReadiness/clientReadinessReadiness";
+import { getAxisCareLifecycleSignal } from "@/lib/integrations/axiscare/lifecycleSignals";
+import { STANDBY_INACTIVE_CORRECTION_MARKER } from "@/lib/integrations/axiscare/clientLifecycle";
 import { buildTriageClassificationDetail } from "@/lib/clientReadiness/triageClassificationDetail";
 import {
   getCurrentResidentTriageClassification,
@@ -163,11 +165,26 @@ export default async function ResidentDetailPage({
     axiscareRawDescription: axiscareTriageSnapshot?.triage_level_description ?? null,
   });
 
+  // Distinguishes an established standby client from every other path to
+  // inactive_client, so Discharge/Transfer never fires a false deficiency
+  // for a client who simply hasn't been scheduled yet. Two ways to
+  // establish standby status — see clientLifecycle.ts's own header for
+  // both: (1) a reviewed AxisCare class-code signal (e.g. "WAFrisco -
+  // Active No Visits"), or (2) a governed correction carrying the
+  // explicit STANDBY_INACTIVE_CORRECTION_MARKER, for a resident whose
+  // class signal alone isn't explicit enough. See evaluateDischarge()'s
+  // own comment for the full rationale.
+  const isStandbyInactiveClient =
+    residentRelationshipDetail?.projection.relationship === "inactive_client" &&
+    (getAxisCareLifecycleSignal(residentRelationshipDetail.axiscareMatch?.classes ?? []) === "inactive_client" ||
+      !!residentRelationshipDetail.projection.correction?.rationale.includes(STANDBY_INACTIVE_CORRECTION_MARKER));
+
   const clientReadiness = canManageEvidence
     ? await getClientReadinessEvaluation(
         id,
         residentRelationshipDetail?.projection.relationship ?? "no_current_relationship",
-        currentTriageClassification
+        currentTriageClassification,
+        isStandbyInactiveClient
       )
     : null;
 
@@ -192,11 +209,14 @@ export default async function ResidentDetailPage({
   // The same predicate getClientReadinessEvaluation() itself gates
   // standard requirements on (isOutsideClientReadinessPopulation) — never
   // a second, independently-maintained check. Deliberately NOT "anything
-  // but active_client": inactive_client (a real former/discharged client)
-  // stays inside the population here too, matching Discharge/Transfer's
-  // own applicability rule — their historical compliance record should
-  // never collapse into the same "not applicable" messaging a prospect
-  // who's never been served gets.
+  // but active_client": inactive_client (an established client — either a
+  // real former/discharged client or, as of the Frisco Needs Review
+  // investigation, an equally legitimate standby client without scheduled
+  // visits — see clientLifecycle.ts's header) stays inside the population
+  // here too, matching Discharge/Transfer's own applicability rule —
+  // never collapsed into the same "not applicable" messaging a prospect
+  // who's never been served gets. Known limitation for the standby case:
+  // see the population-gate comment in clientReadinessReadiness.ts.
   const clientReadinessOutsidePopulation = isOutsideClientReadinessPopulation(
     residentRelationshipDetail?.projection.relationship ?? "no_current_relationship"
   );
