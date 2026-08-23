@@ -6,7 +6,7 @@
 // Format: __SERVE_TEST__ <purpose> <run-id>
 // Example: __SERVE_TEST__ operational-whiteboard 20260716T143200Z-a81f
 
-const PREFIX = "__SERVE_TEST__";
+export const PREFIX = "__SERVE_TEST__";
 
 function formatTimestamp(now: Date): string {
   return now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
