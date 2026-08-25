@@ -47,6 +47,7 @@ function session(overrides: Partial<AssessmentSessionRecord> = {}): AssessmentSe
     started_by: "test",
     started_at: new Date().toISOString(),
     finished_at: null,
+    community_id: null,
     is_synthetic_test: false,
     ...overrides,
   };

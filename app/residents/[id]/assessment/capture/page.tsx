@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCommunityResidentById } from "@/lib/data/communityMetrics";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canEditResidentProfile } from "@/lib/auth/permissions";
+import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 import { getOrStartNativeCaptureSession } from "@/lib/actions/assessmentCapture";
 import { CaptureScreen } from "@/components/residents/assessment/CaptureScreen";
 
@@ -17,7 +18,9 @@ export const revalidate = 0;
 export default async function AssessmentCapturePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [record, profile] = await Promise.all([getCommunityResidentById(id), getCurrentAuthorizedUser()]);
+  const profile = await getCurrentAuthorizedUser();
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  const record = await getCommunityResidentById(id, communityFilter);
 
   if (!record) notFound();
 
