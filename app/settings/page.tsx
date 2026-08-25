@@ -16,6 +16,7 @@ import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import {
   AssessmentProcessingDispatchTrigger,
   CreateSyntheticAssessmentSessionForm,
+  AwsIdentityCheck,
 } from "@/components/settings/AssessmentProcessingDispatchTrigger";
 import {
   buildIntegrationDefinitions,
@@ -293,6 +294,7 @@ export default async function SettingsPage() {
               >
                 <AssessmentProcessingDispatchTrigger />
                 <CreateSyntheticAssessmentSessionForm />
+                <AwsIdentityCheck />
               </SettingsSection>
             )}
           </>

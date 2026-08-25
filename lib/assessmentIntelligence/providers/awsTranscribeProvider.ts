@@ -17,6 +17,7 @@ import type {
 } from "../transcriptionProvider.ts";
 import { requirePhiAwsProcessingConfirmed } from "../phiGovernance.ts";
 import { assembleAudioChunks } from "../audioAssembly.ts";
+import { getServeAwsCredentials } from "../awsCredentials.ts";
 
 // Amazon Transcribe implementation of the provider-neutral transcription interface — the
 // intended production transcription path.
@@ -58,10 +59,10 @@ const PROVIDER_ID = "aws-transcribe";
 const MODEL_ID = `aws-transcribe:${LANGUAGE_CODE}`;
 
 function getStagingBucket(): string {
-  const bucket = process.env.AWS_TRANSCRIBE_STAGING_BUCKET;
+  const bucket = process.env.SERVE_AWS_TRANSCRIBE_STAGING_BUCKET;
   if (!bucket) {
     throw new Error(
-      "Missing AWS_TRANSCRIBE_STAGING_BUCKET — required for AWS Transcribe (a private S3 bucket used only as temporary staging, never canonical storage). Not fabricated; configure it before selecting the aws transcription provider."
+      "Missing SERVE_AWS_TRANSCRIBE_STAGING_BUCKET — required for AWS Transcribe (a private S3 bucket used only as temporary staging, never canonical storage). Not fabricated; configure it before selecting the aws transcription provider."
     );
   }
   return bucket;
@@ -72,16 +73,15 @@ let cachedS3Client: S3Client | null = null;
 
 function getTranscribeClient(): TranscribeClient {
   if (cachedTranscribeClient) return cachedTranscribeClient;
-  // No explicit credentials constructed here — same default-credential-provider-chain
-  // preference as bedrockClaudeProvider.ts. See this scope's completion report (§11) for the
-  // production credential strategy this assumes.
-  cachedTranscribeClient = new TranscribeClient({ region: REGION });
+  // Explicit credentials from SERVE_AWS_ACCESS_KEY_ID/SERVE_AWS_SECRET_ACCESS_KEY — see
+  // awsCredentials.ts for why the AWS SDK's default credential chain is never used here.
+  cachedTranscribeClient = new TranscribeClient({ region: REGION, credentials: getServeAwsCredentials() });
   return cachedTranscribeClient;
 }
 
 function getS3Client(): S3Client {
   if (cachedS3Client) return cachedS3Client;
-  cachedS3Client = new S3Client({ region: REGION });
+  cachedS3Client = new S3Client({ region: REGION, credentials: getServeAwsCredentials() });
   return cachedS3Client;
 }
 

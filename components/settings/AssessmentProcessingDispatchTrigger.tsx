@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { triggerAssessmentProcessingDispatch, createSyntheticAssessmentSessionAction } from "@/lib/actions/assessmentProcessingAdmin";
+import {
+  triggerAssessmentProcessingDispatch,
+  createSyntheticAssessmentSessionAction,
+  checkAwsIdentity,
+} from "@/lib/actions/assessmentProcessingAdmin";
 
 // Admin-only manual trigger UI for the assessment processing dispatcher — the Deploy Preview
 // workaround for Netlify Scheduled Functions not running automatically on previews. See
@@ -113,6 +117,56 @@ export function CreateSyntheticAssessmentSessionForm() {
         <p className="mt-3 font-sans text-sm text-success-text">
           Created. <Link href={`/residents/${result.residentId}/assessment/capture`} className="underline">Open the capture screen →</Link>
         </p>
+      )}
+      {error && <p className="mt-3 font-sans text-sm text-danger-text">{error}</p>}
+    </div>
+  );
+}
+
+// Admin-only AWS identity diagnostic — proves which AWS principal the deployed background
+// worker is actually authenticating as, before trusting any real Transcribe/Bedrock call. Shows
+// only the AWS account id and principal ARN, returned by lib/actions/assessmentProcessingAdmin
+// .ts's checkAwsIdentity() action — never any credential material, never logged. Safe to leave
+// visible indefinitely; nothing it displays is sensitive.
+export function AwsIdentityCheck() {
+  const [isPending, startTransition] = useTransition();
+  const [identity, setIdentity] = useState<{ account?: string; arn?: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleCheck() {
+    setError(null);
+    setIdentity(null);
+    startTransition(async () => {
+      const result = await checkAwsIdentity();
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setIdentity({ account: result.account, arn: result.arn });
+    });
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-ivory-border bg-ivory px-5 py-4">
+      <p className="font-sans text-sm font-medium text-body">AWS identity check (admin)</p>
+      <p className="mt-1 font-sans text-sm text-muted">
+        Confirms which AWS account and IAM principal this deployment is actually authenticating as (via STS
+        GetCallerIdentity) — should resolve to serve-netlify-assessment-pipeline, not any other identity. Discloses
+        only the account id and ARN, never credentials.
+      </p>
+      <button
+        type="button"
+        onClick={handleCheck}
+        disabled={isPending}
+        className="mt-3 inline-flex h-10 items-center rounded-lg bg-navy px-5 font-sans text-sm font-semibold text-white transition-colors hover:bg-navy-light disabled:opacity-50"
+      >
+        {isPending ? "Checking…" : "Check AWS Identity"}
+      </button>
+      {identity && (
+        <div className="mt-3 font-sans text-sm text-success-text">
+          <p>Account: {identity.account}</p>
+          <p>ARN: {identity.arn}</p>
+        </div>
       )}
       {error && <p className="mt-3 font-sans text-sm text-danger-text">{error}</p>}
     </div>

@@ -17,14 +17,14 @@ function test(name: string, fn: Test["fn"]) {
 
 const ORIGINAL_GATE = process.env.PHI_AWS_PROCESSING_CONFIRMED;
 const ORIGINAL_SYNTHETIC = process.env.PHI_SYNTHETIC_TEST_MODE;
-const ORIGINAL_BUCKET = process.env.AWS_TRANSCRIBE_STAGING_BUCKET;
+const ORIGINAL_BUCKET = process.env.SERVE_AWS_TRANSCRIBE_STAGING_BUCKET;
 function restoreEnv() {
   if (ORIGINAL_GATE === undefined) delete process.env.PHI_AWS_PROCESSING_CONFIRMED;
   else process.env.PHI_AWS_PROCESSING_CONFIRMED = ORIGINAL_GATE;
   if (ORIGINAL_SYNTHETIC === undefined) delete process.env.PHI_SYNTHETIC_TEST_MODE;
   else process.env.PHI_SYNTHETIC_TEST_MODE = ORIGINAL_SYNTHETIC;
-  if (ORIGINAL_BUCKET === undefined) delete process.env.AWS_TRANSCRIBE_STAGING_BUCKET;
-  else process.env.AWS_TRANSCRIBE_STAGING_BUCKET = ORIGINAL_BUCKET;
+  if (ORIGINAL_BUCKET === undefined) delete process.env.SERVE_AWS_TRANSCRIBE_STAGING_BUCKET;
+  else process.env.SERVE_AWS_TRANSCRIBE_STAGING_BUCKET = ORIGINAL_BUCKET;
 }
 
 test("startAwsTranscription: the PHI gate is checked before anything else — an unconfirmed gate throws with no AWS call attempted", async () => {
@@ -39,7 +39,7 @@ test("startAwsTranscription: the PHI gate is checked before anything else — an
 test("startAwsTranscription: an empty chunk list returns a completed, empty result without ever checking the staging bucket config", async () => {
   delete process.env.PHI_AWS_PROCESSING_CONFIRMED;
   process.env.PHI_SYNTHETIC_TEST_MODE = "synthetic-only-not-for-production";
-  delete process.env.AWS_TRANSCRIBE_STAGING_BUCKET; // deliberately unset — must not matter for zero chunks
+  delete process.env.SERVE_AWS_TRANSCRIBE_STAGING_BUCKET; // deliberately unset — must not matter for zero chunks
   const outcome = await startAwsTranscription([], { syntheticTestOverride: true });
   assert.equal(outcome.status, "completed");
   assert.deepEqual(outcome.result?.segments, []);
@@ -48,16 +48,16 @@ test("startAwsTranscription: an empty chunk list returns a completed, empty resu
   restoreEnv();
 });
 
-test("startAwsTranscription: a missing AWS_TRANSCRIBE_STAGING_BUCKET throws a clear, specific error once the gate passes and there's real work to do — before any ffmpeg assembly is attempted", async () => {
+test("startAwsTranscription: a missing SERVE_AWS_TRANSCRIBE_STAGING_BUCKET throws a clear, specific error once the gate passes and there's real work to do — before any ffmpeg assembly or credential resolution is attempted", async () => {
   delete process.env.PHI_AWS_PROCESSING_CONFIRMED;
   process.env.PHI_SYNTHETIC_TEST_MODE = "synthetic-only-not-for-production";
-  delete process.env.AWS_TRANSCRIBE_STAGING_BUCKET;
+  delete process.env.SERVE_AWS_TRANSCRIBE_STAGING_BUCKET;
   await assert.rejects(
     () =>
       startAwsTranscription([{ path: "session-1/000000.webm", bytes: new ArrayBuffer(4), mimeType: "audio/webm" }], {
         syntheticTestOverride: true,
       }),
-    /AWS_TRANSCRIBE_STAGING_BUCKET/
+    /SERVE_AWS_TRANSCRIBE_STAGING_BUCKET/
   );
   restoreEnv();
 });

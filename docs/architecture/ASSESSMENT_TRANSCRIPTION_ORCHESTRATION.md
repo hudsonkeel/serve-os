@@ -132,6 +132,28 @@ worker invocation reaches the gate check and no-ops there, precisely as it would
 scheduled tick — dispatching does not and cannot cause PHI processing that wasn't already
 possible.
 
+## AWS credential configuration (2026-08-16)
+
+Netlify treats `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` as reserved platform variable names
+and refuses to let a site set its own values for them. This pipeline uses Serve-specific names
+instead — `SERVE_AWS_ACCESS_KEY_ID` / `SERVE_AWS_SECRET_ACCESS_KEY` — and every AWS client it
+constructs (Transcribe, S3, Bedrock, the STS identity diagnostic) resolves credentials through
+one shared function, `getServeAwsCredentials()` (`lib/assessmentIntelligence/awsCredentials.ts`),
+never the AWS SDK's default credential provider chain. That chain would otherwise silently
+resolve to whatever `AWS_*` variables are actually present in the Lambda execution environment
+Netlify Functions run on — Netlify's own execution role, not this application's intended
+identity — which explicit credentials make structurally impossible. `getServeAwsCredentials()`
+fails closed: a half-configured pair (one variable set, the other missing) throws rather than
+falling back to the default chain, and neither value is ever logged. The staging bucket variable
+was renamed to match — `SERVE_AWS_TRANSCRIBE_STAGING_BUCKET` — one canonical name, no
+`AWS_TRANSCRIBE_STAGING_BUCKET` fallback retained.
+
+An admin-only AWS identity diagnostic (`checkAwsIdentity()`, Settings → "Assessment Processing
+(Admin)" → "Check AWS Identity") calls `sts:GetCallerIdentity` — which requires no IAM policy
+grant at all, by AWS design — and displays only the resolved account id and principal ARN, never
+credential material. This is the way to confirm, before trusting any real Transcribe/Bedrock
+call, that a deployment is actually authenticating as `serve-netlify-assessment-pipeline`.
+
 ## Acceptance test plan — real device synthetic recording
 
 Not executed in this session (no real device or AWS access available here) — this is the plan
@@ -171,7 +193,7 @@ reach AWS at all — see `phiGovernance.ts`.
    page reload (the 20-second `router.refresh()` interval); confirm the transcript shown in
    "View Source Conversation" reads as one continuous conversation, not truncated or reordered.
 8. **Failure path** — separately, force one failure (e.g. temporarily point
-   `AWS_TRANSCRIBE_STAGING_BUCKET` at a nonexistent bucket) and confirm the session reaches
+   `SERVE_AWS_TRANSCRIBE_STAGING_BUCKET` at a nonexistent bucket) and confirm the session reaches
    `status='failed'` with a stage/reason, surfaces on the resident page and in Today's Work, and
    that Retry recovers correctly afterward.
 

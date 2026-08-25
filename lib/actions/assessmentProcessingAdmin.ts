@@ -1,5 +1,6 @@
 "use server";
 
+import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { createServerClient } from "@/lib/supabase/server";
 import { dispatchEligibleAssessmentProcessing } from "@/lib/assessmentIntelligence/pipeline";
@@ -7,6 +8,7 @@ import { createSyntheticAssessmentSession } from "@/lib/data/assessmentIntellige
 import { setResidentCommunityId } from "@/lib/data/residents";
 import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 import { resolveAssessmentCommunity } from "@/lib/assessmentIntelligence/communityResolution";
+import { getServeAwsCredentials } from "@/lib/assessmentIntelligence/awsCredentials";
 
 // Admin-only manual trigger for the assessment processing dispatcher (2026-08-15 hardening
 // pass — see docs/architecture/ASSESSMENT_TRANSCRIPTION_ORCHESTRATION.md). Exists because
@@ -139,4 +141,48 @@ export async function createSyntheticAssessmentSessionAction(
   }
 
   return { residentId, assessmentSessionId: session.id };
+}
+
+// ─── AWS identity diagnostic (2026-08-16, Netlify credential correction) ───────────────────
+// The smallest safe way to prove the deployed background worker is actually authenticating as
+// serve-netlify-assessment-pipeline and not some other principal, before trusting any real
+// Transcribe/Bedrock call. Server-side only, admin-gated, same discipline as every other action
+// in this file. Returns ONLY the AWS account id and principal ARN — never any credential
+// material, never logged anywhere. sts:GetCallerIdentity requires no IAM policy grant at all
+// (well-established AWS behavior — it works for any principal presenting valid credentials,
+// specifically so identity checks work even under a maximally restrictive policy), so a failure
+// here means the credentials themselves are missing/invalid/misconfigured, not a permissions gap.
+// Safe to leave in place indefinitely — it discloses nothing sensitive — but it is exactly the
+// kind of check that only matters before/during the synthetic test, not a feature to build out
+// further.
+
+export interface AwsIdentityCheckResult {
+  error?: string;
+  account?: string;
+  arn?: string;
+}
+
+export async function checkAwsIdentity(): Promise<AwsIdentityCheckResult> {
+  const profile = await getCurrentAuthorizedUser();
+  if (!profile) return { error: "You must be signed in." };
+  if (profile.role !== "admin") {
+    return { error: "Only an admin can check the AWS identity." };
+  }
+
+  let credentials;
+  try {
+    credentials = getServeAwsCredentials();
+  } catch (err) {
+    // getServeAwsCredentials() never includes the credential values themselves in its error
+    // messages — safe to surface directly.
+    return { error: err instanceof Error ? err.message : "AWS credentials are not configured." };
+  }
+
+  try {
+    const client = new STSClient({ region: "us-east-1", credentials });
+    const result = await client.send(new GetCallerIdentityCommand({}));
+    return { account: result.Account, arn: result.Arn };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not verify the AWS identity — see server logs." };
+  }
 }

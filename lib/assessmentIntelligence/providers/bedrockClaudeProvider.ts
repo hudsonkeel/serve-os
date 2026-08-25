@@ -3,6 +3,7 @@ import { BedrockRuntimeClient, ConverseCommand, type ConverseCommandOutput } fro
 import { buildExtractionSystemPrompt, buildExtractionUserPrompt } from "../extractionPrompt.ts";
 import { normalizeExtractedFacts } from "../factTypes.ts";
 import type { AssessmentExtractionProvider, ExtractionResult } from "../extractionProvider.ts";
+import { getServeAwsCredentials } from "../awsCredentials.ts";
 
 // Amazon Bedrock / Anthropic Claude implementation of the provider-neutral extraction interface.
 // Uses the exact same provider-agnostic prompt (extractionPrompt.ts) and the exact same
@@ -24,10 +25,11 @@ let cachedClient: BedrockRuntimeClient | null = null;
 
 function getClient(): BedrockRuntimeClient {
   if (cachedClient) return cachedClient;
-  // No explicit credentials constructed here — the AWS SDK's default credential provider chain
-  // resolves them (environment variables, shared config/SSO profile, or a workload identity in
-  // a deployed environment), per the least-custom-code, no-static-keys-if-avoidable preference.
-  cachedClient = new BedrockRuntimeClient({ region: REGION });
+  // Explicit credentials from SERVE_AWS_ACCESS_KEY_ID/SERVE_AWS_SECRET_ACCESS_KEY — see
+  // awsCredentials.ts for why the AWS SDK's default credential chain is never used here. Only
+  // ever evaluated in production use: every test passes its own mock `client` argument to
+  // extractFactsViaBedrockClaude() below, so this default-parameter expression never runs there.
+  cachedClient = new BedrockRuntimeClient({ region: REGION, credentials: getServeAwsCredentials() });
   return cachedClient;
 }
 
