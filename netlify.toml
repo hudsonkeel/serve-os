@@ -1,6 +1,21 @@
 [build]
   command = "npm run build"
   publish = ".next"
+  # Raw Netlify Functions living alongside the Next.js app — today, the assessment processing
+  # dispatcher/worker pair: assessment-processing-dispatcher.ts (scheduled, every 2 minutes,
+  # dispatch-only — finds eligible work and hands it off) and
+  # assessment-processing-stage-worker-background.ts (a Background Function, up to 15 minutes,
+  # invoked by the dispatcher to perform exactly one bounded pipeline stage — never invoked on a
+  # schedule itself). Split this way because Netlify Scheduled Functions have a hard 30-second
+  # execution limit, too short for audio assembly/S3 staging/an AWS Transcribe or Bedrock call —
+  # see docs/architecture/ASSESSMENT_TRANSCRIPTION_ORCHESTRATION.md. This is the default location
+  # Netlify already discovers automatically; declared explicitly so it's unambiguous alongside
+  # the Next.js runtime plugin's own internally-generated functions (which live in a separate,
+  # plugin-managed location and never collide with this directory).
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
 
 [build.environment]
   NODE_VERSION = "22"

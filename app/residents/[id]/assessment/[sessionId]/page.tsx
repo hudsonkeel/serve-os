@@ -44,6 +44,7 @@ export default async function AssessmentReviewPage({
         residentName={record.residentDisplayName}
         assessmentSessionId={sessionId}
         sessionStatus={reviewData.session.status}
+        isSyntheticTest={reviewData.session.is_synthetic_test === true}
         exceptions={reviewData.reviewSummary.exceptions}
         clearFacts={reviewData.reviewSummary.clearFacts}
         readyForApproval={reviewData.reviewSummary.readyForApproval}

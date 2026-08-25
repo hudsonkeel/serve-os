@@ -11,6 +11,7 @@ import { PROSPECT_RELATIONSHIP_TYPES } from "../relationships/constants.ts";
 import {
   mapCompletedRelationshipActionToWorkItem,
   mapCompletedWellnessFollowUpToWorkItem,
+  mapFailedAssessmentProcessingToWorkItem,
   mapNoNextActionToWorkItem,
   mapOnHoldRelationshipToWorkItem,
   mapPipelineStageToWorkItem,
@@ -26,19 +27,22 @@ import {
 } from "./relationships.ts";
 import { getAllOpenWellnessFollowUps, getRecentlyCompletedWellnessFollowUps } from "./wellnessFollowUps.ts";
 import { getRecruitingLeads } from "./recruitingLeads.ts";
+import { getFailedAssessmentSessions } from "./assessmentIntelligence.ts";
 
 const ASSESSMENT_STAGES = new Set(["assessment_scheduled"]);
 const PROPOSAL_STAGES = new Set(["proposal_in_progress", "proposal_sent"]);
 
 export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkItem[]> {
-  const [openFollowUps, completedFollowUps, workspaceRows, nearestActions, completedActions, recruiting] = await Promise.all([
-    getAllOpenWellnessFollowUps(),
-    getRecentlyCompletedWellnessFollowUps(),
-    getRelationshipWorkspaceRows(),
-    getNearestOpenActionByRelationship(),
-    getRecentlyCompletedActions(),
-    getRecruitingLeads(),
-  ]);
+  const [openFollowUps, completedFollowUps, workspaceRows, nearestActions, completedActions, recruiting, failedAssessments] =
+    await Promise.all([
+      getAllOpenWellnessFollowUps(),
+      getRecentlyCompletedWellnessFollowUps(),
+      getRelationshipWorkspaceRows(),
+      getNearestOpenActionByRelationship(),
+      getRecentlyCompletedActions(),
+      getRecruitingLeads(),
+      getFailedAssessmentSessions(),
+    ]);
 
   const relationshipById = new Map(workspaceRows.map((r) => [r.id, r]));
   const items: WorkItem[] = [];
@@ -147,6 +151,20 @@ export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkIt
     if (attention === "no_next_action") {
       items.push(mapNoNextActionToWorkItem({ relationshipId: relationship.id, displayName: relationship.displayName, ownerLabel: relationship.ownerLabel }));
     }
+  }
+
+  // ─── Failed assessment background processing — explicit-evidence-gated ─────────────
+  for (const failed of failedAssessments) {
+    items.push(
+      mapFailedAssessmentProcessingToWorkItem({
+        assessmentSessionId: failed.id,
+        residentId: failed.resident_id,
+        residentDisplayName: failed.residentDisplayName,
+        failureStage: failed.failure_stage,
+        failureReason: failed.failure_reason,
+        failedAt: failed.failed_at,
+      }),
+    );
   }
 
   // ─── Recruiting — Continuity-Rule-gated ─────────────────────────────
