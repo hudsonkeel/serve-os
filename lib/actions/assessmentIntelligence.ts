@@ -14,8 +14,10 @@ import {
   writeAssessmentOutput,
   getAssessmentSession,
   getAxisCareIdentityLinkState,
+  getCombinedTranscriptText,
+  getAssessmentSessionWithFailureState,
 } from "@/lib/data/assessmentIntelligence";
-import { runExtractionPipelineForSession } from "@/lib/assessmentIntelligence/pipeline";
+import { runExtractionPipelineForSession, retryFailedAssessmentProcessing } from "@/lib/assessmentIntelligence/pipeline";
 import { computeReviewExceptions, type DraftFactForReview } from "@/lib/assessmentIntelligence/reviewExceptions";
 import { recommendPricing, PRICING_RULES_VERSION, type FactForPricing } from "@/lib/assessmentIntelligence/pricingEngine";
 import { PRICING_CATALOG_VERSION } from "@/lib/assessmentIntelligence/pricingCatalog";
@@ -139,6 +141,51 @@ export async function getAssessmentReviewData(assessmentSessionId: string): Prom
   );
 
   return { session, draftFacts: draftFactRows, reviewSummary };
+}
+
+// ─── Transcript review (Phase 12) ──────────────────────────────────────────
+// A secure, server-mediated read — no RLS was loosened to expose this. Authorization is the
+// same application-layer canEditResidentProfile() check every other assessment action in this
+// file already uses; RLS on intake_sources remains zero-policy/service-role-only exactly as
+// before. "Unauthorized access denied" means this function itself refuses, every time, for
+// anyone who isn't an authorized reviewer — not a policy change on the table.
+export interface AssessmentTranscriptResult {
+  transcriptText?: string;
+  error?: string;
+}
+
+export async function getAssessmentTranscriptForReview(assessmentSessionId: string): Promise<AssessmentTranscriptResult> {
+  const authResult = await requireActor();
+  if ("error" in authResult) return { error: authResult.error };
+
+  const session = await getAssessmentSession(assessmentSessionId);
+  if (!session) return { error: "Assessment session not found." };
+
+  const transcriptText = await getCombinedTranscriptText(assessmentSessionId);
+  return { transcriptText };
+}
+
+// ─── Failure/retry (Phase 13) ──────────────────────────────────────────────
+export async function getAssessmentFailureState(assessmentSessionId: string) {
+  const authResult = await requireActor();
+  if ("error" in authResult) return { error: authResult.error };
+
+  const session = await getAssessmentSessionWithFailureState(assessmentSessionId);
+  if (!session) return { error: "Assessment session not found." };
+  return { session };
+}
+
+export async function retryFailedAssessment(assessmentSessionId: string): Promise<{ success?: boolean; error?: string }> {
+  const authResult = await requireActor();
+  if ("error" in authResult) return { error: authResult.error };
+
+  try {
+    const result = await retryFailedAssessmentProcessing(assessmentSessionId);
+    if (result.error) return { error: result.error };
+    return { success: true };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Retry failed." };
+  }
 }
 
 export interface ApprovedFactInput {

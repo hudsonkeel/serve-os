@@ -14,6 +14,7 @@ interface AssessmentSectionProps {
 const STATUS_LABELS: Record<string, string> = {
   recording: "Recording",
   processing: "Processing",
+  failed: "Processing failed",
   draft: "Draft — needs review",
   needs_review: "Needs review",
   approved: "Approved",
@@ -25,7 +26,7 @@ function StatusBadge({ status }: { status: string }) {
   const tone =
     status === "approved" || status === "operationalized"
       ? "bg-success-surface text-success-text"
-      : status === "needs_review"
+      : status === "needs_review" || status === "failed"
         ? "bg-warning-surface text-warning-text"
         : "bg-ivory text-muted";
   return (
@@ -86,16 +87,25 @@ export function AssessmentSection({ residentId, residentName, sessions }: Assess
                   {new Date(s.started_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   {" · "}
                   {s.initiated_from === "new_provisional" ? "New prospect" : "Existing person"}
+                  {s.is_synthetic_test && (
+                    <span className="ml-2 inline-flex items-center rounded-full bg-warning-surface px-2 py-0.5 font-sans text-xs font-semibold uppercase tracking-wide text-warning-text">
+                      Synthetic
+                    </span>
+                  )}
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 <StatusBadge status={s.status} />
-                {(s.status === "draft" || s.status === "needs_review" || s.status === "approved") && (
+                {(s.status === "draft" ||
+                  s.status === "needs_review" ||
+                  s.status === "approved" ||
+                  s.status === "processing" ||
+                  s.status === "failed") && (
                   <Link
                     href={`/residents/${residentId}/assessment/${s.id}`}
                     className="font-sans text-sm font-medium text-navy hover:text-navy-light"
                   >
-                    Review →
+                    {s.status === "processing" ? "View status →" : s.status === "failed" ? "View / retry →" : "Review →"}
                   </Link>
                 )}
               </div>

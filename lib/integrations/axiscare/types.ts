@@ -282,6 +282,27 @@ export interface AxisCareRawTaggingCategory {
   [key: string]: unknown;
 }
 
+// Spec-confirmed (GET /api/classes/client, OpenAPI 2025-06-25): `code` and
+// `label` are both required, non-sensitive reference data (not client
+// records) — safe to type concretely, unlike AxisCareRawClient above. Used
+// to resolve a real configured class (e.g. "WAF Prospects") to its `code`
+// at write-candidate-build time rather than hardcoding a guessed code — see
+// clientClasses.ts.
+export interface AxisCareClientClass {
+  code: string;
+  label: string;
+}
+
+export interface AxisCareClientClassesResponse {
+  results?: {
+    classes?: AxisCareClientClass[];
+    [key: string]: unknown;
+  };
+  success?: boolean;
+  errors?: unknown[];
+  [key: string]: unknown;
+}
+
 // Envelope key is results.categories, not results.taggingCategories — and
 // no pagination field per the spec (returns the full list in one response).
 export interface AxisCareTaggingCategoriesResponse {

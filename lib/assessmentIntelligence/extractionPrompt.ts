@@ -41,7 +41,15 @@ CRITICAL RULES:
 6. Return valid JSON only, matching exactly: { "facts": [ { "field_path": string, "value":
    string|number|boolean|null, "assertion_state": string, "collection_method":
    string|null, "reporter": string|null, "evidence": string|null, "confidence": string } ] }
-   No markdown, no commentary, no code fences.`;
+   No markdown, no commentary, no code fences.
+7. For "important_people.hipaa_disclosure_authorization" and
+   "important_people.medical_decision_authority" specifically: only emit these two fields when
+   someone explicitly states that legal/regulatory authority in those terms (e.g. "I have
+   medical power of attorney," "I'm authorized on his HIPAA paperwork," "she's his legal
+   guardian"). General involvement language — "she handles his finances," "he helps his dad,"
+   "family is very involved," "she usually makes the decisions" — is NOT evidence for either
+   field, no matter how confident the speaker sounds. When in doubt, do not emit the fact at
+   all; a missing fact is always safer here than an inferred one.`;
 }
 
 export function buildExtractionUserPrompt(transcriptText: string): string {

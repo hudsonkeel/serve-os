@@ -1,5 +1,8 @@
 import "server-only";
 import { axisCareGet } from "./client.ts";
+import { normalizeCollection } from "./discovery.ts";
+import { validateNextPageUrl } from "./visits.ts";
+import { getAxisCareConfig } from "./config.ts";
 import type {
   AxisCareAdlsResponse,
   AxisCareAdlCategoriesResponse,
@@ -22,4 +25,55 @@ export async function getAdlSample() {
 // response.
 export async function getAdlCategorySample() {
   return axisCareGet<AxisCareAdlCategoriesResponse>(ADL_CATEGORIES_PATH);
+}
+
+// ADL definition catalog fetch (ADL automation mapping) — getAdlSample() above is deliberately
+// a 1-record discovery probe; this is the agency's actual configured ADL definitions, the real
+// IDs a deterministic Serve-facts-to-ADL mapper must resolve against, never invented. Mirrors
+// getAllClients()'s bounded pagination discipline exactly (clients.ts).
+const ADLS_PAGE_LIMIT = "100";
+const MAX_ADL_PAGES = 10;
+const MAX_TOTAL_ADLS = 1000;
+
+export interface AllAdlsResult {
+  records: unknown[];
+  statusCode: number;
+  truncated: boolean;
+}
+
+export async function getAllConfiguredAdls(): Promise<AllAdlsResult> {
+  const config = getAxisCareConfig();
+
+  const first = await axisCareGet<AxisCareAdlsResponse>(ADLS_PATH, { limit: ADLS_PAGE_LIMIT });
+
+  const records: unknown[] = [];
+  let pageCount = 1;
+  let truncated = false;
+
+  const firstCollection = normalizeCollection(first.body.results?.data);
+  records.push(...firstCollection.records);
+
+  let nextPageRaw: unknown = first.body.results?.nextPage;
+
+  while (pageCount < MAX_ADL_PAGES) {
+    const pathWithQuery = validateNextPageUrl(nextPageRaw, config.baseUrl);
+    if (!pathWithQuery) break;
+
+    if (records.length >= MAX_TOTAL_ADLS) {
+      truncated = true;
+      break;
+    }
+
+    const next = await axisCareGet<AxisCareAdlsResponse>(pathWithQuery);
+    const nextCollection = normalizeCollection(next.body.results?.data);
+    records.push(...nextCollection.records);
+    pageCount += 1;
+    nextPageRaw = next.body.results?.nextPage;
+  }
+
+  if (pageCount >= MAX_ADL_PAGES && validateNextPageUrl(nextPageRaw, config.baseUrl)) {
+    truncated = true;
+  }
+
+  return { records, statusCode: first.statusCode, truncated };
 }

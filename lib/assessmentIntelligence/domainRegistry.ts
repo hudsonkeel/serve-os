@@ -71,6 +71,14 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   { fieldPath: "important_people.primary_contact_phone", domain: "important_people", label: "Primary contact phone", requiredForOperationalization: true },
   { fieldPath: "important_people.decision_maker", domain: "important_people", label: "Decision maker" },
   { fieldPath: "important_people.emergency_contact", domain: "important_people", label: "Emergency contact" },
+  // Deliberately separate from decision_maker (a soft, general "who handles things" signal).
+  // These two carry legal/regulatory weight and must only ever be populated from an EXPLICIT
+  // statement of authority (e.g. "I have medical power of attorney" / "I'm HIPAA authorized on
+  // his account") — never inferred from general family involvement. See extractionPrompt.ts's
+  // dedicated rule and lib/integrations/axiscare/responsiblePartyMapping.ts, which refuses to
+  // map either field from anything but a confirmed_yes fact here.
+  { fieldPath: "important_people.hipaa_disclosure_authorization", domain: "important_people", label: "HIPAA disclosure authorization (explicitly stated only)", isBoolean: true },
+  { fieldPath: "important_people.medical_decision_authority", domain: "important_people", label: "Medical decision-making authority (explicitly stated only)", isBoolean: true },
 
   // What / Why
   { fieldPath: "what_why.what_changed", domain: "what_why", label: "What changed" },

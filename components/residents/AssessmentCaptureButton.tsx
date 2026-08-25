@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import Link from "next/link";
 import { ClipboardList } from "lucide-react";
-import { startAssessmentCapture } from "@/lib/actions/assessmentCapture";
 
 interface AssessmentCaptureButtonProps {
   residentId: string;
@@ -11,44 +10,25 @@ interface AssessmentCaptureButtonProps {
   className?: string;
 }
 
-// Calls the exact same server action AssessmentSection.tsx's original
-// "Capture Assessment" button called — no new assessment business logic,
-// just a second, more reachable trigger for it. Moved to the person header
-// (always visible, no scrolling required) per real-device feedback;
-// AssessmentSection's own launch button was removed as a duplicate once
-// this existed (its Assessment History list and admin/test "Paste
-// Transcript" fallback are unchanged and still live there).
+// Native Serve OS capture route as of the 2026-08-15 architecture decision — previously this
+// called startAssessmentCapture() (lib/actions/assessmentCapture.ts) and window.open()'d an
+// opaque-handoff-code URL into the external serve-intake.netlify.app deployment. That function
+// and the external Intake app both remain fully intact and reachable (the Intake app is the
+// deliberate reference/fallback implementation until the native path is proven) — this button
+// simply no longer points at it by default. Session creation/auth now happen entirely
+// server-side on the target page itself (app/residents/[id]/assessment/capture/page.tsx), so
+// no client-side action call is needed here at all — this is now a plain navigation link.
 export function AssessmentCaptureButton({ residentId, className }: AssessmentCaptureButtonProps) {
-  const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-
-  function handleClick() {
-    setError(null);
-    startTransition(async () => {
-      const result = await startAssessmentCapture(residentId);
-      if (result.error || !result.captureUrl) {
-        setError(result.error || "Could not start assessment capture.");
-        return;
-      }
-      window.open(result.captureUrl, "_blank", "noopener,noreferrer");
-    });
-  }
-
   return (
-    <div className="flex flex-col items-start gap-1">
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={isPending}
-        className={
-          className ??
-          "flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-navy px-4 font-sans text-button font-medium text-white shadow-card transition-colors hover:bg-navy/90 disabled:cursor-not-allowed disabled:opacity-50"
-        }
-      >
-        <ClipboardList size={17} strokeWidth={1.75} />
-        {isPending ? "Starting…" : "Assessment"}
-      </button>
-      {error && <p className="font-sans text-xs text-danger-text">{error}</p>}
-    </div>
+    <Link
+      href={`/residents/${residentId}/assessment/capture`}
+      className={
+        className ??
+        "flex min-h-[44px] items-center justify-center gap-2 rounded-lg bg-navy px-4 font-sans text-button font-medium text-white shadow-card transition-colors hover:bg-navy/90"
+      }
+    >
+      <ClipboardList size={17} strokeWidth={1.75} />
+      Assessment
+    </Link>
   );
 }
