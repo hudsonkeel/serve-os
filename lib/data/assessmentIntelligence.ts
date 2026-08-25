@@ -678,12 +678,29 @@ export async function createSyntheticAssessmentSession(input: {
   return { session: data as AssessmentSessionRecord };
 }
 
+export interface InProgressSessionLookup {
+  session: AssessmentSessionRecord | null;
+  error?: string;
+}
+
 /** The one in-progress ('recording') session for this resident, if any — used to resume a
  * capture screen after a reload rather than trusting a client-supplied session id on its own.
  * Scoping every subsequent lookup by BOTH the resident id (from the URL) and this result is
  * what prevents a user from manufacturing an arbitrary resident/session association by editing
- * the URL — see getAssessmentSessionForResidentOrThrow(). */
-export async function getInProgressAssessmentSessionForResident(residentId: string): Promise<AssessmentSessionRecord | null> {
+ * the URL — see getAssessmentSessionForResidentOrThrow().
+ *
+ * CORRECTION (2026-08-25, native-capture resume defect): a real query failure here must never
+ * be indistinguishable from "genuinely no in-progress session exists" — the caller previously
+ * treated both the same way (a plain `null`), which meant a transient lookup error silently
+ * fell through to creating a brand-new session instead of resuming the existing one. That's
+ * exactly how a resident ended up with two sessions during a synthetic-pipeline acceptance
+ * test: the admin-created synthetic session was still sitting at status='recording', untouched,
+ * but a second, non-synthetic session got created alongside it. `{ session, error }` lets the
+ * caller (getOrStartNativeCaptureSession) refuse to proceed to session creation on a lookup
+ * failure — it surfaces the error instead, rather than silently starting fresh and orphaning
+ * whatever session was actually in progress. `error` is only ever a generic, safe-to-display
+ * message — never the raw Postgres error text. */
+export async function getInProgressAssessmentSessionForResident(residentId: string): Promise<InProgressSessionLookup> {
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("intake_assessment_sessions")
@@ -695,9 +712,28 @@ export async function getInProgressAssessmentSessionForResident(residentId: stri
     .maybeSingle();
   if (error) {
     console.error("[getInProgressAssessmentSessionForResident]", { residentId, message: error.message });
-    return null;
+    return { session: null, error: "Could not check for an in-progress assessment session — please try again." };
   }
-  return data as AssessmentSessionRecord | null;
+  return { session: data as AssessmentSessionRecord | null };
+}
+
+export type CaptureSessionResumeDecision =
+  | { kind: "resume"; session: AssessmentSessionRecord }
+  | { kind: "create" }
+  | { kind: "error"; error: string };
+
+/** Pure decision logic, no I/O — mirrors communityResolution.ts's own split (decide separately
+ * from fetch). Given the result of an in-progress-session lookup, decides whether native capture
+ * should resume the found session, create a new one, or refuse outright. The entire fix for the
+ * 2026-08-25 defect lives in this one function being consulted before any session is ever
+ * created: a lookup `error` always yields `"error"`, never `"create"` — the exact distinction
+ * the previous code collapsed (both "lookup failed" and "genuinely no session" produced a plain
+ * `null`, so a failed lookup silently behaved exactly like "safe to start a new session"). See
+ * getOrStartNativeCaptureSession (lib/actions/assessmentCapture.ts) for the only caller. */
+export function decideCaptureSessionResume(lookup: InProgressSessionLookup): CaptureSessionResumeDecision {
+  if (lookup.error) return { kind: "error", error: lookup.error };
+  if (lookup.session) return { kind: "resume", session: lookup.session };
+  return { kind: "create" };
 }
 
 /** The authorization-critical check every native capture server action must call before

@@ -7,6 +7,7 @@ import type { AuthRole } from "@/lib/auth/constants";
 import {
   createNativeAssessmentSession,
   getInProgressAssessmentSessionForResident,
+  decideCaptureSessionResume,
   assertSessionBelongsToResident,
   getSignedAudioChunkUploadUrl,
   finalizeNativeAudioSource,
@@ -111,11 +112,18 @@ export async function getOrStartNativeCaptureSession(residentId: string): Promis
     return { error: "You do not have permission to capture an assessment for this resident." };
   }
 
-  const existing = await getInProgressAssessmentSessionForResident(residentId);
-  if (existing) {
-    const source = await getAudioSourceForSession(existing.id);
+  // decideCaptureSessionResume() is where the 2026-08-25 fix actually lives — a lookup failure
+  // must never fall through to creating a new session (see its own comment in
+  // lib/data/assessmentIntelligence.ts for the exact defect this closes).
+  const lookup = await getInProgressAssessmentSessionForResident(residentId);
+  const decision = decideCaptureSessionResume(lookup);
+  if (decision.kind === "error") {
+    return { error: decision.error };
+  }
+  if (decision.kind === "resume") {
+    const source = await getAudioSourceForSession(decision.session.id);
     const chunkCount = ((source as unknown as { source_payload?: { chunk_count?: number } })?.source_payload?.chunk_count ?? 0) as number;
-    return { session: { assessmentSessionId: existing.id, nextChunkIndex: chunkCount, elapsedSecondsAtPause: 0 } };
+    return { session: { assessmentSessionId: decision.session.id, nextChunkIndex: chunkCount, elapsedSecondsAtPause: 0 } };
   }
 
   // Community identity (mirrors startAssessmentForExistingPerson's identical resolution,
