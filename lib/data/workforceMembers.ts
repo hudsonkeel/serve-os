@@ -33,6 +33,24 @@ export async function listWorkforceMembers(): Promise<WorkforceMember[]> {
   return (data as WorkforceMember[] | null) ?? [];
 }
 
+// Batch lookup for display purposes (e.g. the Incident register resolving
+// several workforce_member_id values to display names in one query instead
+// of N). Returns whatever subset of ids actually resolve — never errors on
+// a stale/missing id.
+export async function getWorkforceMembersByIds(ids: readonly string[]): Promise<WorkforceMember[]> {
+  if (ids.length === 0) return [];
+
+  const supabase = createServerClient();
+  const { data, error } = await supabase.from("workforce_members").select("*").in("id", ids);
+
+  if (error) {
+    console.error("[getWorkforceMembersByIds]", { message: error.message });
+    return [];
+  }
+
+  return (data as WorkforceMember[] | null) ?? [];
+}
+
 export async function getWorkforceMemberByRecruitingLeadId(recruitingLeadId: string): Promise<WorkforceMember | null> {
   const supabase = createServerClient();
 

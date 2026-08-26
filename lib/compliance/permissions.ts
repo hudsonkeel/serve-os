@@ -43,3 +43,38 @@ export function canRunAuditDrill(role: string | null | undefined): boolean {
 export function canSupersedeRequirement(role: string | null | undefined): boolean {
   return role === "admin";
 }
+
+// ─── Incidents & Infections (Slice 2, 2026-08-26) ──────────────────────────
+// Same architecture as the predicates above: narrow, named canX(role)
+// predicates over AuthRole, enforced in the server-action layer — RLS on
+// incidents/infections stays enabled and policy-free, same as every other
+// table in this schema. Four separate tiers per explicit product decision:
+// create does NOT imply review/resolve.
+
+// View reuses AUDIT_READINESS_VIEW_ROLES directly — genuinely the same
+// tier (every operational role), not a coincidence worth re-deriving.
+export function canViewIncidentsAndInfections(role: string | null | undefined): boolean {
+  return Boolean(role && (AUDIT_READINESS_VIEW_ROLES as readonly string[]).includes(role));
+}
+
+// Narrower than view, broader than review/resolve — operations is the
+// day-to-day role fielding these reports, per explicit product decision.
+const INCIDENT_CREATE_ROLES: readonly AuthRole[] = ["admin", "manager", "operations"];
+
+export function canCreateIncidentOrInfection(role: string | null | undefined): boolean {
+  return Boolean(role && (INCIDENT_CREATE_ROLES as readonly string[]).includes(role));
+}
+
+// Formal review — same tier as corrective-action management
+// (CORRECTIVE_ACTION_MANAGE_ROLES), reused directly rather than
+// re-declared, since the two are genuinely the same trust tier today.
+export function canReviewIncidentOrInfection(role: string | null | undefined): boolean {
+  return Boolean(role && (CORRECTIVE_ACTION_MANAGE_ROLES as readonly string[]).includes(role));
+}
+
+// Resolve/close — same tier as review by explicit product decision, kept
+// as its own named predicate (not an alias) so the two can diverge later
+// without a call-site rename.
+export function canResolveIncidentOrInfection(role: string | null | undefined): boolean {
+  return Boolean(role && (CORRECTIVE_ACTION_MANAGE_ROLES as readonly string[]).includes(role));
+}
