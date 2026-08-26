@@ -104,6 +104,15 @@ test("within the same priority, sorts by due date ascending, nulls last", () => 
   );
 });
 
+test("actionType passes through unchanged from both source tables (2026-08-25, QAPI v0.1 bucket summaries depend on this)", () => {
+  const result = composeCorrectiveActions(
+    [workforceAction({ id: "wf-1", action_type: "evidence_expired" })],
+    [auditReadinessAction({ id: "ar-1", action_type: "audit_finding_failed" })]
+  );
+  assert.equal(result.find((a) => a.id === "wf-1")?.actionType, "evidence_expired");
+  assert.equal(result.find((a) => a.id === "ar-1")?.actionType, "audit_finding_failed");
+});
+
 let passed = 0;
 for (const t of tests) {
   try {

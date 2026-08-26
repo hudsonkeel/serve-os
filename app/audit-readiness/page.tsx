@@ -5,13 +5,19 @@ import { DomainReadinessCard } from "@/components/compliance/DomainReadinessCard
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canViewAuditReadiness } from "@/lib/compliance/permissions";
 import {
-  AUDIT_READINESS_STATUSES,
   getAuditReadinessDashboardData,
   groupIssuesBySubject,
   rankIssues,
   type AuditReadinessDomainId,
-  type DomainReadinessRollup,
 } from "@/lib/compliance/auditReadinessDashboard";
+import {
+  allClearMessage,
+  auditReadinessRequirementsHref,
+  awaitingFirstSubjectMessage,
+  domainRequirementTotals,
+  needsAttentionLabel,
+  resolveIssueHref,
+} from "@/lib/compliance/auditReadinessDisplay";
 import { getAuditEligibleActiveClientResidents } from "@/lib/data/residentServeRelationships";
 import type { AuditReadinessStatus } from "@/lib/compliance/auditReadinessStatus";
 import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
@@ -24,74 +30,15 @@ export const revalidate = 0;
 // for themselves (getWorkforceRoster(), deriveAuditReadinessStatus(),
 // getAllOpenCorrectiveActionsComposed(), listRecentPersonDocuments()) —
 // see lib/compliance/auditReadinessDashboard.ts for the one composition
-// point. This page renders; it does not evaluate.
+// point. This page renders; it does not evaluate. The rollup-interpretation
+// helpers below (allClearMessage, resolveIssueHref, etc.) moved to
+// lib/compliance/auditReadinessDisplay.ts (2026-08-25, QAPI v0.1) so
+// app/qapi/page.tsx reuses the exact same "what does this rollup mean"
+// logic rather than duplicating it — this page and that one must never
+// silently disagree about what a status or a resolution link means.
 
 function statusHref(domain: AuditReadinessDomainId | "all", status: AuditReadinessStatus | "all") {
-  const params = new URLSearchParams();
-  if (domain !== "all") params.set("domain", domain);
-  if (status !== "all") params.set("status", status);
-  const qs = params.toString();
-  return `/audit-readiness/requirements${qs ? `?${qs}` : ""}`;
-}
-
-// "Satisfied" means every one of the engine's own satisfied outcomes
-// (compliant, satisfied_by_event, exception are all presentation labels
-// over the same underlying "satisfied" per auditReadinessStatus.ts — never
-// a different compliance outcome). not_applicable items aren't "required,"
-// so they're excluded from the denominator entirely rather than counted as
-// either satisfied or not. Scoped per-domain — each domain card owns its
-// own Requirement Completion number, not a cross-domain blend.
-function domainRequirementTotals(domain: DomainReadinessRollup): { satisfiedCount: number; applicableCount: number } {
-  const total = AUDIT_READINESS_STATUSES.reduce((sum, s) => sum + domain.statusCounts[s], 0);
-  const satisfiedCount = domain.statusCounts.compliant + domain.statusCounts.satisfied_by_event + domain.statusCounts.exception;
-  const applicableCount = total - domain.statusCounts.not_applicable;
-  return { satisfiedCount, applicableCount };
-}
-
-// State 2 of the three-state rule (configured + nothing to do) needs a
-// domain-appropriate positive sentence — Workforce's is per-person, so its
-// count is meaningful here; the other two get generic phrasing until their
-// own subject model exists, matching the same "don't fabricate a count
-// that isn't real yet" discipline the readiness cards already follow.
-function allClearMessage(domain: DomainReadinessRollup): string {
-  if (domain.domainId === "workforce") {
-    return `All ${domain.subjectCount} employee${domain.subjectCount === 1 ? "" : "s"} are audit-ready.`;
-  }
-  if (domain.domainId === "emergency_preparedness") return "Emergency Preparedness is audit-ready.";
-  return "All applicable clients are audit-ready.";
-}
-
-// State: configured, but zero eligible subjects exist yet (see
-// DomainReadinessRollup.awaitingFirstSubject's own contract) — a real,
-// neutral "waiting for real data" fact, never phrased as a false
-// readiness claim.
-function awaitingFirstSubjectMessage(domain: DomainReadinessRollup): string {
-  const title = domain.label.endsWith("Readiness") ? domain.label : `${domain.label} Readiness`;
-  return `${title} is configured and will begin automatically when the first Serve client becomes active.`;
-}
-
-// Needs Attention identifies *where the actionable work lives*, not the
-// readiness domain concept — "Clients," not "Client Readiness" (the top
-// card's own name for itself). Workforce/Emergency Preparedness already
-// read the same way in both places, so only client_readiness needs the
-// override.
-function needsAttentionLabel(domain: DomainReadinessRollup): string {
-  return domain.domainId === "client_readiness" ? "Clients" : domain.label;
-}
-
-// The one deep link with a real "no hunting" resolution path today —
-// lands directly on the matching requirement card, already expanded and
-// scrolled to, on the workforce member's own profile. Other subject types
-// (once real) fall back to the subject's plain profile link until they
-// have their own equivalent anchor.
-function resolveIssueHref(issue: { subjectType: string; subjectHref: string; requirementCode: string }): string {
-  if (issue.subjectType === "workforce_member") {
-    return `${issue.subjectHref}?requirement=${encodeURIComponent(issue.requirementCode)}#employee-record-audit`;
-  }
-  if (issue.subjectType === "agency" || issue.subjectType === "resident") {
-    return `${issue.subjectHref}?requirement=${encodeURIComponent(issue.requirementCode)}`;
-  }
-  return issue.subjectHref;
+  return auditReadinessRequirementsHref(domain, status);
 }
 
 export default async function AuditReadinessPage() {
