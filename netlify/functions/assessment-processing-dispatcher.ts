@@ -25,7 +25,7 @@ import { dispatchEligibleAssessmentProcessing } from "../../lib/assessmentIntell
 
 const handler = async (): Promise<Response> => {
   try {
-    const results = await dispatchEligibleAssessmentProcessing(5);
+    const results = await dispatchEligibleAssessmentProcessing();
     const dispatched = results.filter((r) => r.dispatched).length;
     const failed = results.filter((r) => !r.dispatched).length;
     if (results.length > 0) {

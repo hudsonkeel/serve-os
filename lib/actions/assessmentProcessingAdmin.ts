@@ -50,7 +50,7 @@ export async function triggerAssessmentProcessingDispatch(): Promise<TriggerDisp
     return { error: "Only an admin can manually trigger assessment processing." };
   }
 
-  const results = await dispatchEligibleAssessmentProcessing(5);
+  const results = await dispatchEligibleAssessmentProcessing();
   const dispatched = results.filter((r) => r.dispatched).length;
   const failures = results.filter((r) => !r.dispatched);
 

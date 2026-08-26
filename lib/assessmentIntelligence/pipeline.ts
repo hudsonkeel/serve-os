@@ -706,6 +706,28 @@ async function invokeStageWorker(assessmentSessionId: string): Promise<DispatchO
   }
 }
 
+// getSessionsEligibleForProcessing() orders eligible sessions oldest-`finished_at`-first, with no
+// other filtering — a session whose own PHI gate will never open (an ordinary, non-synthetic
+// session sitting at status='processing' while PHI_AWS_PROCESSING_CONFIRMED is unset) stays
+// "eligible" by this query's own definition forever, since nothing ever moves it out of
+// status='processing'. Confirmed live during the 2026-08-25 synthetic acceptance test: 8 such
+// sessions (6 real ones dating to 2026-08-11, predating this PHI gate entirely, plus 2 more from
+// earlier the same day) permanently occupy the front of this FIFO queue ahead of any newer
+// session — including the one synthetic session the test actually needed to reach. With the
+// previous limit of 5, EVERY dispatch tick — no matter how many times it was clicked — could only
+// ever re-select the same 5 permanently-blocked sessions, each a harmless but wasted no-op at the
+// gate check, and could never reach the 9th-oldest (or any later) session at all. This is why the
+// synthetic session's row showed zero change after the first manual dispatch tick: it was never
+// included in that tick's batch, not because anything failed.
+//
+// DEFAULT_DISPATCH_LIMIT raises the ceiling well above any backlog seen so far so a newer session
+// is never starved behind older permanently-gate-blocked ones — not a fix for the backlog itself
+// (those 8 sessions stay exactly as they are; this file does not touch or resolve them), only for
+// the starvation risk a small limit creates. Each additional dispatched session costs one cheap,
+// idempotent, fire-and-forget HTTP acknowledgment (see invokeStageWorker's own comment) — raising
+// this is not a meaningfully riskier operation than the smaller limit was.
+export const DEFAULT_DISPATCH_LIMIT = 20;
+
 /** The dispatcher's entire job, and nothing more: find up to `limit` eligible sessions and fire
  * an async invocation of the background stage worker for each. Never awaits AWS/Bedrock work,
  * never assembles audio, never touches S3 — only a DB read plus a handful of fast
@@ -713,7 +735,7 @@ async function invokeStageWorker(assessmentSessionId: string): Promise<DispatchO
  * on is expected and safe: the background worker's own per-stage claim (and, for the
  * transcribing stage specifically, the stale-lease check) makes a duplicate invocation a
  * harmless no-op rather than duplicate work. */
-export async function dispatchEligibleAssessmentProcessing(limit = 5): Promise<DispatchOutcome[]> {
+export async function dispatchEligibleAssessmentProcessing(limit = DEFAULT_DISPATCH_LIMIT): Promise<DispatchOutcome[]> {
   const sessions = await getSessionsEligibleForProcessing(limit);
   return Promise.all(sessions.map((session) => invokeStageWorker(session.id)));
 }
