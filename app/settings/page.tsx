@@ -17,6 +17,7 @@ import {
   AssessmentProcessingDispatchTrigger,
   CreateSyntheticAssessmentSessionForm,
   AwsIdentityCheck,
+  AssessmentDispatchHandoffCheck,
 } from "@/components/settings/AssessmentProcessingDispatchTrigger";
 import {
   buildIntegrationDefinitions,
@@ -295,6 +296,7 @@ export default async function SettingsPage() {
                 <AssessmentProcessingDispatchTrigger />
                 <CreateSyntheticAssessmentSessionForm />
                 <AwsIdentityCheck />
+                <AssessmentDispatchHandoffCheck />
               </SettingsSection>
             )}
           </>

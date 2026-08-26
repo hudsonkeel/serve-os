@@ -658,15 +658,77 @@ export interface DispatchOutcome {
   error?: string;
 }
 
-const STAGE_WORKER_BACKGROUND_PATH = "/.netlify/functions/assessment-processing-stage-worker-background";
+export const STAGE_WORKER_BACKGROUND_PATH = "/.netlify/functions/assessment-processing-stage-worker-background";
+
+export interface SiteBaseUrlResolution {
+  baseUrl: string | null;
+  source: "DEPLOY_PRIME_URL" | "URL" | "none";
+}
 
 /** Netlify sets DEPLOY_PRIME_URL to the correct URL for whatever context this invocation is
  * actually running in — production URL in production, the specific Deploy Preview's own URL on
  * a preview — which is exactly what's needed here: a Deploy Preview's dispatcher must invoke
  * THAT SAME preview's background function, never production's. URL is a same-site fallback for
- * any context where DEPLOY_PRIME_URL is somehow unset. */
+ * any context where DEPLOY_PRIME_URL is somehow unset. Exported (with which variable actually
+ * resolved) so the admin-only handoff diagnostic (lib/actions/assessmentProcessingAdmin.ts) can
+ * report it without duplicating this resolution logic. */
+export function resolveSiteBaseUrl(): SiteBaseUrlResolution {
+  if (process.env.DEPLOY_PRIME_URL) return { baseUrl: process.env.DEPLOY_PRIME_URL, source: "DEPLOY_PRIME_URL" };
+  if (process.env.URL) return { baseUrl: process.env.URL, source: "URL" };
+  return { baseUrl: null, source: "none" };
+}
+
 function getSiteBaseUrl(): string | null {
-  return process.env.DEPLOY_PRIME_URL || process.env.URL || null;
+  return resolveSiteBaseUrl().baseUrl;
+}
+
+export interface StageWorkerPingResult {
+  reached: boolean;
+  httpStatus?: number;
+  responseBody?: string;
+  error?: string;
+}
+
+// A Background Function's HTTP response is not proof its handler logic (e.g. the secret check
+// below) actually ran or passed — Netlify acknowledges the connection (~202) "almost
+// immediately, before its handler even finishes running" (see
+// docs/architecture/ASSESSMENT_TRANSCRIPTION_ORCHESTRATION.md's own description of this same
+// behavior), so a reachable/2xx response here proves the URL resolved and the endpoint accepted
+// the connection — it does NOT by itself prove the shared secret matched. Real proof requires
+// reading the worker's own response body (see the ping branch in
+// assessment-processing-stage-worker-background.ts, which runs the identical secret check
+// invokeStageWorker's real invocations go through, before ever calling
+// advanceAssessmentProcessing) — this function surfaces exactly that body back to its caller so
+// the diagnostic action doesn't have to guess.
+/** Side-effect-free probe of the exact dispatcher -> background-worker HTTP path
+ * invokeStageWorker() uses for real work — same URL, same route, same secret header — but with
+ * `{ ping: true }` instead of a real assessmentSessionId, so the worker responds without ever
+ * calling advanceAssessmentProcessing() or touching any session. Used only by the admin-only
+ * checkAssessmentDispatchHandoff() diagnostic. */
+export async function pingStageWorker(): Promise<StageWorkerPingResult> {
+  const { baseUrl } = resolveSiteBaseUrl();
+  const secret = process.env.ASSESSMENT_PROCESSING_WORKER_SECRET;
+  if (!baseUrl) {
+    return { reached: false, error: "No site URL available (DEPLOY_PRIME_URL/URL unset) — cannot reach the background stage worker." };
+  }
+  if (!secret) {
+    return { reached: false, error: "Missing ASSESSMENT_PROCESSING_WORKER_SECRET — refusing to probe the background worker unauthenticated." };
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}${STAGE_WORKER_BACKGROUND_PATH}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-assessment-worker-secret": secret },
+      body: JSON.stringify({ ping: true }),
+    });
+    const bodyText = await response.text().catch(() => "");
+    // Defensive truncation only — this endpoint's response body is fully controlled by this same
+    // codebase (never echoes request content, never touches PHI), so there is nothing sensitive
+    // to redact; this just keeps the diagnostic's output bounded.
+    return { reached: true, httpStatus: response.status, responseBody: bodyText.slice(0, 500) };
+  } catch (err) {
+    return { reached: false, error: err instanceof Error ? err.message : "Unknown error reaching the background worker." };
+  }
 }
 
 async function invokeStageWorker(assessmentSessionId: string): Promise<DispatchOutcome> {

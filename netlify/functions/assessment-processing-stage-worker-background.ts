@@ -47,7 +47,7 @@ const handler = async (req: Request): Promise<Response> => {
     });
   }
 
-  let body: { assessmentSessionId?: string };
+  let body: { assessmentSessionId?: string; ping?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -55,6 +55,16 @@ const handler = async (req: Request): Promise<Response> => {
       status: 400,
       headers: { "content-type": "application/json" },
     });
+  }
+
+  // Side-effect-free probe path for the admin-only handoff diagnostic
+  // (checkAssessmentDispatchHandoff() / pingStageWorker() in pipeline.ts) — reaches this point
+  // only after the secret check above has already passed, so a real response here is genuine
+  // proof the shared secret matched, which the dispatcher's own fire-and-forget invocation can
+  // never observe (see pingStageWorker()'s own comment on why a bare 2xx isn't proof of that).
+  // Never calls advanceAssessmentProcessing() and never touches any session.
+  if (body.ping === true) {
+    return new Response(JSON.stringify({ ok: true, pong: true }), { status: 200, headers: { "content-type": "application/json" } });
   }
 
   const assessmentSessionId = body.assessmentSessionId;

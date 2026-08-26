@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { transcribeAndExtractAssessmentAudio, DEFAULT_DISPATCH_LIMIT } from "../pipeline.ts";
+import { transcribeAndExtractAssessmentAudio, DEFAULT_DISPATCH_LIMIT, resolveSiteBaseUrl, pingStageWorker } from "../pipeline.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
 const tests: Test[] = [];
@@ -41,6 +41,61 @@ test("DEFAULT_DISPATCH_LIMIT stays comfortably above the known permanently-block
     DEFAULT_DISPATCH_LIMIT > 8,
     `DEFAULT_DISPATCH_LIMIT (${DEFAULT_DISPATCH_LIMIT}) must exceed the known blocked-session backlog (8) or newer sessions can be starved indefinitely`
   );
+});
+
+// REGRESSION (2026-08-26 synthetic acceptance test, dispatch-handoff diagnosis): confirms the
+// exact URL-preference behavior the dispatcher's own comment claims — DEPLOY_PRIME_URL first
+// (the correct choice for a Deploy Preview, per Netlify's own semantics: it resolves to THAT
+// preview's own URL, never production's), URL as a same-site fallback, and an honest "none"
+// when neither is set rather than silently defaulting to some other guess.
+test("resolveSiteBaseUrl prefers DEPLOY_PRIME_URL over URL when both are set", () => {
+  process.env.DEPLOY_PRIME_URL = "https://deploy-preview-123--example.netlify.app";
+  process.env.URL = "https://example.netlify.app";
+  const result = resolveSiteBaseUrl();
+  assert.equal(result.baseUrl, "https://deploy-preview-123--example.netlify.app");
+  assert.equal(result.source, "DEPLOY_PRIME_URL");
+  delete process.env.DEPLOY_PRIME_URL;
+  delete process.env.URL;
+});
+
+test("resolveSiteBaseUrl falls back to URL when DEPLOY_PRIME_URL is unset", () => {
+  delete process.env.DEPLOY_PRIME_URL;
+  process.env.URL = "https://example.netlify.app";
+  const result = resolveSiteBaseUrl();
+  assert.equal(result.baseUrl, "https://example.netlify.app");
+  assert.equal(result.source, "URL");
+  delete process.env.URL;
+});
+
+test("resolveSiteBaseUrl reports 'none' with a null baseUrl when neither is set, rather than guessing", () => {
+  delete process.env.DEPLOY_PRIME_URL;
+  delete process.env.URL;
+  const result = resolveSiteBaseUrl();
+  assert.equal(result.baseUrl, null);
+  assert.equal(result.source, "none");
+});
+
+// REGRESSION: pingStageWorker() must fail with a clear, actionable reason — never attempt a
+// network call — when either prerequisite is missing. These are exactly the two silent-no-op
+// preconditions invokeStageWorker() already guarded; pingStageWorker() must guard them
+// identically so the diagnostic can't itself produce a misleading "reached: true".
+test("pingStageWorker refuses to attempt a network call when no site URL is resolvable", async () => {
+  delete process.env.DEPLOY_PRIME_URL;
+  delete process.env.URL;
+  process.env.ASSESSMENT_PROCESSING_WORKER_SECRET = "test-secret";
+  const result = await pingStageWorker();
+  assert.equal(result.reached, false);
+  assert.match(result.error ?? "", /No site URL available/);
+  delete process.env.ASSESSMENT_PROCESSING_WORKER_SECRET;
+});
+
+test("pingStageWorker refuses to attempt a network call when the worker secret is not configured", async () => {
+  process.env.URL = "https://example.netlify.app";
+  delete process.env.ASSESSMENT_PROCESSING_WORKER_SECRET;
+  const result = await pingStageWorker();
+  assert.equal(result.reached, false);
+  assert.match(result.error ?? "", /Missing ASSESSMENT_PROCESSING_WORKER_SECRET/);
+  delete process.env.URL;
 });
 
 let passed = 0;

@@ -3,8 +3,14 @@
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { createServerClient } from "@/lib/supabase/server";
-import { dispatchEligibleAssessmentProcessing } from "@/lib/assessmentIntelligence/pipeline";
-import { createSyntheticAssessmentSession } from "@/lib/data/assessmentIntelligence";
+import {
+  dispatchEligibleAssessmentProcessing,
+  resolveSiteBaseUrl,
+  pingStageWorker,
+  STAGE_WORKER_BACKGROUND_PATH,
+  DEFAULT_DISPATCH_LIMIT,
+} from "@/lib/assessmentIntelligence/pipeline";
+import { createSyntheticAssessmentSession, getSessionsEligibleForProcessing } from "@/lib/data/assessmentIntelligence";
 import { setResidentCommunityId } from "@/lib/data/residents";
 import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 import { resolveAssessmentCommunity } from "@/lib/assessmentIntelligence/communityResolution";
@@ -59,6 +65,69 @@ export async function triggerAssessmentProcessingDispatch(): Promise<TriggerDisp
     dispatched,
     failed: failures.length,
     failures: failures.map((f) => ({ assessmentSessionId: f.assessmentSessionId, error: f.error })),
+  };
+}
+
+// ─── Dispatcher -> background-worker handoff diagnostic (2026-08-26) ───────────────────────
+// Built specifically because the 2026-08-25/26 synthetic acceptance test hit a real
+// observability gap: a Background Function's HTTP response proves the URL was reachable, not
+// that its handler's own secret check passed (Netlify acknowledges the connection before the
+// handler necessarily finishes — see pipeline.ts's pingStageWorker() for the full explanation).
+// Everything below is read-only or side-effect-free: resolving env-derived facts, listing which
+// sessions the dispatcher's own query currently considers eligible (no dispatch performed), and
+// pinging the worker with `{ ping: true }`, which the worker answers without ever calling
+// advanceAssessmentProcessing() or touching any session. Reports only non-secret operational
+// facts — never the worker secret's value, and the response body is fully controlled by this
+// same codebase (see pingStageWorker's own comment), so there is no PHI/secret exposure risk in
+// echoing it back.
+
+export interface AssessmentDispatchHandoffDiagnosticResult {
+  error?: string;
+  baseUrl?: string | null;
+  baseUrlSource?: "DEPLOY_PRIME_URL" | "URL" | "none";
+  workerRoute?: string;
+  secretConfigured?: boolean;
+  reached?: boolean;
+  httpStatus?: number;
+  responseBody?: string;
+  pingError?: string;
+  dispatchLimit?: number;
+  eligibleSessionCount?: number;
+  eligibleSessionIds?: string[];
+  allEligibleSessionsFitInOneBatch?: boolean;
+}
+
+export async function checkAssessmentDispatchHandoff(): Promise<AssessmentDispatchHandoffDiagnosticResult> {
+  const profile = await getCurrentAuthorizedUser();
+  if (!profile) return { error: "You must be signed in." };
+  if (profile.role !== "admin") {
+    return { error: "Only an admin can run the dispatch handoff diagnostic." };
+  }
+
+  const { baseUrl, source } = resolveSiteBaseUrl();
+  const secretConfigured = Boolean(process.env.ASSESSMENT_PROCESSING_WORKER_SECRET);
+
+  const ping = await pingStageWorker();
+
+  // Deliberately re-queries with limit + 1 so allEligibleSessionsFitInOneBatch is a real
+  // comparison against what actually exists, not just "at most `limit` because that's what we
+  // asked for" — if a (limit + 1)th session exists, the query still returns at most that many
+  // rows and the count check below correctly reports false.
+  const eligible = await getSessionsEligibleForProcessing(DEFAULT_DISPATCH_LIMIT + 1);
+
+  return {
+    baseUrl,
+    baseUrlSource: source,
+    workerRoute: STAGE_WORKER_BACKGROUND_PATH,
+    secretConfigured,
+    reached: ping.reached,
+    httpStatus: ping.httpStatus,
+    responseBody: ping.responseBody,
+    pingError: ping.error,
+    dispatchLimit: DEFAULT_DISPATCH_LIMIT,
+    eligibleSessionCount: eligible.length,
+    eligibleSessionIds: eligible.map((s) => s.id),
+    allEligibleSessionsFitInOneBatch: eligible.length <= DEFAULT_DISPATCH_LIMIT,
   };
 }
 

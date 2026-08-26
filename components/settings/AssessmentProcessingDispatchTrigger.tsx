@@ -1,11 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useTransition } from "react";
+import { LinkButton } from "@/components/ui/Button";
 import {
   triggerAssessmentProcessingDispatch,
   createSyntheticAssessmentSessionAction,
   checkAwsIdentity,
+  checkAssessmentDispatchHandoff,
 } from "@/lib/actions/assessmentProcessingAdmin";
 
 // Admin-only manual trigger UI for the assessment processing dispatcher — the Deploy Preview
@@ -16,11 +17,13 @@ import {
 export function AssessmentProcessingDispatchTrigger() {
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [failures, setFailures] = useState<{ assessmentSessionId: string; error?: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   function handleTrigger() {
     setError(null);
     setMessage(null);
+    setFailures([]);
     startTransition(async () => {
       const result = await triggerAssessmentProcessingDispatch();
       if (result.error) {
@@ -29,8 +32,14 @@ export function AssessmentProcessingDispatchTrigger() {
       }
       setMessage(
         `Considered ${result.considered ?? 0} session(s) — dispatched ${result.dispatched ?? 0}` +
-          (result.failed ? `, ${result.failed} failed to dispatch (see failures below).` : ".")
+          (result.failed ? `, ${result.failed} failed to dispatch.` : ".")
       );
+      // Previously computed and returned by the server action but never rendered here — a real
+      // invokeStageWorker() failure (missing secret, unreachable URL, non-2xx response) was
+      // silently dropped at this display layer even though the action itself never swallowed it.
+      if (result.failures && result.failures.length > 0) {
+        setFailures(result.failures);
+      }
     });
   }
 
@@ -52,6 +61,15 @@ export function AssessmentProcessingDispatchTrigger() {
         {isPending ? "Dispatching…" : "Run Dispatch Tick Now"}
       </button>
       {message && <p className="mt-3 font-sans text-sm text-success-text">{message}</p>}
+      {failures.length > 0 && (
+        <ul className="mt-2 space-y-1">
+          {failures.map((f) => (
+            <li key={f.assessmentSessionId} className="font-sans text-xs text-danger-text">
+              {f.assessmentSessionId}: {f.error ?? "Unknown error."}
+            </li>
+          ))}
+        </ul>
+      )}
       {error && <p className="mt-3 font-sans text-sm text-danger-text">{error}</p>}
     </div>
   );
@@ -114,9 +132,12 @@ export function CreateSyntheticAssessmentSessionForm() {
         </button>
       </div>
       {result && (
-        <p className="mt-3 font-sans text-sm text-success-text">
-          Created. <Link href={`/residents/${result.residentId}/assessment/capture`} className="underline">Open the capture screen →</Link>
-        </p>
+        <div className="mt-3 flex items-center gap-3">
+          <p className="font-sans text-sm text-success-text">Created.</p>
+          <LinkButton href={`/residents/${result.residentId}/assessment/capture`} size="small">
+            Open the capture screen →
+          </LinkButton>
+        </div>
       )}
       {error && <p className="mt-3 font-sans text-sm text-danger-text">{error}</p>}
     </div>
@@ -166,6 +187,73 @@ export function AwsIdentityCheck() {
         <div className="mt-3 font-sans text-sm text-success-text">
           <p>Account: {identity.account}</p>
           <p>ARN: {identity.arn}</p>
+        </div>
+      )}
+      {error && <p className="mt-3 font-sans text-sm text-danger-text">{error}</p>}
+    </div>
+  );
+}
+
+// Admin-only dispatcher -> background-worker handoff diagnostic (2026-08-26). Built because a
+// Background Function's HTTP response cannot by itself prove its handler's own shared-secret
+// check passed (see checkAssessmentDispatchHandoff()'s own comment) — this makes that otherwise
+// invisible outcome visible without ever dispatching a real session or touching any session
+// data. Reports only non-secret operational facts; the worker secret's value is never displayed.
+export function AssessmentDispatchHandoffCheck() {
+  const [isPending, startTransition] = useTransition();
+  const [result, setResult] = useState<Awaited<ReturnType<typeof checkAssessmentDispatchHandoff>> | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function handleCheck() {
+    setError(null);
+    setResult(null);
+    startTransition(async () => {
+      const outcome = await checkAssessmentDispatchHandoff();
+      if (outcome.error) {
+        setError(outcome.error);
+        return;
+      }
+      setResult(outcome);
+    });
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-ivory-border bg-ivory px-5 py-4">
+      <p className="font-sans text-sm font-medium text-body">Dispatch handoff check (admin)</p>
+      <p className="mt-1 font-sans text-sm text-muted">
+        Pings the background stage worker with the same URL, route, and shared secret the real dispatcher uses —
+        without ever calling into a real session&apos;s processing. A reachable HTTP response alone does not prove the
+        secret check passed (Background Functions acknowledge before their handler necessarily finishes); the
+        response body below does.
+      </p>
+      <button
+        type="button"
+        onClick={handleCheck}
+        disabled={isPending}
+        className="mt-3 inline-flex h-10 items-center rounded-lg bg-navy px-5 font-sans text-sm font-semibold text-white transition-colors hover:bg-navy-light disabled:opacity-50"
+      >
+        {isPending ? "Checking…" : "Check Dispatch Handoff"}
+      </button>
+      {result && (
+        <div className="mt-3 space-y-1 font-sans text-sm text-body">
+          <p>Base URL: {result.baseUrl ?? "(none resolved)"} <span className="text-muted">({result.baseUrlSource})</span></p>
+          <p>Worker route: {result.workerRoute}</p>
+          <p>Worker secret configured: {result.secretConfigured ? "yes" : "no"}</p>
+          <p>Worker reached: {result.reached ? "yes" : "no"}</p>
+          {result.httpStatus !== undefined && <p>HTTP status: {result.httpStatus}</p>}
+          {result.responseBody && <p>Response body: {result.responseBody}</p>}
+          {result.pingError && <p className="text-danger-text">Ping error: {result.pingError}</p>}
+          <p className="mt-2">
+            Currently eligible sessions: {result.eligibleSessionCount} of dispatch limit {result.dispatchLimit} —{" "}
+            {result.allEligibleSessionsFitInOneBatch ? "all fit in one dispatch batch." : "MORE eligible sessions exist than one batch covers."}
+          </p>
+          {result.eligibleSessionIds && result.eligibleSessionIds.length > 0 && (
+            <ul className="mt-1 space-y-0.5 font-sans text-xs text-muted">
+              {result.eligibleSessionIds.map((id) => (
+                <li key={id}>{id}</li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       {error && <p className="mt-3 font-sans text-sm text-danger-text">{error}</p>}
