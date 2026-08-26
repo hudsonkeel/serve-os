@@ -25,6 +25,23 @@ export async function getResidentById(residentId: string): Promise<Resident | nu
   return (data as Resident | null) ?? null;
 }
 
+// Batch lookup for display purposes (e.g. the Incident register resolving
+// several resident_id values to names in one query instead of N). Returns
+// whatever subset of ids actually resolve — never errors on a stale id.
+export async function getResidentsByIds(residentIds: readonly string[]): Promise<Resident[]> {
+  if (residentIds.length === 0) return [];
+
+  const supabase = createServerClient();
+  const { data, error } = await supabase.from("residents").select("*").in("id", residentIds);
+
+  if (error) {
+    console.error("[residents:getResidentsByIds:error]", { message: error.message });
+    return [];
+  }
+
+  return (data as Resident[] | null) ?? [];
+}
+
 // Canonical resident-profile fields that are safe for staff to edit directly
 // on public.residents. Deliberately excludes identity fields (first_name,
 // last_name, display_name, full_name), status/classification fields, and

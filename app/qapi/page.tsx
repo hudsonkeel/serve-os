@@ -69,6 +69,17 @@ export default async function QapiPage() {
         <p className="mt-1 font-sans text-sm text-muted">
           Where our quality concerns are, and what we&apos;re doing about them — a current, point-in-time view, not yet a trend.
         </p>
+        {/* Minimal links into the new Incident/Infection registers (Slices
+            3-4, 2026-08-26) — placeholder entry points, not the full QAPI
+            Overview/Incidents/Infections tab restructure, which is Slice 5. */}
+        <div className="mt-2 flex gap-4">
+          <Link href="/qapi/incidents" className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+            Incidents →
+          </Link>
+          <Link href="/qapi/infections" className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+            Infections →
+          </Link>
+        </div>
       </div>
 
       {/* ─── 1. Current Quality Context — coarse, domain-level orientation

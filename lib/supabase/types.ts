@@ -2397,3 +2397,87 @@ export interface QapiDomainNote {
   createdBy: string;
   createdAt: string;
 }
+
+// Incidents & Infections v0.1 (Slice 1/2, 2026-08-26) — see
+// supabase/migrations/20260907000000_create_incidents_and_infections.sql for
+// the full schema/RPC contract these mirror field-for-field. incident_type
+// is an operational organization label only — it carries no regulatory,
+// clinical, or reportability meaning (see the migration header).
+export type IncidentType =
+  | "fall"
+  | "injury"
+  | "wandering_elopement"
+  | "medication_event"
+  | "service_failure"
+  | "safety_event"
+  | "property_concern"
+  | "other";
+
+// Shared by both tables — same two-gate discipline (a record cannot be
+// resolved until reviewed), enforced structurally in the migration, not
+// just by convention.
+export type IncidentInfectionReviewStatus = "not_reviewed" | "reviewed";
+export type IncidentInfectionRecordStatus = "open" | "resolved";
+
+export interface Incident {
+  id: string;
+  community_id: string | null;
+  // Both independent and nullable — a client, a staff member, both, or
+  // neither (e.g. a property/facility incident) may be involved.
+  resident_id: string | null;
+  workforce_member_id: string | null;
+  occurred_at: string;
+  location: string | null;
+  incident_type: IncidentType;
+  // Populated only when incident_type = 'other' (DB-enforced).
+  incident_type_other: string | null;
+  description: string;
+  immediate_response: string | null;
+  injury_occurred: boolean;
+  injury_medical_details: string | null;
+  parties_notified: string[];
+  // "Does something still need to happen, and who owns it?" — deliberately
+  // not a second corrective-action system. See migration header.
+  follow_up_required: boolean;
+  owner: string | null;
+  notes: string | null;
+  review_status: IncidentInfectionReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  status: IncidentInfectionRecordStatus;
+  resolution_note: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+// Texas PAS-only factual record — always about a specific client, never a
+// clinical/EHR interpretation of the disclosed condition. disclosed_by is
+// free text (the discloser may not be a Serve staff member); created_by is
+// always the Serve staff identity that recorded it.
+export interface Infection {
+  id: string;
+  community_id: string | null;
+  resident_id: string;
+  disclosed_at: string;
+  condition_description: string;
+  treatment_description: string | null;
+  disclosed_by: string | null;
+  follow_up_required: boolean;
+  owner: string | null;
+  notes: string | null;
+  review_status: IncidentInfectionReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  status: IncidentInfectionRecordStatus;
+  resolution_note: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_by: string;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string | null;
+}
