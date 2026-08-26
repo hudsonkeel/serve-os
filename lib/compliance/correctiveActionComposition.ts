@@ -28,6 +28,15 @@ export interface ComposedCorrectiveAction {
   subjectId: string;
   requirementId: string | null;
   domain: string | null;
+  // Passthrough of each source table's own action_type column (2026-08-25,
+  // QAPI v0.1) — added so a consumer can summarize "what kinds of work are
+  // represented" (see lib/qapi/dashboard.ts's bucket summaries) without a
+  // second read. Both source tables have this column; kept as a plain
+  // string here rather than a shared union since WorkforceComplianceActionType
+  // and ComplianceCorrectiveActionType are two distinct (overlapping but
+  // not identical — the latter also has audit_finding_failed) enums, and
+  // this file has no reason to force them into one.
+  actionType: string;
   title: string;
   reason: string;
   owner: string | null;
@@ -45,6 +54,7 @@ function fromWorkforce(action: WorkforceComplianceAction): ComposedCorrectiveAct
     subjectId: action.workforce_member_id,
     requirementId: action.requirement_id,
     domain: "workforce",
+    actionType: action.action_type,
     title: action.title,
     reason: action.reason,
     owner: action.owner,
@@ -63,6 +73,7 @@ function fromAuditReadiness(action: ComplianceCorrectiveAction): ComposedCorrect
     subjectId: action.subject_id,
     requirementId: action.requirement_id,
     domain: action.domain,
+    actionType: action.action_type,
     title: action.title,
     reason: action.reason,
     owner: action.owner,

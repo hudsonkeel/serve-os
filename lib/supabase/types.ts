@@ -2376,3 +2376,24 @@ export interface EmergencyPreparednessReviewItem {
   created_by: string;
   created_at: string;
 }
+
+// QAPI Domain Notes (2026-08-25) — a lightweight, versioned leadership
+// narrative per QAPI domain. Mirrors ResidentCurrentNeeds' exact shape and
+// versioning discipline (see 20260906000000_create_qapi_domain_notes.sql):
+// every save supersedes the previous version rather than overwriting it, so
+// history is never lost. Deliberately its own domain-id union rather than
+// importing lib/compliance/auditReadinessDashboard.ts's AuditReadinessDomainId
+// here — this file defines its own inline unions throughout (see
+// ResidentCurrentNeedsSourceType above) rather than depending on
+// lib/compliance; the literal values are identical, so a DomainReadinessRollup's
+// domainId is assignable here without a cast.
+export type QapiDomainId = "workforce" | "client_readiness" | "emergency_preparedness";
+
+export interface QapiDomainNote {
+  id: string;
+  domainId: QapiDomainId;
+  content: string;
+  versionNumber: number;
+  createdBy: string;
+  createdAt: string;
+}

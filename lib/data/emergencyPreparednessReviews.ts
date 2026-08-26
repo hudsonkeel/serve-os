@@ -112,6 +112,33 @@ export async function insertEmergencyPreparednessReviewItem(input: {
   return { item: data as EmergencyPreparednessReviewItem };
 }
 
+// Cross-review read for QAPI v0.1 (2026-08-25) — every "improvement"
+// item plus every "requirement_finding" item whose outcome still implies
+// follow-up (evidence_needed/needs_review), regardless of which review it
+// belongs to or whether that review is completed. Deliberately NOT called
+// "open" items: review items have no status/completion field at all (see
+// this table's own migration and lib/emergencyPreparednessReviews.ts's
+// comments), so there is no way to know whether a given item has actually
+// been addressed since it was recorded — QAPI must present these as
+// "recorded," not claim a resolution state Serve OS cannot verify.
+export async function listRecentEmergencyPreparednessReviewFollowUpItems(limit = 20): Promise<EmergencyPreparednessReviewItem[]> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .from("emergency_preparedness_review_items")
+    .select("*")
+    .or("item_kind.eq.improvement,outcome.in.(evidence_needed,needs_review)")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("[listRecentEmergencyPreparednessReviewFollowUpItems]", { message: error.message });
+    return [];
+  }
+
+  return (data as EmergencyPreparednessReviewItem[] | null) ?? [];
+}
+
 // The one-way transition — see complete_emergency_preparedness_review() in
 // the migration. Only succeeds from a non-completed status; the DB trigger
 // then makes every item belonging to this review immutable.

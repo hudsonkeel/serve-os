@@ -15,6 +15,7 @@ import {
   Sparkles,
   Settings,
   ClipboardCheck,
+  Activity,
 } from "lucide-react";
 
 export interface NavItem {
@@ -52,20 +53,26 @@ export const NAV_SECTIONS: NavSection[] = [
   // define, evaluate, document, and demonstrate how Serve operates, as
   // distinct from Serve's operational people/domains above. Audit
   // Readiness is the first product to live here; the product itself keeps
-  // its own name (Governance is the realm, not a rename). Deliberately one
-  // item: Audit Drills is a capability reached from within Audit
-  // Readiness (its dashboard's own Start Audit Drill / View Past Audits
-  // actions), not a second top-level Governance destination.
+  // its own name (Governance is the realm, not a rename). Quality (QAPI)
+  // is the second (2026-08-25) — a distinct leadership view over the same
+  // underlying readiness/compliance data ("what are we learning / what
+  // needs attention" vs. Audit Readiness's "can we prove it right now"),
+  // never a duplicate evaluator — see lib/qapi/dashboard.ts. Emergency
+  // Preparedness is deliberately NOT a third top-level item here: it stays
+  // a capability reached from within Audit Readiness (its dashboard's own
+  // Start Audit Drill / View Past Audits actions), same as Audit Drills.
   {
     heading: "Governance",
     items: [
       // Desktop-only for v0.1 — MobileNavDrawer.tsx renders its own
       // hard-coded, narrow item list (The People We Serve + NAV_UTILITY
-      // only) rather than mapping NAV_SECTIONS directly, so adding this
-      // entry here does not put it in the phone-width drawer. See the
+      // only) rather than mapping NAV_SECTIONS directly, so adding these
+      // entries here does not put them in the phone-width drawer. See the
       // Audit Readiness Phase 1 report for why this stays desktop-only —
-      // the Aug 26 drill workflow is a tablet/desktop task.
+      // the Aug 26 drill workflow is a tablet/desktop task; QAPI inherits
+      // the same reasoning as a peer Governance destination.
       { icon: ClipboardCheck, label: "Audit Readiness", href: "/audit-readiness" },
+      { icon: Activity, label: "Quality (QAPI)", href: "/qapi" },
     ],
   },
   {
