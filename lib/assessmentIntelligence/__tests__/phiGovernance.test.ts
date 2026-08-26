@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { isPhiOpenAiProcessingConfirmed, requirePhiOpenAiProcessingConfirmed } from "../phiGovernance.ts";
+import {
+  isPhiOpenAiProcessingConfirmed,
+  requirePhiOpenAiProcessingConfirmed,
+  isPhiAwsProcessingConfirmed,
+  requirePhiAwsProcessingConfirmed,
+} from "../phiGovernance.ts";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -74,6 +79,63 @@ test("SYNTHETIC OVERRIDE: a near-miss value (not the exact expected string) fail
     process.env.PHI_SYNTHETIC_TEST_MODE = v;
     assert.equal(isPhiOpenAiProcessingConfirmed({ syntheticTestOverride: true }), false, `expected "${v}" to NOT activate the override`);
   }
+  restoreSyntheticEnv();
+});
+
+// ─── AWS gate — mirrors every OpenAI-gate test above, independently ───────────────────────
+const ORIGINAL_AWS = process.env.PHI_AWS_PROCESSING_CONFIRMED;
+function restoreAwsEnv() {
+  if (ORIGINAL_AWS === undefined) delete process.env.PHI_AWS_PROCESSING_CONFIRMED;
+  else process.env.PHI_AWS_PROCESSING_CONFIRMED = ORIGINAL_AWS;
+}
+
+test("AWS: unset flag is not confirmed — fail closed by default", () => {
+  delete process.env.PHI_AWS_PROCESSING_CONFIRMED;
+  assert.equal(isPhiAwsProcessingConfirmed(), false);
+  assert.throws(() => requirePhiAwsProcessingConfirmed(), /PHI_AWS_PROCESSING_CONFIRMED/);
+  restoreAwsEnv();
+});
+
+test("AWS: any value other than the exact string 'true' is not confirmed", () => {
+  for (const v of ["TRUE", "1", "yes", "True "]) {
+    process.env.PHI_AWS_PROCESSING_CONFIRMED = v;
+    assert.equal(isPhiAwsProcessingConfirmed(), false, `expected "${v}" to NOT confirm`);
+  }
+  restoreAwsEnv();
+});
+
+test("AWS: exact string 'true' confirms", () => {
+  process.env.PHI_AWS_PROCESSING_CONFIRMED = "true";
+  assert.equal(isPhiAwsProcessingConfirmed(), true);
+  assert.doesNotThrow(() => requirePhiAwsProcessingConfirmed());
+  restoreAwsEnv();
+});
+
+test("AWS and OpenAI gates are fully independent — confirming one never satisfies the other", () => {
+  delete process.env.PHI_AWS_PROCESSING_CONFIRMED;
+  process.env.PHI_OPENAI_PROCESSING_CONFIRMED = "true";
+  assert.equal(isPhiAwsProcessingConfirmed(), false);
+  restoreAwsEnv();
+  restoreEnv();
+
+  delete process.env.PHI_OPENAI_PROCESSING_CONFIRMED;
+  process.env.PHI_AWS_PROCESSING_CONFIRMED = "true";
+  assert.equal(isPhiOpenAiProcessingConfirmed(), false);
+  restoreAwsEnv();
+  restoreEnv();
+});
+
+test("AWS: synthetic override requires its own PHI_SYNTHETIC_TEST_MODE value, same discipline as the OpenAI gate", () => {
+  delete process.env.PHI_SYNTHETIC_TEST_MODE;
+  process.env.PHI_AWS_PROCESSING_CONFIRMED = "true";
+  assert.equal(isPhiAwsProcessingConfirmed({ syntheticTestOverride: true }), false);
+  restoreAwsEnv();
+  restoreSyntheticEnv();
+
+  delete process.env.PHI_AWS_PROCESSING_CONFIRMED;
+  process.env.PHI_SYNTHETIC_TEST_MODE = "synthetic-only-not-for-production";
+  assert.equal(isPhiAwsProcessingConfirmed({ syntheticTestOverride: true }), true);
+  restoreAwsEnv();
   restoreSyntheticEnv();
 });
 

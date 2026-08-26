@@ -29,13 +29,18 @@
     "test:intake": "node --experimental-strip-types --conditions=react-server lib/intake/__tests__/envelope.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/residentMatching.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/confidence.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/priority.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/serviceOpportunityMapping.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/contactReadiness.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/classification.test.ts && node --experimental-strip-types --conditions=react-server lib/intake/__tests__/conversationConsent.test.ts",
     "schedule:preview": "node --env-file-if-exists=.env.local --experimental-strip-types --conditions=react-server scripts/serve-schedule-preview.ts",
     "cleanup:test-data": "node --env-file-if-exists=.env.local --experimental-strip-types --conditions=react-server scripts/cleanup-test-data.ts",
-    "test:assessmentIntelligence": "node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/factTypes.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/pricingEngine.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/axiscareReadiness.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/reviewExceptions.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/cinchProjection.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/phiGovernance.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/transcription.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/pipeline.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/providerSelection.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/bedrockClaudeProvider.test.ts",
+    "test:assessmentIntelligence": "node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/factTypes.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/pricingEngine.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/axiscareReadiness.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/reviewExceptions.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/cinchProjection.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/phiGovernance.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/transcription.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/pipeline.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/providerSelection.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/bedrockClaudeProvider.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/transcriptionProviderSelection.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/awsTranscribeProvider.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/audioAssembly.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/assessmentProcessingStageWorkerAuth.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/assessmentProcessingAuthorization.test.ts && node --experimental-strip-types --conditions=react-server lib/assessmentIntelligence/__tests__/awsCredentials.test.ts && node --experimental-strip-types --conditions=react-server lib/data/__tests__/assessmentIntelligence.test.ts",
     "test:auditReadiness": "node --experimental-strip-types --conditions=react-server lib/compliance/__tests__/requirementSetStatus.test.ts && node --experimental-strip-types --conditions=react-server lib/compliance/__tests__/auditReadinessStatus.test.ts && node --experimental-strip-types --conditions=react-server lib/compliance/__tests__/auditReadinessDashboard.test.ts && node --experimental-strip-types --conditions=react-server lib/emergencyPreparedness/__tests__/emergencyPreparednessReadiness.test.ts",
     "test:clientReadiness": "node --experimental-strip-types --conditions=react-server lib/clientReadiness/__tests__/clientReadinessReadiness.test.ts && node --experimental-strip-types --conditions=react-server lib/clientReadiness/__tests__/triageClassification.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1109.0",
+    "@aws-sdk/client-s3": "^3.1111.0",
+    "@aws-sdk/client-sts": "^3.1117.0",
+    "@aws-sdk/client-transcribe": "^3.1111.0",
     "@supabase/supabase-js": "^2.108.2",
+    "ffmpeg-static": "^5.3.0",
+    "fluent-ffmpeg": "^2.1.3",
     "lucide-react": "^1.21.0",
     "next": "16.2.9",
     "openai": "^6.41.0",
@@ -46,8 +51,10 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@netlify/functions": "^5.3.0",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
+    "@types/fluent-ffmpeg": "^2.1.28",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

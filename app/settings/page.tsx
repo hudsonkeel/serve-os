@@ -14,6 +14,12 @@ import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { buildCurrentUserDisplay } from "@/lib/auth/display";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import {
+  AssessmentProcessingDispatchTrigger,
+  CreateSyntheticAssessmentSessionForm,
+  AwsIdentityCheck,
+  AssessmentDispatchHandoffCheck,
+} from "@/components/settings/AssessmentProcessingDispatchTrigger";
+import {
   buildIntegrationDefinitions,
   INTEGRATION_STATUS_LABELS,
   type IntegrationStatus,
@@ -280,6 +286,19 @@ export default async function SettingsPage() {
                 ]}
               />
             </SettingsSection>
+
+            {profile?.role === "admin" && (
+              <SettingsSection
+                icon={SlidersHorizontal}
+                title="Assessment Processing (Admin)"
+                description="Operational controls for the native assessment capture background pipeline — visible to admins only."
+              >
+                <AssessmentProcessingDispatchTrigger />
+                <CreateSyntheticAssessmentSessionForm />
+                <AwsIdentityCheck />
+                <AssessmentDispatchHandoffCheck />
+              </SettingsSection>
+            )}
           </>
         )}
 

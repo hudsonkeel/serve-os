@@ -216,6 +216,43 @@ export function mapPipelineStageToWorkItem(input: PipelineStageMapperInput, now:
   };
 }
 
+// ─── Failed assessment processing (Production Assessment Transcription Orchestration,
+// 2026-08-15) — Explicit-evidence-gated, not Continuity-Rule-staleness-gated: a background
+// processing failure is immediately actionable (unlike a merely-quiet relationship), so this
+// mapper never returns null the way mapPipelineStageToWorkItem/mapRecruitingLeadToWorkItem do
+// for a too-fresh item. Composes into the SAME Today's Work aggregation
+// (lib/data/todaysWork.ts) that recruiting/relationship/wellness items already use — "assessment"
+// is already a first-class WorkItemSourceType, so this is additive configuration, not a new
+// notification system (see docs/architecture/TODAYS_WORK_CONTINUITY.md's own "aggregation
+// layer, not a system of record" principle). ─────────────────────────────
+
+export interface FailedAssessmentProcessingMapperInput {
+  assessmentSessionId: string;
+  residentId: string;
+  residentDisplayName: string;
+  failureStage: string | null;
+  failureReason: string | null;
+  failedAt: string | null;
+}
+
+export function mapFailedAssessmentProcessingToWorkItem(input: FailedAssessmentProcessingMapperInput): WorkItem {
+  const stageLabel = input.failureStage === "extraction" ? "extraction" : "transcription";
+  return {
+    id: `assessment_processing_failed:${input.assessmentSessionId}`,
+    sourceType: "assessment",
+    title: `Assessment processing failed — ${input.residentDisplayName}`,
+    status: "needs_attention",
+    evidenceType: "explicit",
+    priority: "high",
+    subjectType: "resident",
+    subjectId: input.residentId,
+    subjectLabel: input.residentDisplayName,
+    sourceRoute: `/residents/${input.residentId}/assessment/${input.assessmentSessionId}`,
+    recommendedNextStep: "Open the assessment and retry processing.",
+    explanation: `Background ${stageLabel} failed${input.failedAt ? ` on ${formatDate(input.failedAt)}` : ""}${input.failureReason ? `: ${input.failureReason}` : ""}. Audio is safely stored; retry from the assessment page.`,
+  };
+}
+
 // ─── Recruiting — Continuity-Rule-gated ─────────────────────────────────
 
 export const RECRUITING_LEAD_STALE_DAYS = 3;
