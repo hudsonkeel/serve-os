@@ -236,7 +236,14 @@ export function AssessmentDispatchHandoffCheck() {
       </button>
       {result && (
         <div className="mt-3 space-y-1 font-sans text-sm text-body">
+          <p>Deployment context: {result.deploymentContext ?? "(unknown — generator did not run for this build)"}</p>
           <p>Base URL: {result.baseUrl ?? "(none resolved)"} <span className="text-muted">({result.baseUrlSource})</span></p>
+          {result.productionFallbackWarning && (
+            <p className="font-semibold text-danger-text">
+              WARNING: this is a non-production deployment whose resolved URL matches production. Dispatch has been
+              blocked from ever using this — investigate before proceeding.
+            </p>
+          )}
           <p>Worker route: {result.workerRoute}</p>
           <p>Worker secret configured: {result.secretConfigured ? "yes" : "no"}</p>
           <p>Worker reached: {result.reached ? "yes" : "no"}</p>

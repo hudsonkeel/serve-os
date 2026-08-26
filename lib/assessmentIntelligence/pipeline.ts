@@ -27,6 +27,7 @@ import {
   getTranscriptionProviderByProviderId,
 } from "./transcriptionProviderSelection.ts";
 import type { TranscriptionJobHandle, TranscriptionProviderResult } from "./transcriptionProvider.ts";
+import { GENERATED_DEPLOY_CONTEXT, type GeneratedDeployContext } from "./generatedDeployContext.ts";
 
 // Which PHI gate applies depends on which transcription provider is actually configured —
 // resolved once here rather than duplicated at every call site. "aws" is the only non-default
@@ -662,20 +663,46 @@ export const STAGE_WORKER_BACKGROUND_PATH = "/.netlify/functions/assessment-proc
 
 export interface SiteBaseUrlResolution {
   baseUrl: string | null;
-  source: "DEPLOY_PRIME_URL" | "URL" | "none";
+  source: "DEPLOY_PRIME_URL" | "none";
+  /** Netlify's CONTEXT for the build that produced this resolution (production/deploy-preview/
+   * branch-deploy/dev), captured at build time — see generatedDeployContext.ts. Reported so the
+   * admin diagnostic can show what deployment this actually is, not just what URL it resolved. */
+  deploymentContext: string | null;
+  /** True only if baseUrl equals this site's own production URL while deploymentContext is NOT
+   * itself "production" — i.e. exactly the unsafe silent-fallback scenario this design exists to
+   * make structurally impossible (see the 2026-08-26 handoff-diagnosis finding: a Deploy Preview's
+   * dispatcher resolved to the production URL and 404'd against a function production doesn't
+   * have). Should always be false in practice, since deployPrimeUrl never legitimately equals the
+   * production URL from a real preview or branch deploy — surfaced anyway as a loud, visible alarm
+   * in case Netlify ever reports something that would defeat this isolation guarantee. */
+  productionFallbackWarning: boolean;
 }
 
-/** Netlify sets DEPLOY_PRIME_URL to the correct URL for whatever context this invocation is
- * actually running in — production URL in production, the specific Deploy Preview's own URL on
- * a preview — which is exactly what's needed here: a Deploy Preview's dispatcher must invoke
- * THAT SAME preview's background function, never production's. URL is a same-site fallback for
- * any context where DEPLOY_PRIME_URL is somehow unset. Exported (with which variable actually
- * resolved) so the admin-only handoff diagnostic (lib/actions/assessmentProcessingAdmin.ts) can
- * report it without duplicating this resolution logic. */
-export function resolveSiteBaseUrl(): SiteBaseUrlResolution {
-  if (process.env.DEPLOY_PRIME_URL) return { baseUrl: process.env.DEPLOY_PRIME_URL, source: "DEPLOY_PRIME_URL" };
-  if (process.env.URL) return { baseUrl: process.env.URL, source: "URL" };
-  return { baseUrl: null, source: "none" };
+// (2026-08-26 handoff-diagnosis fix) Netlify does NOT forward DEPLOY_PRIME_URL into a Function's
+// runtime process.env — confirmed against Netlify's own docs, see generatedDeployContext.ts's
+// header comment for the citations. Reading process.env.DEPLOY_PRIME_URL here (the previous
+// implementation) was therefore always going to be undefined at runtime, meaning every real
+// invocation silently fell through to process.env.URL — which Netlify defines as ALWAYS the site's
+// production address, regardless of deploy context. That is exactly how a Deploy Preview's
+// dispatcher ended up targeting production (and 404'ing, since production genuinely doesn't have
+// this unmerged feature's background-worker function bundled).
+//
+// The fix: resolve exclusively from GENERATED_DEPLOY_CONTEXT, a file populated once, at BUILD time
+// (when DEPLOY_PRIME_URL genuinely is available), by scripts/generate-deploy-context.mjs — never
+// from process.env directly. There is deliberately no `url` fallback branch here anymore: if
+// deployPrimeUrl wasn't captured (local dev, or a build that somehow skipped the generator), this
+// FAILS CLOSED (source: "none") rather than guessing at a same-site URL that would always be
+// production. `deployContext` defaults to the real generated module; tests inject an explicit
+// value instead of mutating process.env. */
+export function resolveSiteBaseUrl(deployContext: GeneratedDeployContext = GENERATED_DEPLOY_CONTEXT): SiteBaseUrlResolution {
+  const { context, deployPrimeUrl, url } = deployContext;
+  const baseUrl = deployPrimeUrl ?? null;
+  return {
+    baseUrl,
+    source: baseUrl ? "DEPLOY_PRIME_URL" : "none",
+    deploymentContext: context,
+    productionFallbackWarning: context !== null && context !== "production" && baseUrl !== null && baseUrl === url,
+  };
 }
 
 function getSiteBaseUrl(): string | null {
@@ -705,11 +732,14 @@ export interface StageWorkerPingResult {
  * `{ ping: true }` instead of a real assessmentSessionId, so the worker responds without ever
  * calling advanceAssessmentProcessing() or touching any session. Used only by the admin-only
  * checkAssessmentDispatchHandoff() diagnostic. */
-export async function pingStageWorker(): Promise<StageWorkerPingResult> {
-  const { baseUrl } = resolveSiteBaseUrl();
+export async function pingStageWorker(deployContext?: GeneratedDeployContext): Promise<StageWorkerPingResult> {
+  const { baseUrl } = resolveSiteBaseUrl(deployContext);
   const secret = process.env.ASSESSMENT_PROCESSING_WORKER_SECRET;
   if (!baseUrl) {
-    return { reached: false, error: "No site URL available (DEPLOY_PRIME_URL/URL unset) — cannot reach the background stage worker." };
+    return {
+      reached: false,
+      error: "No site URL available (DEPLOY_PRIME_URL was not captured for this build) — cannot reach the background stage worker.",
+    };
   }
   if (!secret) {
     return { reached: false, error: "Missing ASSESSMENT_PROCESSING_WORKER_SECRET — refusing to probe the background worker unauthenticated." };
@@ -738,7 +768,7 @@ async function invokeStageWorker(assessmentSessionId: string): Promise<DispatchO
     return {
       assessmentSessionId,
       dispatched: false,
-      error: "No site URL available (DEPLOY_PRIME_URL/URL unset) — cannot invoke the background stage worker.",
+      error: "No site URL available (DEPLOY_PRIME_URL was not captured for this build) — cannot invoke the background stage worker.",
     };
   }
   if (!secret) {

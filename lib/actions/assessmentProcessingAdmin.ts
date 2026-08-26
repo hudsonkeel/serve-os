@@ -80,11 +80,24 @@ export async function triggerAssessmentProcessingDispatch(): Promise<TriggerDisp
 // facts — never the worker secret's value, and the response body is fully controlled by this
 // same codebase (see pingStageWorker's own comment), so there is no PHI/secret exposure risk in
 // echoing it back.
+//
+// UPDATED (2026-08-26 handoff-diagnosis fix): the first real run of this diagnostic on a Deploy
+// Preview surfaced a genuine bug, not a preview quirk — resolveSiteBaseUrl() was reading
+// process.env.DEPLOY_PRIME_URL, which Netlify never actually forwards into a Function's runtime
+// (only URL/SITE_NAME/SITE_ID are), so every invocation silently fell back to process.env.URL —
+// always the site's PRODUCTION address, regardless of deploy context. See pipeline.ts's
+// resolveSiteBaseUrl() for the fix (build-time-captured GENERATED_DEPLOY_CONTEXT, no more `url`
+// fallback at all). deploymentContext and productionFallbackWarning are now reported here so this
+// panel visibly shows which deployment this is and would loudly flag it if a non-production
+// deployment's resolved URL ever matched production's — see resolveSiteBaseUrl's own comment for
+// why that specific scenario should now be structurally impossible, not just detected.
 
 export interface AssessmentDispatchHandoffDiagnosticResult {
   error?: string;
+  deploymentContext?: string | null;
   baseUrl?: string | null;
-  baseUrlSource?: "DEPLOY_PRIME_URL" | "URL" | "none";
+  baseUrlSource?: "DEPLOY_PRIME_URL" | "none";
+  productionFallbackWarning?: boolean;
   workerRoute?: string;
   secretConfigured?: boolean;
   reached?: boolean;
@@ -104,7 +117,7 @@ export async function checkAssessmentDispatchHandoff(): Promise<AssessmentDispat
     return { error: "Only an admin can run the dispatch handoff diagnostic." };
   }
 
-  const { baseUrl, source } = resolveSiteBaseUrl();
+  const { baseUrl, source, deploymentContext, productionFallbackWarning } = resolveSiteBaseUrl();
   const secretConfigured = Boolean(process.env.ASSESSMENT_PROCESSING_WORKER_SECRET);
 
   const ping = await pingStageWorker();
@@ -116,8 +129,10 @@ export async function checkAssessmentDispatchHandoff(): Promise<AssessmentDispat
   const eligible = await getSessionsEligibleForProcessing(DEFAULT_DISPATCH_LIMIT + 1);
 
   return {
+    deploymentContext,
     baseUrl,
     baseUrlSource: source,
+    productionFallbackWarning,
     workerRoute: STAGE_WORKER_BACKGROUND_PATH,
     secretConfigured,
     reached: ping.reached,

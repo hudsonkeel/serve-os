@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { transcribeAndExtractAssessmentAudio, DEFAULT_DISPATCH_LIMIT, resolveSiteBaseUrl, pingStageWorker } from "../pipeline.ts";
+import {
+  transcribeAndExtractAssessmentAudio,
+  DEFAULT_DISPATCH_LIMIT,
+  resolveSiteBaseUrl,
+  pingStageWorker,
+  STAGE_WORKER_BACKGROUND_PATH,
+} from "../pipeline.ts";
+import type { GeneratedDeployContext } from "../generatedDeployContext.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
 const tests: Test[] = [];
@@ -43,59 +50,96 @@ test("DEFAULT_DISPATCH_LIMIT stays comfortably above the known permanently-block
   );
 });
 
-// REGRESSION (2026-08-26 synthetic acceptance test, dispatch-handoff diagnosis): confirms the
-// exact URL-preference behavior the dispatcher's own comment claims — DEPLOY_PRIME_URL first
-// (the correct choice for a Deploy Preview, per Netlify's own semantics: it resolves to THAT
-// preview's own URL, never production's), URL as a same-site fallback, and an honest "none"
-// when neither is set rather than silently defaulting to some other guess.
-test("resolveSiteBaseUrl prefers DEPLOY_PRIME_URL over URL when both are set", () => {
-  process.env.DEPLOY_PRIME_URL = "https://deploy-preview-123--example.netlify.app";
-  process.env.URL = "https://example.netlify.app";
-  const result = resolveSiteBaseUrl();
+// REGRESSION (2026-08-26 handoff-diagnosis fix): the first live run of the handoff diagnostic on a
+// real Deploy Preview showed the dispatcher resolving to the PRODUCTION site's base URL — because
+// the previous implementation read process.env.DEPLOY_PRIME_URL, which Netlify never actually
+// forwards into a Function's runtime process.env (confirmed against Netlify's own docs — only
+// URL/SITE_NAME/SITE_ID are runtime-available; see generatedDeployContext.ts). Every real
+// invocation therefore silently fell through to process.env.URL, which Netlify defines as ALWAYS
+// the site's production address regardless of deploy context. The fix removes that fallback
+// entirely: resolveSiteBaseUrl() now resolves exclusively from a build-time-captured
+// GeneratedDeployContext (injected here directly, never via process.env mutation, since real
+// callers get it from the generated file instead).
+
+function deployContext(overrides: Partial<GeneratedDeployContext>): GeneratedDeployContext {
+  return { context: null, deployPrimeUrl: null, url: null, ...overrides };
+}
+
+test("resolveSiteBaseUrl resolves a Deploy Preview to ITS OWN deployPrimeUrl, never the production url", () => {
+  const result = resolveSiteBaseUrl(
+    deployContext({
+      context: "deploy-preview",
+      deployPrimeUrl: "https://deploy-preview-123--example.netlify.app",
+      url: "https://example.netlify.app",
+    })
+  );
   assert.equal(result.baseUrl, "https://deploy-preview-123--example.netlify.app");
   assert.equal(result.source, "DEPLOY_PRIME_URL");
-  delete process.env.DEPLOY_PRIME_URL;
-  delete process.env.URL;
+  assert.equal(result.deploymentContext, "deploy-preview");
+  assert.equal(result.productionFallbackWarning, false);
 });
 
-test("resolveSiteBaseUrl falls back to URL when DEPLOY_PRIME_URL is unset", () => {
-  delete process.env.DEPLOY_PRIME_URL;
-  process.env.URL = "https://example.netlify.app";
-  const result = resolveSiteBaseUrl();
-  assert.equal(result.baseUrl, "https://example.netlify.app");
-  assert.equal(result.source, "URL");
-  delete process.env.URL;
-});
-
-test("resolveSiteBaseUrl reports 'none' with a null baseUrl when neither is set, rather than guessing", () => {
-  delete process.env.DEPLOY_PRIME_URL;
-  delete process.env.URL;
-  const result = resolveSiteBaseUrl();
+// This is the core regression test for the actual incident: previously, an unset/unresolved
+// DEPLOY_PRIME_URL meant silently using `url` instead (always production). Now it must fail
+// closed — never fall back to `url` under any circumstance.
+test("resolveSiteBaseUrl on a non-production deploy with no deployPrimeUrl captured FAILS CLOSED — never falls back to the production url", () => {
+  const result = resolveSiteBaseUrl(
+    deployContext({ context: "deploy-preview", deployPrimeUrl: null, url: "https://example.netlify.app" })
+  );
   assert.equal(result.baseUrl, null);
   assert.equal(result.source, "none");
+});
+
+test("resolveSiteBaseUrl lets production resolve its own production deployPrimeUrl", () => {
+  const result = resolveSiteBaseUrl(
+    deployContext({ context: "production", deployPrimeUrl: "https://example.netlify.app", url: "https://example.netlify.app" })
+  );
+  assert.equal(result.baseUrl, "https://example.netlify.app");
+  assert.equal(result.source, "DEPLOY_PRIME_URL");
+  assert.equal(result.productionFallbackWarning, false);
+});
+
+test("resolveSiteBaseUrl reports 'none' with a null baseUrl and null deploymentContext when the generator never ran (local dev), rather than guessing", () => {
+  const result = resolveSiteBaseUrl(deployContext({}));
+  assert.equal(result.baseUrl, null);
+  assert.equal(result.source, "none");
+  assert.equal(result.deploymentContext, null);
+});
+
+test("resolveSiteBaseUrl raises productionFallbackWarning if a non-production deploy's own deployPrimeUrl ever matched production's url", () => {
+  // Pathological/defensive case only — should never happen from a real Netlify build, since
+  // deployPrimeUrl and url are distinct values for any real preview/branch deploy. Guards the
+  // warning's own wiring, not a scenario expected to occur in practice.
+  const result = resolveSiteBaseUrl(
+    deployContext({ context: "branch-deploy", deployPrimeUrl: "https://example.netlify.app", url: "https://example.netlify.app" })
+  );
+  assert.equal(result.productionFallbackWarning, true);
+});
+
+test("STAGE_WORKER_BACKGROUND_PATH matches the deployed Background Function's actual route", () => {
+  assert.equal(STAGE_WORKER_BACKGROUND_PATH, "/.netlify/functions/assessment-processing-stage-worker-background");
 });
 
 // REGRESSION: pingStageWorker() must fail with a clear, actionable reason — never attempt a
 // network call — when either prerequisite is missing. These are exactly the two silent-no-op
 // preconditions invokeStageWorker() already guarded; pingStageWorker() must guard them
-// identically so the diagnostic can't itself produce a misleading "reached: true".
+// identically so the diagnostic can't itself produce a misleading "reached: true". Each test
+// injects an explicit deploy context so only the one precondition under test is missing.
 test("pingStageWorker refuses to attempt a network call when no site URL is resolvable", async () => {
-  delete process.env.DEPLOY_PRIME_URL;
-  delete process.env.URL;
   process.env.ASSESSMENT_PROCESSING_WORKER_SECRET = "test-secret";
-  const result = await pingStageWorker();
+  const result = await pingStageWorker(deployContext({ context: "deploy-preview", deployPrimeUrl: null }));
   assert.equal(result.reached, false);
   assert.match(result.error ?? "", /No site URL available/);
   delete process.env.ASSESSMENT_PROCESSING_WORKER_SECRET;
 });
 
 test("pingStageWorker refuses to attempt a network call when the worker secret is not configured", async () => {
-  process.env.URL = "https://example.netlify.app";
   delete process.env.ASSESSMENT_PROCESSING_WORKER_SECRET;
-  const result = await pingStageWorker();
+  const result = await pingStageWorker(
+    deployContext({ context: "production", deployPrimeUrl: "https://example.netlify.app", url: "https://example.netlify.app" })
+  );
   assert.equal(result.reached, false);
   assert.match(result.error ?? "", /Missing ASSESSMENT_PROCESSING_WORKER_SECRET/);
-  delete process.env.URL;
 });
 
 let passed = 0;
