@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
+import { LinkButton } from "@/components/ui/Button";
 
 export interface InfectionRowView {
   id: string;
@@ -97,9 +97,9 @@ export function InfectionRegisterTable({ rows }: { rows: InfectionRowView[] }) {
                   </td>
                   <td className="px-4 py-3 text-muted">{row.owner ?? "—"}</td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/qapi/infections/${row.id}`} className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+                    <LinkButton href={`/qapi/infections/${row.id}`} size="small">
                       View →
-                    </Link>
+                    </LinkButton>
                   </td>
                 </tr>
               ))}

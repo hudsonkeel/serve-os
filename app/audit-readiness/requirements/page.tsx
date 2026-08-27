@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
 import { Badge } from "@/components/ui/Badge";
+import { LinkButton } from "@/components/ui/Button";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canViewAuditReadiness } from "@/lib/compliance/permissions";
 import {
@@ -87,9 +88,9 @@ export default async function AuditReadinessRequirementsPage({
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
                     <Badge tone={AUDIT_READINESS_STATUS_TONES[issue.status]}>{AUDIT_READINESS_STATUS_LABELS[issue.status]}</Badge>
-                    <Link href={issue.subjectHref} className="font-sans text-xs font-medium text-navy hover:text-navy-light">
+                    <LinkButton href={issue.subjectHref} size="small">
                       {issue.subjectLabel} →
-                    </Link>
+                    </LinkButton>
                   </div>
                 </div>
               </li>

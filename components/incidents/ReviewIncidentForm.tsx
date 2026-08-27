@@ -2,6 +2,7 @@
 
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { markIncidentReviewedAction } from "@/lib/actions/incidents";
 
 const fieldClassName =
@@ -82,13 +83,9 @@ export function ReviewIncidentForm({ incidentId }: { incidentId: string }) {
 
       {error && <p className="font-sans text-xs text-red-600">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={isPending}
-        className="rounded-lg bg-navy px-4 py-2 font-sans text-sm font-medium text-white hover:bg-navy-light disabled:opacity-50"
-      >
+      <Button type="submit" variant="primary" disabled={isPending}>
         {isPending ? "Saving…" : "Mark Reviewed"}
-      </button>
+      </Button>
     </form>
   );
 }

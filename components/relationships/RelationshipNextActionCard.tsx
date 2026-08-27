@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/Badge";
+import { LinkButton } from "@/components/ui/Button";
 import { RELATIONSHIP_ACTION_TYPE_LABELS, RELATIONSHIP_PRIORITY_LABELS } from "@/lib/relationships/constants";
 import type { BadgeTone } from "@/components/ui/Badge";
 import { RelationshipAction } from "@/lib/supabase/types";
@@ -33,9 +34,9 @@ export function RelationshipNextActionCard({ action }: { action: RelationshipAct
           <p className="mt-1 font-sans text-sm text-muted">
             {compactDate(action.due_at)} · {action.assigned_to || "Unassigned"}
           </p>
-          <a href="#next-actions" className="mt-2 inline-block font-sans text-sm font-medium text-navy hover:text-navy-light">
+          <LinkButton href="#next-actions" size="small" className="mt-2">
             View all actions →
-          </a>
+          </LinkButton>
         </div>
       ) : (
         <p className="font-sans text-sm text-muted">No current next action for this relationship.</p>

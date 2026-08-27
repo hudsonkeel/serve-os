@@ -8,6 +8,7 @@ import {
   uploadResidentDocument,
 } from "@/lib/actions/residentEvidence";
 import { FileUploadField } from "@/components/ui/FileUploadField";
+import { Button } from "@/components/ui/Button";
 import type { PersonDocument, PersonEvidence } from "@/lib/supabase/types";
 
 function formatDate(iso: string | null) {
@@ -95,22 +96,12 @@ function DocumentRow({
         </div>
         {!isSuperseded && (
           <div className="flex shrink-0 gap-3">
-            <button
-              type="button"
-              onClick={handleOpen}
-              disabled={isPending}
-              className="font-sans text-xs font-medium text-navy hover:text-navy-light disabled:opacity-60"
-            >
+            <Button type="button" size="small" onClick={handleOpen} disabled={isPending}>
               Open
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsReplacing((v) => !v)}
-              disabled={isPending}
-              className="font-sans text-xs font-medium text-muted hover:text-body disabled:opacity-60"
-            >
+            </Button>
+            <Button type="button" size="small" onClick={() => setIsReplacing((v) => !v)} disabled={isPending}>
               Replace
-            </button>
+            </Button>
           </div>
         )}
       </div>

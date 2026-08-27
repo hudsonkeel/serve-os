@@ -2,6 +2,7 @@
 
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { createInfectionAction } from "@/lib/actions/infections";
 import { searchResidentsForLinking } from "@/lib/actions/relationships";
 import type { ResidentSearchResult } from "@/lib/data/relationships";
@@ -101,17 +102,17 @@ export function CreateInfectionForm() {
           <p className="mt-3 font-sans text-sm text-body">
             {selectedResident.name}
             {selectedResident.unitNumber ? ` — Unit ${selectedResident.unitNumber}` : ""}{" "}
-            <button
+            <Button
               type="button"
+              size="small"
               onClick={() => {
                 setSelectedResident(null);
                 setResidentQuery("");
                 setResidentResults([]);
               }}
-              className="font-sans text-xs font-medium text-navy hover:text-navy-light"
             >
               Change
-            </button>
+            </Button>
           </p>
         ) : (
           <div className="mt-3">
@@ -208,21 +209,12 @@ export function CreateInfectionForm() {
       )}
 
       <div className="flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={isPending}
-          className="inline-flex h-11 items-center justify-center rounded-md bg-navy px-5 font-sans text-button font-semibold text-white transition-colors hover:bg-navy/90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        <Button type="submit" variant="primary" disabled={isPending}>
           {isPending ? "Saving..." : "Record Infection"}
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/qapi/infections")}
-          disabled={isPending}
-          className="rounded-md border border-ivory-border px-3 py-1.5 font-sans text-sm font-medium text-body transition-colors hover:border-navy/20 hover:bg-ivory-warm disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        </Button>
+        <Button type="button" size="small" onClick={() => router.push("/qapi/infections")} disabled={isPending}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

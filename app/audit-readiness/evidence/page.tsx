@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
+import { LinkButton } from "@/components/ui/Button";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canViewAuditReadiness } from "@/lib/compliance/permissions";
 import { listRecentPersonDocuments } from "@/lib/data/personDocuments";
@@ -93,9 +94,9 @@ export default async function AuditReadinessEvidencePage({
                     </p>
                   </div>
                   {href && (
-                    <Link href={href} className="shrink-0 font-sans text-xs font-medium text-navy hover:text-navy-light">
+                    <LinkButton href={href} size="small">
                       Open record →
-                    </Link>
+                    </LinkButton>
                   )}
                 </li>
               );

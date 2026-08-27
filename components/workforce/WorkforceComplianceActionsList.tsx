@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { resolveWorkforceComplianceActionAction } from "@/lib/actions/workforce";
 import type { WorkforceComplianceAction } from "@/lib/supabase/types";
 
@@ -77,9 +78,9 @@ function ActionRow({ action, workforceMemberId, canManage }: { action: Workforce
               >
                 Confirm {resolving}
               </button>
-              <button type="button" onClick={() => setResolving(null)} className="font-sans text-xs text-muted hover:text-body">
+              <Button type="button" size="small" onClick={() => setResolving(null)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           ) : (
             <div className="flex gap-2">

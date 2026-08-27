@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
+import { LinkButton } from "@/components/ui/Button";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canManageCorrectiveActions, canRunAuditDrill, canViewAuditReadiness } from "@/lib/compliance/permissions";
 import { canAccessWorkforceDocuments } from "@/lib/workforce/permissions";
@@ -162,14 +163,14 @@ export default async function EmergencyPreparednessPage({
         ) : (
           <ul className="mt-2 space-y-2">
             {reviews.map((r) => (
-              <li key={r.id}>
-                <Link
-                  href={`/audit-readiness/emergency-preparedness/reviews/${r.id}`}
-                  className="font-sans text-sm text-navy hover:text-navy-light"
-                >
+              <li key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-ivory-border p-3">
+                <p className="font-sans text-sm text-body">
                   {r.status === "completed" ? "Completed" : "In Progress"} — {r.reviewer},{" "}
                   {formatCentralDateTime(r.completed_at ?? r.started_at)}
-                </Link>
+                </p>
+                <LinkButton href={`/audit-readiness/emergency-preparedness/reviews/${r.id}`} size="small" className="shrink-0">
+                  View →
+                </LinkButton>
               </li>
             ))}
           </ul>

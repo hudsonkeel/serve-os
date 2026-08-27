@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { promoteWorkforceIdentityLinkToPrimary, setWorkforceIdentityLinkRole } from "@/lib/actions/workforce";
 import type { LinkRole, PersonVendorIdentityLink } from "@/lib/supabase/types";
 
@@ -129,13 +130,9 @@ function SourceIdentityCard({ link, canCorrect }: { link: PersonVendorIdentityLi
               >
                 Confirm {mode}
               </button>
-              <button
-                type="button"
-                onClick={() => setMode("idle")}
-                className="font-sans text-xs text-muted hover:text-body"
-              >
+              <Button type="button" size="small" onClick={() => setMode("idle")}>
                 Cancel
-              </button>
+              </Button>
             </div>
           )}
         </div>

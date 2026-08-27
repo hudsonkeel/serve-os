@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Button } from "@/components/ui/Button";
 import { confirmAxisCareResidentIdentity } from "@/lib/actions/reconciliation";
 import { searchResidentsForLinking } from "@/lib/actions/relationships";
 import type { ResidentSearchResult } from "@/lib/data/relationships";
@@ -243,14 +244,9 @@ export function MatchToExistingPersonControl({
                   </p>
                   <p className="truncate font-sans text-xs text-muted">{m.reasons.join(" · ")}</p>
                 </div>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => confirm(m.residentId, m.displayName)}
-                  className="shrink-0 font-sans text-xs font-medium text-navy hover:text-navy-light disabled:opacity-50"
-                >
+                <Button type="button" size="small" disabled={isPending} onClick={() => confirm(m.residentId, m.displayName)}>
                   Confirm →
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -273,14 +269,9 @@ export function MatchToExistingPersonControl({
                   </p>
                   <p className="truncate font-sans text-xs text-muted">{m.reasons.join(" · ")}</p>
                 </div>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => confirm(m.residentId, m.displayName)}
-                  className="shrink-0 font-sans text-xs font-medium text-navy hover:text-navy-light disabled:opacity-50"
-                >
+                <Button type="button" size="small" disabled={isPending} onClick={() => confirm(m.residentId, m.displayName)}>
                   Confirm →
-                </button>
+                </Button>
               </div>
             ))}
           </div>

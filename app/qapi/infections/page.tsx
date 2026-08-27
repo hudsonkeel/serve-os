@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
+import { LinkButton } from "@/components/ui/Button";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 import { canCreateIncidentOrInfection, canViewIncidentsAndInfections } from "@/lib/compliance/permissions";
@@ -63,12 +64,9 @@ export default async function InfectionsRegisterPage() {
           </p>
         </div>
         {canCreate && (
-          <Link
-            href="/qapi/infections/new"
-            className="shrink-0 rounded-lg bg-navy px-4 py-2 font-sans text-sm font-medium text-white hover:bg-navy-light"
-          >
+          <LinkButton href="/qapi/infections/new" variant="primary" className="shrink-0">
             New Infection
-          </Link>
+          </LinkButton>
         )}
       </div>
 

@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { LinkButton } from "@/components/ui/Button";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canRunAuditDrill } from "@/lib/compliance/permissions";
 import { listAuditSessions } from "@/lib/data/auditSessions";
@@ -62,12 +62,9 @@ export default async function AuditDrillsPage() {
             locked and reviewable exactly as it was recorded.
           </p>
         </div>
-        <Link
-          href="/audit-readiness/drills/new"
-          className="rounded-lg bg-navy px-4 py-2 font-sans text-sm font-medium text-white hover:bg-navy-light"
-        >
+        <LinkButton href="/audit-readiness/drills/new" variant="primary">
           Start New Audit
-        </Link>
+        </LinkButton>
       </div>
 
       {sessions.length === 0 ? (
@@ -106,12 +103,9 @@ export default async function AuditDrillsPage() {
                     {session.completed_at ? formatCentralDateTime(session.completed_at) : "—"}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/audit-readiness/drills/${session.id}`}
-                      className="font-sans text-sm font-medium text-navy hover:text-navy-light"
-                    >
+                    <LinkButton href={`/audit-readiness/drills/${session.id}`} size="small">
                       {session.status === "completed" ? "View →" : "Continue →"}
-                    </Link>
+                    </LinkButton>
                   </td>
                 </tr>
               ))}

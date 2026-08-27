@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Button } from "@/components/ui/Button";
 import { getWorkforceDocumentSignedUrl } from "@/lib/actions/workforce";
 
 // Mirrors RegistryEvidenceCard.tsx's own viewDocument() exactly — same
@@ -23,15 +24,10 @@ export function EvidenceViewButton({ documentId }: { documentId: string }) {
   }
 
   return (
-    <span>
-      <button
-        type="button"
-        onClick={view}
-        disabled={isPending}
-        className="font-sans text-xs font-medium text-navy hover:text-navy-light disabled:opacity-50"
-      >
+    <span className="inline-flex items-center align-middle">
+      <Button type="button" size="small" onClick={view} disabled={isPending}>
         View Evidence
-      </button>
+      </Button>
       {error && <span className="ml-2 font-sans text-xs text-red-600">{error}</span>}
     </span>
   );

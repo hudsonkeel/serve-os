@@ -2,6 +2,7 @@
 
 import { FormEvent, useId, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { saveQapiDomainNote } from "@/lib/actions/qapiDomainNotes";
 import { QAPI_DOMAIN_NOTE_MAX_LENGTH } from "@/lib/qapi/noteValidation";
 import type { QapiDomainId, QapiDomainNote } from "@/lib/supabase/types";
@@ -81,21 +82,12 @@ export function QapiDomainNoteEditor({ domainId, note, canEdit }: QapiDomainNote
         <div className="mt-2 flex items-center justify-between">
           <span className="font-sans text-xs text-subtle">{remaining} characters remaining</span>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCancel}
-              disabled={isPending}
-              className="rounded-lg border border-ivory-border px-3 py-1.5 font-sans text-xs font-medium text-body hover:border-navy/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            <Button type="button" size="small" onClick={handleCancel} disabled={isPending}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="rounded-lg bg-navy px-3 py-1.5 font-sans text-xs font-medium text-white hover:bg-navy-light disabled:cursor-not-allowed disabled:opacity-60"
-            >
+            </Button>
+            <Button type="submit" variant="primary" disabled={isPending}>
               {isPending ? "Saving..." : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
         {error && <p className="mt-2 font-sans text-xs text-red-600">{error}</p>}
@@ -116,14 +108,9 @@ export function QapiDomainNoteEditor({ domainId, note, canEdit }: QapiDomainNote
         <p className="font-sans text-sm text-muted">No current note.</p>
       )}
       {canEdit && (
-        <button
-          type="button"
-          ref={editButtonRef}
-          onClick={handleEdit}
-          className="mt-1 font-sans text-xs font-medium text-navy hover:text-navy-light"
-        >
+        <Button type="button" size="small" className="mt-1" ref={editButtonRef} onClick={handleEdit}>
           {note ? "Edit" : "Add a note"}
-        </button>
+        </Button>
       )}
     </div>
   );

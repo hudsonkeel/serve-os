@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import {
   decideWorkforceProfileDiscrepancy,
   lockWorkforceProfile,
@@ -380,9 +381,9 @@ export function CanonicalProfileCard({
               >
                 Confirm {statusAction}
               </button>
-              <button type="button" onClick={() => setStatusAction("idle")} className="font-sans text-xs text-muted hover:text-body">
+              <Button type="button" size="small" onClick={() => setStatusAction("idle")}>
                 Cancel
-              </button>
+              </Button>
             </div>
           )}
         </div>

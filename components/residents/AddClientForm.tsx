@@ -7,6 +7,7 @@
 // Readiness and Continue to Assessment drive everything else.
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui/Button";
 import {
   checkForPossibleExistingServePerson,
   createNewClient,
@@ -401,16 +402,15 @@ export function AddClientForm({ communities, defaultCommunityId }: AddClientForm
             >
               This Is a Different Person — Create Anyway
             </button>
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setPossibleMatch(null);
                 setMode("form");
               }}
-              className="h-10 rounded-lg font-sans text-sm font-medium text-navy hover:text-navy-light"
             >
               Edit Details
-            </button>
+            </Button>
           </div>
           {error && <p className="font-sans text-sm text-danger-text">{error}</p>}
         </div>

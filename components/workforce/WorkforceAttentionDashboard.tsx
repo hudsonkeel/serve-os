@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LinkButton } from "@/components/ui/Button";
 import type { WorkforceRosterEntry } from "@/lib/workforce/roster";
 
 // The Dashboard's answer to exactly one question: "what deserves attention
@@ -53,11 +54,11 @@ export function WorkforceAttentionDashboard({ roster }: { roster: WorkforceRoste
     <div>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="font-sans text-label font-semibold uppercase tracking-widest text-muted">Today — Active Workforce</h3>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 font-sans text-xs text-muted">
+        <div className="flex flex-wrap gap-2">
           {lifecycleDenominators.map((d) => (
-            <Link key={d.label} href={d.href} className="hover:text-body hover:underline">
+            <LinkButton key={d.label} href={d.href} size="small">
               {d.label}: {d.value}
-            </Link>
+            </LinkButton>
           ))}
         </div>
       </div>

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { createResidentFromAxisCareRecord } from "@/lib/actions/reconciliation";
 import { Badge } from "@/components/ui/Badge";
+import { LinkButton } from "@/components/ui/Button";
 
 // "Create New Resident" — the third resolution path (AxisCare
 // Reconciliation + Multi-Source Identity Ingestion phase). Offered
@@ -66,13 +66,15 @@ export function CreateNewResidentControl({
 
   if (result?.type === "success") {
     return (
-      <p className="font-sans text-sm text-success-text">
-        <Badge tone="success">Resident Created</Badge>{" "}
-        <Link href={`/residents/${result.residentId}`} className="font-medium text-navy hover:text-navy-light">
-          View resident →
-        </Link>
-        {result.syncWarning && <span className="mt-1 block font-sans text-xs text-warning-text">{result.syncWarning}</span>}
-      </p>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <Badge tone="success">Resident Created</Badge>
+          <LinkButton href={`/residents/${result.residentId}`} size="small">
+            View resident →
+          </LinkButton>
+        </div>
+        {result.syncWarning && <span className="font-sans text-xs text-warning-text">{result.syncWarning}</span>}
+      </div>
     );
   }
 

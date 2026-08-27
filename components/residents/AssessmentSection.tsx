@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
+import { LinkButton } from "@/components/ui/Button";
 import { submitPastedTranscriptAndExtract } from "@/lib/actions/assessmentIntelligence";
 import type { AssessmentSessionRecord } from "@/lib/data/assessmentIntelligence";
 
@@ -91,12 +91,9 @@ export function AssessmentSection({ residentId, residentName, sessions }: Assess
               <div className="flex items-center gap-3">
                 <StatusBadge status={s.status} />
                 {(s.status === "draft" || s.status === "needs_review" || s.status === "approved") && (
-                  <Link
-                    href={`/residents/${residentId}/assessment/${s.id}`}
-                    className="font-sans text-sm font-medium text-navy hover:text-navy-light"
-                  >
+                  <LinkButton href={`/residents/${residentId}/assessment/${s.id}`} size="small">
                     Review →
-                  </Link>
+                  </LinkButton>
                 )}
               </div>
             </div>

@@ -16,6 +16,7 @@ import {
 import { getAvailableEvidenceActions, isEffectivelyExpired, type EvidenceAction } from "@/lib/workforce/evidenceLifecycle";
 import { resolveRequirementDisplay } from "@/lib/workforce/registrySummary";
 import { FileUploadField } from "@/components/ui/FileUploadField";
+import { Button } from "@/components/ui/Button";
 import type { WorkforceLifecycleStatus } from "@/lib/workforce/lifecycleStatus";
 import type { RequirementEvaluation } from "@/lib/compliance/requirementSetStatus";
 import type { PersonEvidence, PersonEvidenceResult } from "@/lib/supabase/types";
@@ -63,14 +64,9 @@ type Mode = "view" | EvidenceAction;
 
 function DocumentLink({ documentId, isPending, onView }: { documentId: string; isPending: boolean; onView: (id: string) => void }) {
   return (
-    <button
-      type="button"
-      disabled={isPending}
-      onClick={() => onView(documentId)}
-      className="font-sans text-sm font-medium text-navy underline hover:text-navy-light disabled:opacity-50"
-    >
+    <Button type="button" size="small" disabled={isPending} onClick={() => onView(documentId)}>
       View PDF
-    </button>
+    </Button>
   );
 }
 
@@ -628,13 +624,9 @@ export function RegistryEvidenceCard({
       {/* History always available when there is any, even without an action button showing it */}
       {canManage && history.length > 0 && !availableActions.includes("view_history") && (
         <div className="mt-4 border-t border-ivory-border pt-4">
-          <button
-            type="button"
-            onClick={() => setMode(mode === "view_history" ? "view" : "view_history")}
-            className="font-sans text-xs font-medium text-muted underline hover:text-body"
-          >
+          <Button type="button" size="small" onClick={() => setMode(mode === "view_history" ? "view" : "view_history")}>
             {mode === "view_history" ? "Hide history" : `View history (${history.length})`}
-          </button>
+          </Button>
           {mode === "view_history" && (
             <div className="mt-3">
               <HistoryList history={history} isPending={isPending} onView={viewDocument} />
