@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { LinkButton } from "@/components/ui/Button";
 import {
   dismissIntakeAsNotQualified,
   linkExistingResidentForReview,
@@ -403,9 +403,9 @@ export function IntakeQueueWorkspace({ newSubmissions, records, initialTab }: In
                     <td className="px-4 py-3 font-sans text-sm text-body">{compactDateTime(r.processed_at)}</td>
                     <td className="px-4 py-3">
                       {r.relationship_id && (
-                        <Link href={`/relationships/${r.relationship_id}`} className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+                        <LinkButton href={`/relationships/${r.relationship_id}`} size="small">
                           Open Relationship
-                        </Link>
+                        </LinkButton>
                       )}
                       {!r.relationship_id && r.recruiting_lead_id && (
                         <span className="font-sans text-sm text-subtle">Recruiting Lead</span>

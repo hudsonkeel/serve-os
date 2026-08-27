@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { recordAgencyOperationalEventAction } from "@/lib/actions/emergencyPreparedness";
 
 // A real triggering-event record for EP_HHS_NOTIFICATION's applicability —
@@ -40,13 +41,9 @@ export function OperationalEventForm() {
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="font-sans text-xs font-medium text-navy hover:text-navy-light"
-      >
+      <Button type="button" variant="primary" size="small" onClick={() => setOpen(true)}>
         Record a temporary relocation or service-area expansion →
-      </button>
+      </Button>
     );
   }
 

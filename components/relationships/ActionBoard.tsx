@@ -204,7 +204,7 @@ function ActionBoardCard({
           </button>
           <Link
             href={`/relationships/${row.id}`}
-            className="font-sans text-sm font-medium text-navy hover:text-navy-light"
+            className="inline-flex h-9 items-center justify-center rounded-md border border-ivory-border bg-surface px-3 font-sans text-sm font-medium text-body transition-colors hover:border-navy/20 hover:bg-ivory-warm"
           >
             Open Relationship
           </Link>
@@ -265,7 +265,7 @@ function JustCompletedPrompt({
           </button>
           <Link
             href={`/relationships/${snapshot.relationshipId}`}
-            className="font-sans text-sm font-medium text-navy hover:text-navy-light"
+            className="inline-flex h-9 items-center justify-center rounded-md border border-ivory-border bg-surface px-3 font-sans text-sm font-medium text-body transition-colors hover:border-navy/20 hover:bg-ivory-warm"
           >
             Open Relationship
           </Link>

@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { resolveInsight } from "@/lib/actions/relationships";
 import { RELATIONSHIP_INSIGHT_CATEGORY_LABELS } from "@/lib/relationships/constants";
 import { RelationshipInsight } from "@/lib/supabase/types";
@@ -54,22 +55,12 @@ export function RelationshipInsightsSection({ insights }: RelationshipInsightsSe
                 <p className="mt-1 font-sans text-sm text-muted">Why it matters: {insight.why_it_matters}</p>
               )}
               <div className="mt-2 flex gap-3">
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => handleResolve(insight.id, "resolved")}
-                  className="font-sans text-sm font-medium text-navy hover:text-navy-light disabled:opacity-60"
-                >
+                <Button type="button" size="small" disabled={isPending} onClick={() => handleResolve(insight.id, "resolved")}>
                   Mark Resolved
-                </button>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => handleResolve(insight.id, "outdated")}
-                  className="font-sans text-sm font-medium text-muted hover:text-body disabled:opacity-60"
-                >
+                </Button>
+                <Button type="button" size="small" disabled={isPending} onClick={() => handleResolve(insight.id, "outdated")}>
                   Mark Outdated
-                </button>
+                </Button>
               </div>
             </div>
           ))}

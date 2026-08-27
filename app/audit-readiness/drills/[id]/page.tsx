@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/PageContainer";
 import { Badge } from "@/components/ui/Badge";
+import { LinkButton } from "@/components/ui/Button";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canRunAuditDrill, canViewAuditReadiness } from "@/lib/compliance/permissions";
 import { canAccessWorkforceDocuments } from "@/lib/workforce/permissions";
@@ -404,12 +405,9 @@ async function SubjectRequirementsSection({
                         Follow-up open: {view.workforceCorrectiveAction.title}
                       </p>
                     )}
-                    <Link
-                      href={resolveHref(subjectId, evaluation.requirement.requirement_code)}
-                      className="mt-1 inline-block font-sans text-xs font-medium text-navy hover:text-navy-light"
-                    >
+                    <LinkButton href={resolveHref(subjectId, evaluation.requirement.requirement_code)} size="small" className="mt-1">
                       Resolve →
-                    </Link>
+                    </LinkButton>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
                     <Badge tone={existingItem.finding === "pass" ? "success" : existingItem.finding === "fail" ? "danger" : "warning"}>
@@ -455,12 +453,9 @@ async function SubjectRequirementsSection({
                       )}
                     </p>
                   )}
-                  <Link
-                    href={resolveHref(subjectId, evaluation.requirement.requirement_code)}
-                    className="mt-1 inline-block font-sans text-xs font-medium text-navy hover:text-navy-light"
-                  >
+                  <LinkButton href={resolveHref(subjectId, evaluation.requirement.requirement_code)} size="small" className="mt-1">
                     Resolve →
-                  </Link>
+                  </LinkButton>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
                   <Badge tone={AUDIT_READINESS_STATUS_TONES[liveStatus.status]}>

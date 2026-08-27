@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { addAuditSessionCorrectionAction } from "@/lib/actions/auditReadiness";
 import type { AuditSessionItemFinding, AuditSessionItemSubjectType } from "@/lib/supabase/types";
 import type { ItemCorrectionInput } from "@/lib/data/auditSessionCorrections";
@@ -340,9 +341,9 @@ export function CorrectionModeEditor({
                   <p className="font-sans text-sm font-medium text-body">
                     {a.requirementName} for {a.subjectLabel} <span className="font-sans text-xs text-warning-text">(will show as &quot;Added during correction&quot;)</span>
                   </p>
-                  <button type="button" onClick={() => removeAddition(a.key)} className="font-sans text-xs font-medium text-red-600 hover:text-red-700">
+                  <Button type="button" size="small" onClick={() => removeAddition(a.key)}>
                     Remove
-                  </button>
+                  </Button>
                 </div>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <label className="block">

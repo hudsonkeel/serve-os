@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LinkButton } from "@/components/ui/Button";
 
 // The permanent top-of-dashboard domain card — one per Audit Readiness
 // domain (Workforce today; Emergency Preparedness and Client Readiness
@@ -95,9 +95,9 @@ export function DomainReadinessCard({
         </p>
 
         <div className="mt-4 border-t border-ivory-border pt-3">
-          <Link href={requirementDetailHref} className="inline-block font-sans text-xs font-medium text-navy hover:text-navy-light">
+          <LinkButton href={requirementDetailHref} size="small">
             View by requirement →
-          </Link>
+          </LinkButton>
         </div>
 
         {explanation && <p className="mt-4 font-sans text-xs text-subtle">{explanation}</p>}
@@ -127,9 +127,9 @@ export function DomainReadinessCard({
         <p className="mt-0.5 font-sans text-sm text-muted">
           {requirementSatisfiedCount} of {requirementApplicableCount} requirements satisfied
         </p>
-        <Link href={requirementDetailHref} className="mt-2 inline-block font-sans text-xs font-medium text-navy hover:text-navy-light">
+        <LinkButton href={requirementDetailHref} size="small" className="mt-2">
           View by requirement →
-        </Link>
+        </LinkButton>
       </div>
 
       {explanation && <p className="mt-4 font-sans text-xs text-subtle">{explanation}</p>}

@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { FamilyContactsCard } from "@/components/residents/FamilyContactsCard";
 import { CareContactsCard } from "@/components/residents/CareContactsCard";
 import type { AuditReadinessStatus } from "@/lib/compliance/auditReadinessStatus";
@@ -63,14 +63,14 @@ function Row({
       </div>
       <div className="shrink-0">
         {onEdit && (
-          <button type="button" onClick={onEdit} className="font-sans text-xs font-medium text-navy hover:text-navy-light">
+          <Button type="button" size="small" onClick={onEdit}>
             Edit
-          </button>
+          </Button>
         )}
         {href && (
-          <Link href={href} className="font-sans text-xs font-medium text-navy hover:text-navy-light">
+          <LinkButton href={href} size="small">
             {hrefLabel ?? "View"} →
-          </Link>
+          </LinkButton>
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { buttonClassName } from "@/components/ui/Button";
 import { uploadWorkforceDocument } from "@/lib/actions/workforce";
 import { parseBulkImportFilename } from "@/lib/workforce/filenameParsing";
 
@@ -82,7 +83,7 @@ export function BulkImportWizard({ roster }: { roster: RosterOption[] }) {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-dashed border-ivory-border bg-ivory p-6 text-center">
-        <label className="cursor-pointer font-sans text-sm font-medium text-navy hover:underline">
+        <label className={`cursor-pointer ${buttonClassName("primary")}`}>
           Select PDF files
           <input
             type="file"

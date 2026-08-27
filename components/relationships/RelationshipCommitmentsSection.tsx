@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { resolveCommitment } from "@/lib/actions/relationships";
 import { RELATIONSHIP_COMMITMENT_RESPONSIBLE_PARTY_TYPE_LABELS } from "@/lib/relationships/constants";
 import { RelationshipCommitment } from "@/lib/supabase/types";
@@ -51,22 +52,12 @@ export function RelationshipCommitmentsSection({ commitments }: RelationshipComm
               </div>
               <p className="font-sans text-sm text-body">{commitment.description}</p>
               <div className="mt-2 flex gap-3">
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => handleResolve(commitment.id, "completed")}
-                  className="font-sans text-sm font-medium text-navy hover:text-navy-light disabled:opacity-60"
-                >
+                <Button type="button" size="small" disabled={isPending} onClick={() => handleResolve(commitment.id, "completed")}>
                   Mark Completed
-                </button>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => handleResolve(commitment.id, "cancelled")}
-                  className="font-sans text-sm font-medium text-muted hover:text-body disabled:opacity-60"
-                >
+                </Button>
+                <Button type="button" size="small" disabled={isPending} onClick={() => handleResolve(commitment.id, "cancelled")}>
                   Cancel
-                </button>
+                </Button>
               </div>
             </div>
           ))}

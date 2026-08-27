@@ -2,6 +2,7 @@
 
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { logRelationshipInteraction } from "@/lib/actions/relationships";
 import {
   RELATIONSHIP_ACTION_TYPES,
@@ -279,13 +280,14 @@ export function RelationshipInteractionsSection({
                 </button>
               </div>
             ))}
-            <button
+            <Button
               type="button"
+              size="small"
+              className="mt-2"
               onClick={() => setParticipants((prev) => [...prev, { role: "primary_contact", name: "" }])}
-              className="mt-2 font-sans text-sm font-medium text-navy hover:text-navy-light"
             >
               + Add participant
-            </button>
+            </Button>
           </div>
 
           {/* ─── Follow-Up Needed? ──────────────────────────────────── */}

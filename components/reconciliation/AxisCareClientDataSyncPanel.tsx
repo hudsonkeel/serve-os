@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { LinkButton } from "@/components/ui/Button";
 import { runAxisCareClientDataSyncNow } from "@/lib/actions/axiscareClientSync";
 import { keepServeConflictValue, adoptAxisCareConflictValue } from "@/lib/actions/axiscareCanonicalConflicts";
 import type { AxisCareClientSyncRun } from "@/lib/data/axiscareClientSyncRuns";
@@ -102,9 +102,9 @@ function FieldConflictRow({ snapshotId, residentId, conflict }: { snapshotId: st
         >
           {isPending ? "Saving…" : "Use AxisCare"}
         </button>
-        <Link href={editHref} className="font-sans text-sm font-medium text-muted hover:text-body">
+        <LinkButton href={editHref} size="small">
           Edit →
-        </Link>
+        </LinkButton>
       </div>
       {error && <p className="mt-1.5 font-sans text-sm text-danger-text">{error}</p>}
     </div>
@@ -221,9 +221,9 @@ export function AxisCareClientDataSyncPanel({ canAct, lastRun, lastSuccessfulRun
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-sans text-sm font-semibold text-body">{residentName ?? "Unknown resident"}</p>
                   {residentId && (
-                    <Link href={`/residents/${residentId}`} className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+                    <LinkButton href={`/residents/${residentId}`} size="small">
                       View resident profile →
-                    </Link>
+                    </LinkButton>
                   )}
                 </div>
                 <p className="mt-1 font-sans text-xs text-muted">

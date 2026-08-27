@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
+import { LinkButton } from "@/components/ui/Button";
 import { AllClearAttentionCard, AttentionCard, AwaitingFirstSubjectAttentionCard, ComingSoonAttentionCard } from "@/components/compliance/AttentionCard";
 import { DomainReadinessCard } from "@/components/compliance/DomainReadinessCard";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
@@ -73,18 +73,10 @@ export default async function AuditReadinessPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Link
-            href="/audit-readiness/drills"
-            className="font-sans text-sm font-medium text-navy hover:text-navy-light"
-          >
-            View Past Audits →
-          </Link>
-          <Link
-            href="/audit-readiness/drills/new"
-            className="rounded-lg bg-navy px-4 py-2 font-sans text-sm font-medium text-white hover:bg-navy-light"
-          >
+          <LinkButton href="/audit-readiness/drills">View Past Audits →</LinkButton>
+          <LinkButton href="/audit-readiness/drills/new" variant="primary">
             Start Audit Drill
-          </Link>
+          </LinkButton>
         </div>
       </div>
 

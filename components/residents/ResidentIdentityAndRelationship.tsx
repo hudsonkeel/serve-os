@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LinkButton } from "@/components/ui/Button";
 import { IdentityDecisionActions } from "@/components/reconciliation/IdentityDecisionActions";
 import { ServeRelationshipCorrectionControl } from "@/components/residents/ServeRelationshipCorrectionControl";
 import type { BadgeTone } from "@/components/ui/Badge";
@@ -109,12 +109,9 @@ export function ResidentIdentityAndRelationship({
             disagrees with the recorded relationship. Correcting the relationship alone won&rsquo;t fix this.
           </p>
           {canCorrectRelationship ? (
-            <Link
-              href={`/resident-identities/${openDuplicateCandidateId}`}
-              className="mt-2 inline-block font-sans text-sm font-medium text-navy hover:text-navy-light"
-            >
+            <LinkButton href={`/resident-identities/${openDuplicateCandidateId}`} size="small" className="mt-2">
               Resolve duplicate →
-            </Link>
+            </LinkButton>
           ) : (
             <p className="mt-2 font-sans text-xs text-muted">Your role does not include duplicate-resolution actions.</p>
           )}

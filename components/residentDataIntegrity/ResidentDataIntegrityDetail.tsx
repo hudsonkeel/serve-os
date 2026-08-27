@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import {
   confirmDuplicateImportRecord,
   correctIntegrityIssueMalformedField,
@@ -230,32 +231,24 @@ export function ResidentDataIntegrityDetail({ issue, residents, linkedCounts }: 
         <div className="space-y-4 rounded-lg border border-ivory-border bg-ivory px-5 py-4">
           <div className="flex flex-wrap gap-3">
             {hasPair && (
-              <button
-                type="button"
-                onClick={() => setActiveForm("confirm_duplicate")}
-                className="inline-flex h-11 items-center justify-center rounded-md bg-navy px-4 font-sans text-button font-semibold text-white hover:bg-navy/90"
-              >
+              <Button type="button" variant="primary" onClick={() => setActiveForm("confirm_duplicate")}>
                 Confirm Duplicate Import Record
-              </button>
+              </Button>
             )}
-            <button
-              type="button"
-              onClick={() => setActiveForm("correct_field")}
-              className="inline-flex h-11 items-center justify-center rounded-md border border-navy/30 px-4 font-sans text-button font-semibold text-navy hover:bg-navy/5"
-            >
+            <Button type="button" onClick={() => setActiveForm("correct_field")}>
               Correct Malformed Field
-            </button>
+            </Button>
             {hasPair && (
-              <button type="button" onClick={() => setActiveForm("return_to_identity")} className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+              <Button type="button" size="small" onClick={() => setActiveForm("return_to_identity")}>
                 Return to Identity Review
-              </button>
+              </Button>
             )}
-            <button type="button" onClick={() => setActiveForm("investigate")} className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+            <Button type="button" size="small" onClick={() => setActiveForm("investigate")}>
               Investigate Later
-            </button>
-            <button type="button" onClick={() => setActiveForm("not_an_issue")} className="font-sans text-sm text-muted hover:text-body">
+            </Button>
+            <Button type="button" size="small" onClick={() => setActiveForm("not_an_issue")}>
               Not an Issue
-            </button>
+            </Button>
           </div>
 
           {activeForm === "confirm_duplicate" && hasPair && (

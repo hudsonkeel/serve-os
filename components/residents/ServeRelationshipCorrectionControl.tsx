@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Button } from "@/components/ui/Button";
 import { correctServeRelationship } from "@/lib/actions/residents";
 import type { ServeRelationship } from "@/lib/residents/serveRelationshipProjection";
 
@@ -53,13 +54,9 @@ export function ServeRelationshipCorrectionControl({ residentId, currentValue }:
   return (
     <div className="pointer-events-auto relative z-[2]" onClick={(e) => e.stopPropagation()}>
       {!open ? (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="font-sans text-sm font-medium text-navy hover:text-navy-light"
-        >
+        <Button type="button" size="small" onClick={() => setOpen(true)}>
           Correct relationship
-        </button>
+        </Button>
       ) : (
         <div className="mt-2 max-w-sm space-y-2 rounded-lg border border-ivory-border bg-ivory p-3">
           <select

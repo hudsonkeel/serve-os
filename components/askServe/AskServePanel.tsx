@@ -2,8 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { Sparkles, X } from "lucide-react";
+import { LinkButton } from "@/components/ui/Button";
 import { KNOWLEDGE_PROFILE_COPY } from "@/lib/askServe/knowledgeProfiles";
 import { useAskServe } from "./AskServeProvider";
 
@@ -128,12 +128,9 @@ export function AskServePanel() {
         </div>
 
         <div className="border-t border-ivory-border px-6 py-4">
-          <Link
-            href="/ask-serve"
-            className="font-sans text-sm font-medium text-navy hover:text-navy-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50"
-          >
+          <LinkButton href="/ask-serve" size="small" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50">
             Open full Ask Serve →
-          </Link>
+          </LinkButton>
         </div>
       </div>
     </div>,

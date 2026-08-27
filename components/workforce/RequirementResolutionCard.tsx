@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/Button";
 import { RegistryEvidenceCard } from "@/components/workforce/RegistryEvidenceCard";
 import { HumanAttestationDialog } from "@/components/workforce/HumanAttestationDialog";
 import { getRequirementPlaybook } from "@/lib/workforce/requirementPlaybooks";
@@ -257,13 +258,9 @@ export function RequirementResolutionCard({
 
           {history.length > 0 && (
             <div className="border-t border-ivory-border pt-3">
-              <button
-                type="button"
-                onClick={() => setShowHistory((v) => !v)}
-                className="font-sans text-xs font-medium text-muted underline hover:text-body"
-              >
+              <Button type="button" size="small" onClick={() => setShowHistory((v) => !v)}>
                 {showHistory ? "Hide verification history" : `View verification history (${history.length})`}
-              </button>
+              </Button>
               {showHistory && (
                 <ul className="mt-3 space-y-3">
                   {history
@@ -278,13 +275,9 @@ export function RequirementResolutionCard({
           )}
 
           <div className="border-t border-ivory-border pt-3">
-            <button
-              type="button"
-              onClick={() => setShowEvidence((v) => !v)}
-              className="font-sans text-xs font-medium text-navy underline hover:text-navy-light"
-            >
+            <Button type="button" size="small" onClick={() => setShowEvidence((v) => !v)}>
               {showEvidence ? "Hide evidence & verification" : "Show evidence & verification"}
-            </button>
+            </Button>
             {showEvidence && (
               <div className="mt-3">
                 <RegistryEvidenceCard

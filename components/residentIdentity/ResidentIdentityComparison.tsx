@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Button } from "@/components/ui/Button";
 import {
   dismissIdentityCandidate,
   mergeResidents,
@@ -284,8 +285,9 @@ export function ResidentIdentityComparison({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
+            <Button
               type="button"
+              variant="primary"
               disabled={isPending || !canonicalId}
               onClick={() =>
                 runAction(() =>
@@ -297,11 +299,10 @@ export function ResidentIdentityComparison({
                   }),
                 )
               }
-              className="inline-flex h-11 items-center justify-center rounded-md bg-navy px-4 font-sans text-button font-semibold text-white hover:bg-navy/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Same Person — Consolidate Records
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
               disabled={isPending || !canonicalId}
               onClick={() =>
@@ -314,10 +315,9 @@ export function ResidentIdentityComparison({
                   }),
                 )
               }
-              className="inline-flex h-11 items-center justify-center rounded-md border border-navy/30 px-4 font-sans text-button font-semibold text-navy hover:bg-navy/5 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Same Person — Keep Separate for Now
-            </button>
+            </Button>
           </div>
           <p className="font-sans text-xs text-subtle">
             Both options immediately retire the non-canonical record (it stops appearing as an ordinary active resident, and its
@@ -327,18 +327,18 @@ export function ResidentIdentityComparison({
           </p>
 
           <div className="flex flex-wrap gap-3 border-t border-ivory-border pt-3">
-            <button type="button" onClick={() => setActiveForm("not_duplicate")} className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+            <Button type="button" size="small" onClick={() => setActiveForm("not_duplicate")}>
               Not the Same Person
-            </button>
-            <button type="button" onClick={() => setActiveForm("profile_corrected")} className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+            </Button>
+            <Button type="button" size="small" onClick={() => setActiveForm("profile_corrected")}>
               Correct a Profile Field
-            </button>
-            <button type="button" onClick={() => setActiveForm("investigate")} className="font-sans text-sm font-medium text-navy hover:text-navy-light">
+            </Button>
+            <Button type="button" size="small" onClick={() => setActiveForm("investigate")}>
               Investigate Later
-            </button>
-            <button type="button" onClick={() => setActiveForm("dismiss")} className="font-sans text-sm text-muted hover:text-body">
+            </Button>
+            <Button type="button" size="small" onClick={() => setActiveForm("dismiss")}>
               Incorrect Candidate
-            </button>
+            </Button>
           </div>
 
           {activeForm !== "none" && (

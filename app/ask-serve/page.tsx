@@ -67,9 +67,9 @@ export default function AskServePage() {
                 key={prompt}
                 type="button"
                 disabled
-                className="cursor-default rounded-lg border border-ivory-border bg-surface px-4 py-3 text-left font-sans text-sm text-body shadow-sm"
+                className="cursor-default rounded-lg border border-ivory-border bg-surface px-4 py-3 text-left font-sans text-sm text-body opacity-60 shadow-sm transition-all"
               >
-                <span className="mr-2 text-gold">→</span>
+                <span className="mr-2 text-gold/60">→</span>
                 {prompt}
               </button>
             ))}

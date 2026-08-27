@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
 import { Badge } from "@/components/ui/Badge";
+import { LinkButton } from "@/components/ui/Button";
 import { QapiDomainNoteEditor } from "@/components/qapi/QapiDomainNoteEditor";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canManageCorrectiveActions, canViewAuditReadiness } from "@/lib/compliance/permissions";
@@ -72,13 +72,9 @@ export default async function QapiPage() {
         {/* Minimal links into the new Incident/Infection registers (Slices
             3-4, 2026-08-26) — placeholder entry points, not the full QAPI
             Overview/Incidents/Infections tab restructure, which is Slice 5. */}
-        <div className="mt-2 flex gap-4">
-          <Link href="/qapi/incidents" className="font-sans text-sm font-medium text-navy hover:text-navy-light">
-            Incidents →
-          </Link>
-          <Link href="/qapi/infections" className="font-sans text-sm font-medium text-navy hover:text-navy-light">
-            Infections →
-          </Link>
+        <div className="mt-3 flex gap-3">
+          <LinkButton href="/qapi/incidents">Incidents →</LinkButton>
+          <LinkButton href="/qapi/infections">Infections →</LinkButton>
         </div>
       </div>
 
@@ -110,12 +106,9 @@ export default async function QapiPage() {
                 <p className="font-sans text-sm font-medium text-body">{needsAttentionLabel(domain)}</p>
                 <p className="mt-0.5 font-sans text-xs text-muted">{qualityPriorityLine(domain)}</p>
               </div>
-              <Link
-                href={auditReadinessRequirementsHref(domain.domainId, "all")}
-                className="shrink-0 font-sans text-xs font-medium text-navy hover:text-navy-light"
-              >
+              <LinkButton href={auditReadinessRequirementsHref(domain.domainId, "all")} size="small">
                 Review in Audit Readiness →
-              </Link>
+              </LinkButton>
             </div>
           ))}
         </div>
@@ -141,9 +134,9 @@ export default async function QapiPage() {
               <div key={bucket.id} className="rounded-lg border border-ivory-border">
                 <div className="flex items-center justify-between gap-3 px-4 py-3">
                   <p className="font-sans text-sm font-semibold text-body">{bucket.label}</p>
-                  <Link href={auditReadinessRequirementsHref(domainId, "all")} className="shrink-0 font-sans text-xs font-medium text-navy hover:text-navy-light">
+                  <LinkButton href={auditReadinessRequirementsHref(domainId, "all")} size="small">
                     Review in Audit Readiness →
-                  </Link>
+                  </LinkButton>
                 </div>
 
                 <div className="border-t border-ivory-border px-4 py-3">

@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { resolveOpenLoop } from "@/lib/actions/relationships";
 import { RelationshipOpenLoop } from "@/lib/supabase/types";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -44,22 +45,12 @@ export function RelationshipOpenLoopsSection({ openLoops }: RelationshipOpenLoop
               </div>
               <p className="font-sans text-sm text-body">{loop.question}</p>
               <div className="mt-2 flex gap-3">
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => handleResolve(loop.id, "resolved")}
-                  className="font-sans text-sm font-medium text-navy hover:text-navy-light disabled:opacity-60"
-                >
+                <Button type="button" size="small" disabled={isPending} onClick={() => handleResolve(loop.id, "resolved")}>
                   Mark Resolved
-                </button>
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => handleResolve(loop.id, "no_longer_relevant")}
-                  className="font-sans text-sm font-medium text-muted hover:text-body disabled:opacity-60"
-                >
+                </Button>
+                <Button type="button" size="small" disabled={isPending} onClick={() => handleResolve(loop.id, "no_longer_relevant")}>
                   No Longer Relevant
-                </button>
+                </Button>
               </div>
             </div>
           ))}

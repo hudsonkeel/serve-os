@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { recordEmergencyPreparednessImprovementAction } from "@/lib/actions/emergencyPreparedness";
 
 // A separate affordance from requirement findings — never miscategorized as
@@ -36,13 +37,9 @@ export function ImprovementForm({ reviewId }: { reviewId: string }) {
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="font-sans text-xs font-medium text-navy hover:text-navy-light"
-      >
+      <Button type="button" size="small" onClick={() => setOpen(true)}>
         + Suggest an improvement
-      </button>
+      </Button>
     );
   }
 

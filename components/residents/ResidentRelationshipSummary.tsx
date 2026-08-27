@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LinkButton } from "@/components/ui/Button";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { QuickNoteButton } from "@/components/residents/QuickNoteButton";
 import { RELATIONSHIP_ACTION_TYPE_LABELS, RELATIONSHIP_PRIORITY_LABELS } from "@/lib/relationships/constants";
@@ -58,9 +58,9 @@ export function ResidentRelationshipSummary({
             {lastContact ? `Last contact ${lastContact}` : "No contact recorded yet"}
           </span>
         </div>
-        <Link href={`/relationships/${relationship.id}`} className="shrink-0 font-sans text-sm font-medium text-navy hover:text-navy-light">
+        <LinkButton href={`/relationships/${relationship.id}`} size="small">
           Full record →
-        </Link>
+        </LinkButton>
       </div>
 
       <div className="mt-3 border-t border-ivory-border pt-3">
@@ -74,12 +74,12 @@ export function ResidentRelationshipSummary({
             </span>
           </p>
         ) : (
-          <p className="font-sans text-sm text-muted">
-            No follow-up scheduled ·{" "}
-            <a href={`/relationships/${relationship.id}#next-actions`} className="font-medium text-navy hover:text-navy-light">
+          <div className="flex items-center gap-2">
+            <p className="font-sans text-sm text-muted">No follow-up scheduled.</p>
+            <LinkButton href={`/relationships/${relationship.id}#next-actions`} size="small">
               Add follow-up
-            </a>
-          </p>
+            </LinkButton>
+          </div>
         )}
       </div>
 
@@ -87,11 +87,7 @@ export function ResidentRelationshipSummary({
         <p className="min-w-0 font-sans text-sm text-body">
           {recentNote ? recentNote.content : <span className="text-muted">No recent notes.</span>}
         </p>
-        <QuickNoteButton
-          residentId={residentId}
-          residentDisplayName={residentDisplayName}
-          className="shrink-0 font-sans text-sm font-medium text-navy hover:text-navy-light"
-        />
+        <QuickNoteButton residentId={residentId} residentDisplayName={residentDisplayName} />
       </div>
     </div>
   );

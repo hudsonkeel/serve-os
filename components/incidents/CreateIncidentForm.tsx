@@ -2,6 +2,7 @@
 
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
 import { createIncidentAction } from "@/lib/actions/incidents";
 import { searchResidentsForLinking } from "@/lib/actions/relationships";
 import { INCIDENT_TYPE_LABELS, INCIDENT_TYPE_OPTIONS } from "./incidentLabels";
@@ -143,17 +144,17 @@ export function CreateIncidentForm({ workforceOptions }: { workforceOptions: Wor
               <p className="mt-1 font-sans text-sm text-body">
                 {selectedResident.name}
                 {selectedResident.unitNumber ? ` — Unit ${selectedResident.unitNumber}` : ""}{" "}
-                <button
+                <Button
                   type="button"
+                  size="small"
                   onClick={() => {
                     setSelectedResident(null);
                     setResidentQuery("");
                     setResidentResults([]);
                   }}
-                  className="font-sans text-xs font-medium text-navy hover:text-navy-light"
                 >
                   Change
-                </button>
+                </Button>
               </p>
             ) : (
               <div>
@@ -323,13 +324,9 @@ export function CreateIncidentForm({ workforceOptions }: { workforceOptions: Wor
               placeholder="e.g. Family, Supervisor, EMS"
               className={fieldClassName}
             />
-            <button
-              type="button"
-              onClick={addParty}
-              className="shrink-0 rounded-md border border-ivory-border px-3 py-2 font-sans text-sm font-medium text-muted hover:border-navy/20"
-            >
+            <Button type="button" size="small" className="shrink-0" onClick={addParty}>
               Add
-            </button>
+            </Button>
           </div>
           {partiesNotified.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
@@ -364,21 +361,12 @@ export function CreateIncidentForm({ workforceOptions }: { workforceOptions: Wor
       )}
 
       <div className="flex items-center gap-2">
-        <button
-          type="submit"
-          disabled={isPending}
-          className="inline-flex h-11 items-center justify-center rounded-md bg-navy px-5 font-sans text-button font-semibold text-white transition-colors hover:bg-navy/90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        <Button type="submit" variant="primary" disabled={isPending}>
           {isPending ? "Saving..." : "Record Incident"}
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push("/qapi/incidents")}
-          disabled={isPending}
-          className="rounded-md border border-ivory-border px-3 py-1.5 font-sans text-sm font-medium text-body transition-colors hover:border-navy/20 hover:bg-ivory-warm disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        </Button>
+        <Button type="button" size="small" onClick={() => router.push("/qapi/incidents")} disabled={isPending}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
