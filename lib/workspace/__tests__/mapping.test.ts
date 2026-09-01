@@ -4,8 +4,13 @@ import assert from "node:assert/strict";
 import {
   ASSESSMENT_PROPOSAL_STALE_DAYS,
   RECRUITING_LEAD_STALE_DAYS,
+  mapCompletedIncidentToWorkItem,
+  mapCompletedInfectionToWorkItem,
   mapCompletedRelationshipActionToWorkItem,
   mapCompletedWellnessFollowUpToWorkItem,
+  mapEmergencyPreparednessObligationToWorkItem,
+  mapIncidentToWorkItem,
+  mapInfectionToWorkItem,
   mapNoNextActionToWorkItem,
   mapOnHoldRelationshipToWorkItem,
   mapPipelineStageToWorkItem,
@@ -154,6 +159,144 @@ test("17. every mapper always produces a non-empty explanation", () => {
     mapRelationshipActionToWorkItem({ id: "x2", relationshipId: "r", relationshipDisplayName: "R", title: "T", dueAt: null, assignedTo: null, priority: "normal" }, NOW),
     mapOnHoldRelationshipToWorkItem({ relationshipId: "r", displayName: "R", ownerLabel: null }),
     mapNoNextActionToWorkItem({ relationshipId: "r", displayName: "R", ownerLabel: null }),
+  ];
+  for (const item of items) assert.ok(item.explanation.trim().length > 0);
+});
+
+// ─── Governance Connective Slice v0.1 — Incidents / Infections / EPRP ──
+
+test("18. unreviewed incident -> needs_attention, no dueAt fabricated", () => {
+  const item = mapIncidentToWorkItem({
+    id: "i1",
+    typeLabel: "Fall",
+    reviewStatus: "not_reviewed",
+    followUpRequired: false,
+    owner: null,
+    occurredAtLabel: "Aug 20, 2026",
+    residentId: "r1",
+    residentDisplayName: "Ada Washington",
+  });
+  assert.equal(item.status, "needs_attention");
+  assert.equal(item.dueAt, undefined);
+  assert.equal(item.sourceRoute, "/qapi/incidents/i1");
+  assert.ok(item.explanation.includes("not been reviewed"));
+});
+
+test("19. reviewed incident with follow-up -> in_progress, owner surfaced", () => {
+  const item = mapIncidentToWorkItem({
+    id: "i2",
+    typeLabel: "Fall",
+    reviewStatus: "reviewed",
+    followUpRequired: true,
+    owner: "Jordan Lee",
+    occurredAtLabel: "Aug 20, 2026",
+    residentId: "r1",
+    residentDisplayName: "Ada Washington",
+  });
+  assert.equal(item.status, "in_progress");
+  assert.equal(item.ownerLabel, "Jordan Lee");
+  assert.ok(item.explanation.includes("Jordan Lee"));
+});
+
+test("20. incident with no resident (staff-only/property incident) -> no subjectType fabricated", () => {
+  const item = mapIncidentToWorkItem({
+    id: "i3",
+    typeLabel: "Property Concern",
+    reviewStatus: "not_reviewed",
+    followUpRequired: false,
+    owner: null,
+    occurredAtLabel: "Aug 20, 2026",
+    residentId: null,
+    residentDisplayName: null,
+  });
+  assert.equal(item.subjectType, undefined);
+  assert.equal(item.subjectId, undefined);
+});
+
+test("21. completed incident mapper -> completed status, resolvedBy in explanation", () => {
+  const item = mapCompletedIncidentToWorkItem({ id: "i4", typeLabel: "Fall", resolvedAt: "2026-08-25T00:00:00.000Z", resolvedBy: "Jordan Lee" });
+  assert.equal(item.status, "completed");
+  assert.equal(item.completedAt, "2026-08-25T00:00:00.000Z");
+  assert.ok(item.explanation.includes("Jordan Lee"));
+});
+
+test("22. unreviewed infection -> needs_attention, resident-linked", () => {
+  const item = mapInfectionToWorkItem({
+    id: "inf1",
+    reviewStatus: "not_reviewed",
+    followUpRequired: false,
+    owner: null,
+    disclosedAtLabel: "2026-08-24",
+    residentId: "r1",
+    residentDisplayName: "Linda Kaplan",
+  });
+  assert.equal(item.status, "needs_attention");
+  assert.equal(item.subjectType, "resident");
+  assert.equal(item.subjectId, "r1");
+  assert.equal(item.sourceRoute, "/qapi/infections/inf1");
+});
+
+test("23. reviewed infection with follow-up -> in_progress", () => {
+  const item = mapInfectionToWorkItem({
+    id: "inf2",
+    reviewStatus: "reviewed",
+    followUpRequired: true,
+    owner: "Jordan Lee",
+    disclosedAtLabel: "2026-08-24",
+    residentId: "r1",
+    residentDisplayName: "Linda Kaplan",
+  });
+  assert.equal(item.status, "in_progress");
+});
+
+test("24. completed infection mapper -> completed status", () => {
+  const item = mapCompletedInfectionToWorkItem({ id: "inf3", residentDisplayName: "Linda Kaplan", resolvedAt: "2026-08-26T00:00:00.000Z", resolvedBy: "Jordan Lee" });
+  assert.equal(item.status, "completed");
+  assert.equal(item.title, "Infection — Linda Kaplan");
+});
+
+test("25. EPRP due_soon requirement -> upcoming, dueAt from evidence expiration, no due-date math recomputed", () => {
+  const item = mapEmergencyPreparednessObligationToWorkItem({
+    requirementId: "req1",
+    requirementName: "Annual Plan Review",
+    status: "due_soon",
+    explanation: "Expires in 12 days.",
+    expirationDate: "2026-09-10",
+  });
+  assert.equal(item.status, "upcoming");
+  assert.equal(item.dueAt, "2026-09-10");
+  assert.equal(item.evidenceType, "deterministic");
+  assert.equal(item.explanation, "Expires in 12 days.");
+});
+
+test("26. EPRP overdue requirement -> needs_attention", () => {
+  const item = mapEmergencyPreparednessObligationToWorkItem({
+    requirementId: "req2",
+    requirementName: "Annual Response Drill",
+    status: "overdue",
+    explanation: "Expired 5 days ago.",
+    expirationDate: "2026-08-15",
+  });
+  assert.equal(item.status, "needs_attention");
+});
+
+test("27. EPRP missing_evidence requirement -> needs_attention, no fabricated dueAt", () => {
+  const item = mapEmergencyPreparednessObligationToWorkItem({
+    requirementId: "req3",
+    requirementName: "Risk Assessment Current",
+    status: "missing_evidence",
+    explanation: "No evidence on file.",
+    expirationDate: null,
+  });
+  assert.equal(item.status, "needs_attention");
+  assert.equal(item.dueAt, undefined);
+});
+
+test("28. every new mapper always produces a non-empty explanation", () => {
+  const items = [
+    mapIncidentToWorkItem({ id: "x", typeLabel: "Fall", reviewStatus: "not_reviewed", followUpRequired: false, owner: null, occurredAtLabel: "today", residentId: null, residentDisplayName: null }),
+    mapInfectionToWorkItem({ id: "x", reviewStatus: "reviewed", followUpRequired: true, owner: null, disclosedAtLabel: "today", residentId: "r", residentDisplayName: "R" }),
+    mapEmergencyPreparednessObligationToWorkItem({ requirementId: "x", requirementName: "R", status: "overdue", explanation: "Overdue.", expirationDate: null }),
   ];
   for (const item of items) assert.ok(item.explanation.trim().length > 0);
 });

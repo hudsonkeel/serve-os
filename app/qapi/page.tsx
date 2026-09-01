@@ -16,6 +16,8 @@ import {
   qualityPriorityLine,
   QAPI_DOMAIN_ID_FOR_BUCKET,
 } from "@/lib/qapi/dashboard";
+import { getIncidentSignals, getInfectionSignals, getCorrectiveWorkSignals } from "@/lib/qapi/signals";
+import { INCIDENT_TYPE_LABELS } from "@/components/incidents/incidentLabels";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -54,10 +56,13 @@ export default async function QapiPage() {
   const canEditNotes = canManageCorrectiveActions(profile?.role ?? null);
 
   const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
-  const [auditEligibleActiveClients, improvementWork, notes] = await Promise.all([
+  const [auditEligibleActiveClients, improvementWork, notes, incidentSignals, infectionSignals, correctiveWorkSignals] = await Promise.all([
     getAuditEligibleActiveClientResidents(communityFilter),
     getEmergencyPreparednessImprovementWork(),
     getQapiDomainNotes(),
+    getIncidentSignals(),
+    getInfectionSignals(),
+    getCorrectiveWorkSignals(),
   ]);
   const data = await getAuditReadinessDashboardData(auditEligibleActiveClients);
   const buckets = buildQapiImprovementBuckets(data.correctiveActions, improvementWork);
@@ -197,6 +202,70 @@ export default async function QapiPage() {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      {/* ─── Activity Signals (Governance Connective Slice v0.1) — plain
+          counts/rates over the Incident/Infection registers and open
+          corrective work, deterministically computed, no threshold
+          comparison, no AI. These are counts, not conclusions: a number
+          here is not a Finding, and nothing on this page decides whether
+          any of these counts is "too high." ─── */}
+      <section className="mb-8 rounded-xl border border-ivory-border bg-white p-5">
+        <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Activity Signals</h2>
+        <p className="mt-1 font-sans text-xs text-muted">
+          Counts only, not a finding — what&apos;s been recorded, not a judgment about whether it&apos;s a problem.
+        </p>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="rounded-lg border border-ivory-border p-4">
+            <p className="font-sans text-sm font-semibold text-body">Incidents</p>
+            <dl className="mt-2 space-y-1 font-sans text-xs text-muted">
+              <div className="flex justify-between"><dt>Open</dt><dd>{incidentSignals.totalOpen}</dd></div>
+              <div className="flex justify-between"><dt>Needs review</dt><dd>{incidentSignals.totalNeedsReview}</dd></div>
+              <div className="flex justify-between"><dt>Resolved</dt><dd>{incidentSignals.totalResolved}</dd></div>
+              <div className="flex justify-between"><dt>Last 30 days</dt><dd>{incidentSignals.last30Days}</dd></div>
+              <div className="flex justify-between"><dt>Last 90 days</dt><dd>{incidentSignals.last90Days}</dd></div>
+              <div className="flex justify-between"><dt>With injury reported</dt><dd>{incidentSignals.injuryOccurredCount}</dd></div>
+              <div className="flex justify-between">
+                <dt>Time from entry to review</dt>
+                <dd>{incidentSignals.medianEntryToReviewDays !== null ? `${incidentSignals.medianEntryToReviewDays.toFixed(1)}d median` : "—"}</dd>
+              </div>
+            </dl>
+            {Object.keys(incidentSignals.byType).length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {Object.entries(incidentSignals.byType).map(([type, count]) => (
+                  <span key={type} className="rounded-full bg-ivory-warm px-2.5 py-1 font-sans text-[11px] text-body">
+                    {INCIDENT_TYPE_LABELS[type as keyof typeof INCIDENT_TYPE_LABELS] ?? type}: {count}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-ivory-border p-4">
+            <p className="font-sans text-sm font-semibold text-body">Infections</p>
+            <dl className="mt-2 space-y-1 font-sans text-xs text-muted">
+              <div className="flex justify-between"><dt>Open</dt><dd>{infectionSignals.totalOpen}</dd></div>
+              <div className="flex justify-between"><dt>Needs review</dt><dd>{infectionSignals.totalNeedsReview}</dd></div>
+              <div className="flex justify-between"><dt>Resolved</dt><dd>{infectionSignals.totalResolved}</dd></div>
+              <div className="flex justify-between"><dt>Last 30 days</dt><dd>{infectionSignals.last30Days}</dd></div>
+              <div className="flex justify-between"><dt>Last 90 days</dt><dd>{infectionSignals.last90Days}</dd></div>
+              <div className="flex justify-between">
+                <dt>Time from entry to review</dt>
+                <dd>{infectionSignals.medianEntryToReviewDays !== null ? `${infectionSignals.medianEntryToReviewDays.toFixed(1)}d median` : "—"}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div className="rounded-lg border border-ivory-border p-4">
+            <p className="font-sans text-sm font-semibold text-body">Corrective Work</p>
+            <dl className="mt-2 space-y-1 font-sans text-xs text-muted">
+              <div className="flex justify-between"><dt>Open (all sources)</dt><dd>{correctiveWorkSignals.totalOpen}</dd></div>
+              <div className="flex justify-between"><dt>Overdue</dt><dd>{correctiveWorkSignals.overdueCount}</dd></div>
+              <div className="flex justify-between"><dt>Linked to an Incident/Infection/finding</dt><dd>{correctiveWorkSignals.sourceLinkedCount}</dd></div>
+            </dl>
+          </div>
         </div>
       </section>
 

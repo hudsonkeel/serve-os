@@ -89,6 +89,14 @@ export async function getAllOpenCorrectiveActions(): Promise<ComplianceCorrectiv
 // Idempotent upsert-by-issue — mirrors sync_workforce_compliance_action()
 // exactly (same never-duplicate-an-open-issue discipline), scoped to the
 // polymorphic subject this table serves.
+//
+// Governance Connective Slice v0.1 — when sourceIncidentId, sourceInfectionId,
+// or sourceReviewItemId is supplied, the RPC keys its idempotent lookup off
+// that specific source record instead of subject+requirement+action_type
+// (which is the correct key only for the non-source-linked case — see
+// 20260908000000_add_governance_connective_slice.sql's header for why two
+// different source records can otherwise share a resident and action_type).
+// Pass at most one; the DB enforces that structurally.
 export async function syncCorrectiveAction(input: {
   subjectType: ComplianceCorrectiveActionSubjectType;
   subjectId: string;
@@ -100,6 +108,9 @@ export async function syncCorrectiveAction(input: {
   priority: ComplianceCorrectiveActionPriority;
   dueAt: string | null;
   actor: string;
+  sourceIncidentId?: string;
+  sourceInfectionId?: string;
+  sourceReviewItemId?: string;
 }): Promise<{ action?: ComplianceCorrectiveAction; error?: string }> {
   const supabase = createServerClient();
 
@@ -115,6 +126,9 @@ export async function syncCorrectiveAction(input: {
       p_priority: input.priority,
       p_due_at: input.dueAt,
       p_actor: input.actor,
+      p_source_incident_id: input.sourceIncidentId ?? null,
+      p_source_infection_id: input.sourceInfectionId ?? null,
+      p_source_review_item_id: input.sourceReviewItemId ?? null,
     })
     .single();
 
@@ -144,6 +158,47 @@ export async function autoResolveCorrectiveActionsForRequirement(
   }
 
   return (data as number | null) ?? 0;
+}
+
+// Governance Connective Slice v0.1 — "does this specific Incident/Infection
+// already have an open, tracked corrective action?" Used to hide the
+// create-corrective-action affordance once one exists (structurally
+// backed by compliance_corrective_actions_one_open_per_incident_idx /
+// …_per_infection_idx, so this is a UX convenience, not the only guard).
+export async function getOpenCorrectiveActionForIncident(incidentId: string): Promise<ComplianceCorrectiveAction | null> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .from("compliance_corrective_actions")
+    .select("*")
+    .eq("source_incident_id", incidentId)
+    .eq("status", "open")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[getOpenCorrectiveActionForIncident]", { incidentId, message: error.message });
+    return null;
+  }
+
+  return (data as ComplianceCorrectiveAction | null) ?? null;
+}
+
+export async function getOpenCorrectiveActionForInfection(infectionId: string): Promise<ComplianceCorrectiveAction | null> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .from("compliance_corrective_actions")
+    .select("*")
+    .eq("source_infection_id", infectionId)
+    .eq("status", "open")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[getOpenCorrectiveActionForInfection]", { infectionId, message: error.message });
+    return null;
+  }
+
+  return (data as ComplianceCorrectiveAction | null) ?? null;
 }
 
 export async function resolveCorrectiveAction(input: {

@@ -9,8 +9,13 @@
 import { getRelationshipAttentionStatus } from "../relationships/attention.ts";
 import { PROSPECT_RELATIONSHIP_TYPES } from "../relationships/constants.ts";
 import {
+  mapCompletedIncidentToWorkItem,
+  mapCompletedInfectionToWorkItem,
   mapCompletedRelationshipActionToWorkItem,
   mapCompletedWellnessFollowUpToWorkItem,
+  mapEmergencyPreparednessObligationToWorkItem,
+  mapIncidentToWorkItem,
+  mapInfectionToWorkItem,
   mapNoNextActionToWorkItem,
   mapOnHoldRelationshipToWorkItem,
   mapPipelineStageToWorkItem,
@@ -26,18 +31,47 @@ import {
 } from "./relationships.ts";
 import { getAllOpenWellnessFollowUps, getRecentlyCompletedWellnessFollowUps } from "./wellnessFollowUps.ts";
 import { getRecruitingLeads } from "./recruitingLeads.ts";
+import { getActionableIncidents, getRecentlyResolvedIncidents } from "./incidents.ts";
+import { getActionableInfections, getRecentlyResolvedInfections } from "./infections.ts";
+import { getEmergencyPreparednessReadinessEvaluation } from "../emergencyPreparedness/emergencyPreparednessReadiness.ts";
+import { formatCentralDateTime } from "../utils/date.ts";
+import { INCIDENT_TYPE_LABELS } from "../../components/incidents/incidentLabels.ts";
 
 const ASSESSMENT_STAGES = new Set(["assessment_scheduled"]);
 const PROPOSAL_STAGES = new Set(["proposal_in_progress", "proposal_sent"]);
 
+// Governance Connective Slice v0.1 — reuses the shared requirement
+// evaluator's own status labels; Today's Work must never compute due-state
+// itself. Only these three statuses represent unresolved, actionable work
+// — compliant/not_applicable/exception/satisfied_by_event requirements
+// never produce a Today's Work item.
+const EPRP_ACTIONABLE_STATUSES = new Set(["due_soon", "overdue", "missing_evidence"]);
+
 export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkItem[]> {
-  const [openFollowUps, completedFollowUps, workspaceRows, nearestActions, completedActions, recruiting] = await Promise.all([
+  const [
+    openFollowUps,
+    completedFollowUps,
+    workspaceRows,
+    nearestActions,
+    completedActions,
+    recruiting,
+    actionableIncidents,
+    recentlyResolvedIncidents,
+    actionableInfections,
+    recentlyResolvedInfections,
+    eprpEvaluation,
+  ] = await Promise.all([
     getAllOpenWellnessFollowUps(),
     getRecentlyCompletedWellnessFollowUps(),
     getRelationshipWorkspaceRows(),
     getNearestOpenActionByRelationship(),
     getRecentlyCompletedActions(),
     getRecruitingLeads(),
+    getActionableIncidents(),
+    getRecentlyResolvedIncidents(),
+    getActionableInfections(),
+    getRecentlyResolvedInfections(),
+    getEmergencyPreparednessReadinessEvaluation(),
   ]);
 
   const relationshipById = new Map(workspaceRows.map((r) => [r.id, r]));
@@ -156,6 +190,81 @@ export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkIt
       now,
     );
     if (item) items.push(item);
+  }
+
+  // ─── Incidents (Governance Connective Slice v0.1) ───────────────────
+  for (const incident of actionableIncidents) {
+    const typeLabel =
+      incident.incident_type === "other" ? incident.incident_type_other || "Other" : INCIDENT_TYPE_LABELS[incident.incident_type];
+    items.push(
+      mapIncidentToWorkItem({
+        id: incident.id,
+        typeLabel,
+        reviewStatus: incident.review_status,
+        followUpRequired: incident.follow_up_required,
+        owner: incident.owner,
+        occurredAtLabel: formatCentralDateTime(incident.occurred_at) ?? incident.occurred_at,
+        residentId: incident.resident_id,
+        residentDisplayName: incident.residentDisplayName,
+      }),
+    );
+  }
+  for (const incident of recentlyResolvedIncidents) {
+    const typeLabel =
+      incident.incident_type === "other" ? incident.incident_type_other || "Other" : INCIDENT_TYPE_LABELS[incident.incident_type];
+    items.push(
+      mapCompletedIncidentToWorkItem({
+        id: incident.id,
+        typeLabel,
+        resolvedAt: incident.resolved_at as string,
+        resolvedBy: incident.resolved_by,
+      }),
+    );
+  }
+
+  // ─── Infections (Governance Connective Slice v0.1) ──────────────────
+  for (const infection of actionableInfections) {
+    items.push(
+      mapInfectionToWorkItem({
+        id: infection.id,
+        reviewStatus: infection.review_status,
+        followUpRequired: infection.follow_up_required,
+        owner: infection.owner,
+        disclosedAtLabel: infection.disclosed_at,
+        residentId: infection.resident_id,
+        residentDisplayName: infection.residentDisplayName,
+      }),
+    );
+  }
+  for (const infection of recentlyResolvedInfections) {
+    items.push(
+      mapCompletedInfectionToWorkItem({
+        id: infection.id,
+        residentDisplayName: infection.residentDisplayName,
+        resolvedAt: infection.resolved_at as string,
+        resolvedBy: infection.resolved_by,
+      }),
+    );
+  }
+
+  // ─── Emergency Preparedness due/overdue requirements (Governance
+  // Connective Slice v0.1) — a fresh live read of the same shared
+  // evaluator the EPRP/Audit Readiness pages already call; no persisted
+  // Obligation row, so a satisfied requirement simply stops appearing on
+  // the next read. ─────────────────────────────────────────────────────
+  if (eprpEvaluation) {
+    for (const req of eprpEvaluation.requirements) {
+      if (!EPRP_ACTIONABLE_STATUSES.has(req.status)) continue;
+      items.push(
+        mapEmergencyPreparednessObligationToWorkItem({
+          requirementId: req.requirement.id,
+          requirementName: req.requirement.name,
+          status: req.status as "due_soon" | "overdue" | "missing_evidence",
+          explanation: req.explanation,
+          expirationDate: req.latestEvidence?.expiration_date ?? null,
+        }),
+      );
+    }
   }
 
   return items;

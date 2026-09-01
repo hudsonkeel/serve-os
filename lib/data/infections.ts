@@ -5,6 +5,7 @@
 // resolution, resident-existence checks, and role authorization live in
 // lib/actions/infections.ts.
 import { createServerClient } from "../supabase/server.ts";
+import { getResidentsByIds } from "./residents.ts";
 import type { CommunityQueryFilter } from "../auth/communityScope.ts";
 import type { Infection } from "../supabase/types.ts";
 
@@ -126,4 +127,71 @@ export async function resolveInfection(input: ResolveInfectionInput): Promise<{ 
   }
 
   return { infection: data as Infection };
+}
+
+// ─── Governance Connective Slice v0.1 ─────────────────────────────────────
+// Mirrors lib/data/incidents.ts exactly. Infections are always
+// resident-linked (schema-enforced), so residentDisplayName is never null
+// here in practice, but the type stays nullable to match Incident's shape
+// and to fail safely if a resident lookup misses.
+
+export interface InfectionWithResidentName extends Infection {
+  residentDisplayName: string | null;
+}
+
+async function withResidentNames(rows: Infection[]): Promise<InfectionWithResidentName[]> {
+  const residentIds = [...new Set(rows.map((r) => r.resident_id))];
+  const residents = residentIds.length > 0 ? await getResidentsByIds(residentIds) : [];
+  const nameById = new Map(residents.map((r) => [r.id, r.display_name || r.full_name || "Resident"]));
+
+  return rows.map((row) => ({
+    ...row,
+    residentDisplayName: nameById.get(row.resident_id) ?? null,
+  }));
+}
+
+export async function getActionableInfections(): Promise<InfectionWithResidentName[]> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase.from("infections").select("*").eq("status", "open");
+
+  if (error) {
+    console.error("[infections:getActionableInfections:error]", { message: error.message });
+    return [];
+  }
+
+  return withResidentNames((data as Infection[] | null) ?? []);
+}
+
+export async function getRecentlyResolvedInfections(withinDays = 7): Promise<InfectionWithResidentName[]> {
+  const supabase = createServerClient();
+  const since = new Date(Date.now() - withinDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("infections")
+    .select("*")
+    .eq("status", "resolved")
+    .gte("resolved_at", since);
+
+  if (error) {
+    console.error("[infections:getRecentlyResolvedInfections:error]", { message: error.message });
+    return [];
+  }
+
+  return withResidentNames((data as Infection[] | null) ?? []);
+}
+
+// Plain counts for the QAPI factual aggregate — no filtering, no
+// interpretation. See lib/qapi/signals.ts.
+export async function getAllInfectionsForSignals(): Promise<Infection[]> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase.from("infections").select("*");
+
+  if (error) {
+    console.error("[infections:getAllInfectionsForSignals:error]", { message: error.message });
+    return [];
+  }
+
+  return (data as Infection[] | null) ?? [];
 }

@@ -8,6 +8,7 @@
 // `actor` — this file trusts whatever actor string it's given, the same
 // way lib/data/complianceCorrectiveActions.ts does.
 import { createServerClient } from "../supabase/server.ts";
+import { getResidentsByIds } from "./residents.ts";
 import type { CommunityQueryFilter } from "../auth/communityScope.ts";
 import type { Incident, IncidentType } from "../supabase/types.ts";
 
@@ -141,4 +142,76 @@ export async function resolveIncident(input: ResolveIncidentInput): Promise<{ in
   }
 
   return { incident: data as Incident };
+}
+
+// ─── Governance Connective Slice v0.1 ─────────────────────────────────────
+// Today's Work sources (lib/data/todaysWork.ts) and the QAPI factual
+// aggregate (lib/qapi/signals.ts) — plain reads, no RPC involved. Resident
+// names are joined here rather than left to the caller, matching
+// lib/data/wellnessFollowUps.ts's getAllOpenWellnessFollowUps() convention
+// exactly. Deliberately global (no community filter), same as that
+// function — Today's Work composes across every source without a
+// community scope today.
+
+export interface IncidentWithResidentName extends Incident {
+  residentDisplayName: string | null;
+}
+
+async function withResidentNames(rows: Incident[]): Promise<IncidentWithResidentName[]> {
+  const residentIds = [...new Set(rows.map((r) => r.resident_id).filter((id): id is string => id !== null))];
+  const residents = residentIds.length > 0 ? await getResidentsByIds(residentIds) : [];
+  const nameById = new Map(residents.map((r) => [r.id, r.display_name || r.full_name || "Resident"]));
+
+  return rows.map((row) => ({
+    ...row,
+    residentDisplayName: row.resident_id ? (nameById.get(row.resident_id) ?? null) : null,
+  }));
+}
+
+export async function getActionableIncidents(): Promise<IncidentWithResidentName[]> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase.from("incidents").select("*").eq("status", "open");
+
+  if (error) {
+    console.error("[incidents:getActionableIncidents:error]", { message: error.message });
+    return [];
+  }
+
+  return withResidentNames((data as Incident[] | null) ?? []);
+}
+
+// Mirrors lib/data/relationships.ts's getRecentlyCompletedActions() 7-day
+// default window.
+export async function getRecentlyResolvedIncidents(withinDays = 7): Promise<IncidentWithResidentName[]> {
+  const supabase = createServerClient();
+  const since = new Date(Date.now() - withinDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("incidents")
+    .select("*")
+    .eq("status", "resolved")
+    .gte("resolved_at", since);
+
+  if (error) {
+    console.error("[incidents:getRecentlyResolvedIncidents:error]", { message: error.message });
+    return [];
+  }
+
+  return withResidentNames((data as Incident[] | null) ?? []);
+}
+
+// Plain counts for the QAPI factual aggregate — no filtering, no
+// interpretation. See lib/qapi/signals.ts.
+export async function getAllIncidentsForSignals(): Promise<Incident[]> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase.from("incidents").select("*");
+
+  if (error) {
+    console.error("[incidents:getAllIncidentsForSignals:error]", { message: error.message });
+    return [];
+  }
+
+  return (data as Incident[] | null) ?? [];
 }

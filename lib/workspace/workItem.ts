@@ -14,7 +14,12 @@ export type WorkItemSourceType =
   | "assessment"
   | "proposal"
   | "recruiting"
-  | "other";
+  | "other"
+  // Governance Connective Slice v0.1 — see lib/workspace/mapping.ts's
+  // Incident/Infection/Emergency-Preparedness mappers.
+  | "incident"
+  | "infection"
+  | "compliance_requirement";
 // "schedule_exception" is intentionally not included — schedule exceptions
 // are not wired into the Work Item model this phase; they stay in
 // components/scheduling/TodaysSchedulePanel.tsx's own dedicated view. See
