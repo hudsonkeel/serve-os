@@ -15,7 +15,20 @@ const RELATIONSHIP_OPTIONS: { value: ServeRelationship; label: string }[] = [
 
 interface ServeRelationshipCorrectionControlProps {
   residentId: string;
+  // Seeds the dropdown's initial selection — the currently DISPLAYED
+  // (possibly already-corrected) relationship, so the control opens on
+  // whatever's governing today.
   currentValue: ServeRelationship;
+  // The live, uncorrected natural/source relationship (see
+  // ServeRelationshipProjectionWithCorrection.naturalRelationship) —
+  // deliberately distinct from currentValue. This is what gets recorded
+  // as the new correction's previousValue, so a later comparison can
+  // tell "the source hasn't changed since this was reviewed" from "the
+  // source changed." Using currentValue here instead would, after a
+  // first correction, capture the prior correction's own chosen value
+  // rather than the source, breaking that comparison on every
+  // subsequent correction.
+  naturalValue: ServeRelationship;
 }
 
 // Governed "fix incorrect stuff" control for a resident's Serve
@@ -26,7 +39,7 @@ interface ServeRelationshipCorrectionControlProps {
 // reason evidence can't capture. Every correction is durable and
 // audited (actor, timestamp, rationale, previous/new value) — see
 // lib/data/residentServeRelationshipCorrections.ts.
-export function ServeRelationshipCorrectionControl({ residentId, currentValue }: ServeRelationshipCorrectionControlProps) {
+export function ServeRelationshipCorrectionControl({ residentId, currentValue, naturalValue }: ServeRelationshipCorrectionControlProps) {
   const [open, setOpen] = useState(false);
   const [newValue, setNewValue] = useState<ServeRelationship>(currentValue);
   const [rationale, setRationale] = useState("");
@@ -40,7 +53,7 @@ export function ServeRelationshipCorrectionControl({ residentId, currentValue }:
     }
     setMessage(null);
     startTransition(async () => {
-      const result = await correctServeRelationship({ residentId, previousValue: currentValue, newValue, rationale: rationale.trim() });
+      const result = await correctServeRelationship({ residentId, previousValue: naturalValue, newValue, rationale: rationale.trim() });
       if (result.error) {
         setMessage({ type: "error", text: result.error });
       } else {

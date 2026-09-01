@@ -36,6 +36,12 @@ interface ResidentIdentityAndRelationshipProps {
   residentId: string;
   residentDisplayName: string;
   currentRelationship: ServeRelationship;
+  // The live, uncorrected natural/source relationship — see
+  // ServeRelationshipProjectionWithCorrection.naturalRelationship. Passed
+  // through to ServeRelationshipCorrectionControl so a new correction
+  // records the source value actually being reviewed right now, not the
+  // already-corrected currentRelationship.
+  naturalRelationship: ServeRelationship;
   axiscareMatch: AxisCareRelationshipMatch | null;
   correction: { actor: string; rationale: string; createdAt: string } | null;
   hasConflict: boolean;
@@ -56,6 +62,7 @@ export function ResidentIdentityAndRelationship({
   residentId,
   residentDisplayName,
   currentRelationship,
+  naturalRelationship,
   axiscareMatch,
   correction,
   hasConflict,
@@ -128,7 +135,7 @@ export function ResidentIdentityAndRelationship({
           </p>
           {canCorrectRelationship ? (
             <div className="mt-2">
-              <ServeRelationshipCorrectionControl residentId={residentId} currentValue={currentRelationship} />
+              <ServeRelationshipCorrectionControl residentId={residentId} currentValue={currentRelationship} naturalValue={naturalRelationship} />
             </div>
           ) : (
             <p className="mt-2 font-sans text-xs text-muted">Your role does not include relationship-correction actions.</p>

@@ -215,12 +215,33 @@ export interface ServeRelationshipCorrection {
 
 export interface ServeRelationshipProjectionWithCorrection extends ServeRelationshipProjection {
   readonly correction: ServeRelationshipCorrection | null;
-  // True only when a correction exists AND the underlying,
-  // uncorrected projection currently computes a DIFFERENT value than
-  // what the human corrected it to — i.e. new evidence disagrees with
-  // the reviewed truth. The correction still wins for display; this
-  // flag exists purely so the disagreement can be surfaced, not acted
-  // on automatically.
+  // The live, uncorrected natural/source relationship — always the
+  // current output of projectServeRelationship(), regardless of whether
+  // a correction exists. Exposed (rather than discarded once a
+  // correction is applied) so a caller recording a NEW correction can
+  // seed that correction's own previousValue from the true current
+  // source state, never from `relationship` below, which — once a
+  // correction exists — is already the prior correction's own chosen
+  // value. Feeding `relationship` back in as a future previousValue is
+  // exactly the contamination bug this field exists to prevent (see
+  // hasConflict's comment).
+  readonly naturalRelationship: ServeRelationship;
+  // True only when the CURRENT natural/source relationship differs from
+  // correction.previousValue — the natural value the human actually
+  // reviewed at the time they made this correction. This asks "has the
+  // source changed since it was reviewed," not "does the source still
+  // disagree with what the human chose" (comparing against
+  // correction.newValue instead would be wrong: a correction exists
+  // specifically because the human's chosen value disagreed with the
+  // source at review time, so that comparison is true by construction
+  // for nearly every real correction, forever, regardless of whether
+  // anything has actually changed since). A null previousValue (no
+  // captured baseline — the app itself never writes one, but the schema
+  // allows it defensively) is treated as an unresolved/unknown baseline,
+  // so it conservatively stays a conflict rather than silently hiding
+  // one. The correction still wins for display either way; this flag
+  // exists purely so a genuinely new disagreement can be surfaced, never
+  // acted on automatically.
   readonly hasConflict: boolean;
 }
 
@@ -229,7 +250,7 @@ export function applyServeRelationshipCorrection(
   correction: ServeRelationshipCorrection | null
 ): ServeRelationshipProjectionWithCorrection {
   if (!correction) {
-    return { ...naturalProjection, correction: null, hasConflict: false };
+    return { ...naturalProjection, correction: null, hasConflict: false, naturalRelationship: naturalProjection.relationship };
   }
 
   return {
@@ -237,6 +258,8 @@ export function applyServeRelationshipCorrection(
     relationship: correction.newValue,
     relationshipSource: "human_correction",
     correction,
-    hasConflict: naturalProjection.relationship !== correction.newValue,
+    naturalRelationship: naturalProjection.relationship,
+    hasConflict:
+      correction.previousValue === null ? true : naturalProjection.relationship !== correction.previousValue,
   };
 }
