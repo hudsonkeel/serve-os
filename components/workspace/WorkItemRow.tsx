@@ -11,6 +11,10 @@ const SOURCE_LABELS: Record<WorkItemSourceType, string> = {
   proposal: "Proposal",
   recruiting: "Recruiting",
   other: "Relationship",
+  // Governance Connective Slice v0.1
+  incident: "Incident",
+  infection: "Infection",
+  compliance_requirement: "Emergency Preparedness",
 };
 
 const PRIORITY_TONE: Record<NonNullable<WorkItem["priority"]>, "danger" | "warning" | "neutral"> = {

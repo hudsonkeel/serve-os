@@ -99,6 +99,9 @@ function correctiveAction(overrides: Partial<ComposedCorrectiveAction> = {}): Co
     dueAt: null,
     status: "open",
     createdAt: "2026-08-01T00:00:00Z",
+    sourceIncidentId: null,
+    sourceInfectionId: null,
+    sourceReviewItemId: null,
     ...overrides,
   };
 }

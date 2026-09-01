@@ -2199,7 +2199,12 @@ export type ComplianceCorrectiveActionType =
   | "evidence_expiring_soon"
   | "evidence_requires_review"
   | "evidence_awaiting_verification"
-  | "audit_finding_failed";
+  | "audit_finding_failed"
+  // Governance Connective Slice v0.1 — a follow-up identified during an
+  // Incident/Infection review, not an evidence/audit-finding shape. See
+  // 20260908000000_add_governance_connective_slice.sql.
+  | "incident_follow_up_required"
+  | "infection_follow_up_required";
 
 export type ComplianceCorrectiveActionPriority = "low" | "normal" | "high" | "urgent";
 export type ComplianceCorrectiveActionStatus = "open" | "resolved" | "dismissed";
@@ -2221,6 +2226,12 @@ export interface ComplianceCorrectiveAction {
   resolved_by: string | null;
   resolved_at: string | null;
   audit_session_item_id: string | null;
+  // Governance Connective Slice v0.1 — at most one of these three, and at
+  // most one of these three plus audit_session_item_id above, is ever
+  // non-null (DB-enforced). See 20260908000000_add_governance_connective_slice.sql.
+  source_incident_id: string | null;
+  source_infection_id: string | null;
+  source_review_item_id: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -2313,7 +2324,24 @@ export type ComplianceActivityEventType =
   // absence. See
   // supabase/migrations/20260902090000_create_emergency_preparedness_reviews.sql.
   | "agency_temporary_relocation"
-  | "agency_service_area_expansion";
+  | "agency_service_area_expansion"
+  // Governance Connective Slice v0.1 — lightweight lifecycle pointers for
+  // Incidents/Infections. See 20260908000000_add_governance_connective_slice.sql.
+  | "incident_created"
+  | "incident_reviewed"
+  | "incident_resolved"
+  | "infection_created"
+  | "infection_reviewed"
+  | "infection_resolved";
+
+// Governance Connective Slice v0.1 — the specific domain record a
+// compliance_activity row is a pointer for. Distinct from subject_type/
+// subject_id (who the event is *about*) — this identifies *which row
+// produced it*. No FK: compliance_activity is platform infrastructure
+// available to any future audit-native domain, an open-ended writer set,
+// so this stays a generic, unconstrained pointer (same reasoning as
+// resident_wellness_follow_ups.source_id) rather than a typed FK per type.
+export type ComplianceActivitySourceType = "incident" | "infection";
 
 export interface ComplianceActivity {
   id: string;
@@ -2323,6 +2351,8 @@ export interface ComplianceActivity {
   event_title: string;
   event_description: string | null;
   source: string;
+  source_type: ComplianceActivitySourceType | null;
+  source_record_id: string | null;
   system_generated: boolean;
   created_by: string | null;
   created_at: string;

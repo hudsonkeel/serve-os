@@ -8,12 +8,15 @@ import {
   canReviewIncidentOrInfection,
   canResolveIncidentOrInfection,
   canViewIncidentsAndInfections,
+  canManageCorrectiveActions,
 } from "@/lib/compliance/permissions";
 import { getInfectionById } from "@/lib/data/infections";
 import { getResidentById } from "@/lib/data/residents";
+import { getOpenCorrectiveActionForInfection } from "@/lib/data/complianceCorrectiveActions";
 import { formatCentralDateTime } from "@/lib/utils/date";
 import { ReviewInfectionForm } from "@/components/infections/ReviewInfectionForm";
 import { ResolveInfectionForm } from "@/components/infections/ResolveInfectionForm";
+import { CreateSourceLinkedCorrectiveActionButton } from "@/components/compliance/CreateSourceLinkedCorrectiveActionButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -54,6 +57,12 @@ export default async function InfectionDetailPage({ params }: { params: Promise<
 
   const canReview = canReviewIncidentOrInfection(profile?.role ?? null);
   const canResolve = canResolveIncidentOrInfection(profile?.role ?? null);
+  const canManageAction = canManageCorrectiveActions(profile?.role ?? null);
+
+  // Governance Connective Slice v0.1 — see the Incident detail page for
+  // the identical rule this mirrors.
+  const correctiveActionEligible = infection.status === "open" && infection.review_status === "reviewed" && infection.follow_up_required;
+  const linkedCorrectiveAction = correctiveActionEligible ? await getOpenCorrectiveActionForInfection(infection.id) : null;
 
   return (
     <PageContainer title="Infection Record">
@@ -178,6 +187,30 @@ export default async function InfectionDetailPage({ params }: { params: Promise<
             <p className="mt-2 font-sans text-sm text-muted">Awaiting formal review.</p>
           )}
         </section>
+
+        {/* ─── Corrective Action (Governance Connective Slice v0.1) ─── */}
+        {correctiveActionEligible && (
+          <section className="rounded-xl border border-ivory-border bg-white p-5">
+            <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Corrective Action</h2>
+            {linkedCorrectiveAction ? (
+              <p className="mt-2 font-sans text-sm text-body">
+                Tracked: <span className="font-medium">{linkedCorrectiveAction.title}</span>
+                {linkedCorrectiveAction.due_at ? ` — due ${fmtDateTime(linkedCorrectiveAction.due_at)}` : ""}
+              </p>
+            ) : canManageAction ? (
+              <div className="mt-3">
+                <CreateSourceLinkedCorrectiveActionButton
+                  kind="infection"
+                  recordId={infection.id}
+                  defaultTitle={`Infection follow-up — disclosed ${fmtDisclosedDate(infection.disclosed_at)}`}
+                  defaultReason={infection.condition_description}
+                />
+              </div>
+            ) : (
+              <p className="mt-2 font-sans text-sm text-muted">Follow-up required — no corrective action tracked yet.</p>
+            )}
+          </section>
+        )}
 
         {/* ─── D. Resolution ─── */}
         <section className="rounded-xl border border-ivory-border bg-white p-5">

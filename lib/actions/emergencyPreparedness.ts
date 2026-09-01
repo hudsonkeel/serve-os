@@ -321,6 +321,13 @@ export async function recordAgencyOperationalEventAction(input: {
   });
 }
 
+// Governance Connective Slice v0.1 — reviewItemId is optional so this
+// function's existing callers (if any predate this slice) keep working
+// unchanged, but the RequirementFindingForm confirm-step below always
+// supplies it: requirement_id alone tells you *what expectation* is
+// involved, not *which Annual Review or finding* raised the action. Two
+// review cycles months apart could each flag the same requirement — only
+// the review item id disambiguates which one this action came from.
 export async function createEmergencyPreparednessCorrectiveActionAction(input: {
   requirementId: string;
   actionType: ComplianceCorrectiveActionType;
@@ -328,6 +335,7 @@ export async function createEmergencyPreparednessCorrectiveActionAction(input: {
   reason: string;
   priority: ComplianceCorrectiveActionPriority;
   dueAt: string | null;
+  reviewItemId?: string;
 }) {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to create a corrective action." };
@@ -349,5 +357,6 @@ export async function createEmergencyPreparednessCorrectiveActionAction(input: {
     priority: input.priority,
     dueAt: input.dueAt,
     actor: actor.label,
+    sourceReviewItemId: input.reviewItemId,
   });
 }

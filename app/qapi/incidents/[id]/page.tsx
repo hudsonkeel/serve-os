@@ -8,14 +8,17 @@ import {
   canReviewIncidentOrInfection,
   canResolveIncidentOrInfection,
   canViewIncidentsAndInfections,
+  canManageCorrectiveActions,
 } from "@/lib/compliance/permissions";
 import { getIncidentById } from "@/lib/data/incidents";
 import { getResidentById } from "@/lib/data/residents";
 import { getWorkforceMemberById } from "@/lib/data/workforceMembers";
+import { getOpenCorrectiveActionForIncident } from "@/lib/data/complianceCorrectiveActions";
 import { formatCentralDateTime } from "@/lib/utils/date";
 import { INCIDENT_TYPE_LABELS } from "@/components/incidents/incidentLabels";
 import { ReviewIncidentForm } from "@/components/incidents/ReviewIncidentForm";
 import { ResolveIncidentForm } from "@/components/incidents/ResolveIncidentForm";
+import { CreateSourceLinkedCorrectiveActionButton } from "@/components/compliance/CreateSourceLinkedCorrectiveActionButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -53,8 +56,15 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
 
   const canReview = canReviewIncidentOrInfection(profile?.role ?? null);
   const canResolve = canResolveIncidentOrInfection(profile?.role ?? null);
+  const canManageAction = canManageCorrectiveActions(profile?.role ?? null);
   const typeLabel =
     incident.incident_type === "other" ? incident.incident_type_other || "Other" : INCIDENT_TYPE_LABELS[incident.incident_type];
+
+  // Governance Connective Slice v0.1 — eligible for a source-linked
+  // corrective action once reviewed, still open, and flagged as needing
+  // follow-up. Never automatic — see CreateSourceLinkedCorrectiveActionButton.
+  const correctiveActionEligible = incident.status === "open" && incident.review_status === "reviewed" && incident.follow_up_required;
+  const linkedCorrectiveAction = correctiveActionEligible ? await getOpenCorrectiveActionForIncident(incident.id) : null;
 
   return (
     <PageContainer title="Incident">
@@ -189,6 +199,34 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
             <p className="mt-2 font-sans text-sm text-muted">Awaiting formal review.</p>
           )}
         </section>
+
+        {/* ─── Corrective Action (Governance Connective Slice v0.1) ───────
+            Only rendered when there's a real decision to make: reviewed,
+            still open, and flagged as needing follow-up. Never appears —
+            and never auto-creates anything — merely because follow-up was
+            checked "yes" at review time. */}
+        {correctiveActionEligible && (
+          <section className="rounded-xl border border-ivory-border bg-white p-5">
+            <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Corrective Action</h2>
+            {linkedCorrectiveAction ? (
+              <p className="mt-2 font-sans text-sm text-body">
+                Tracked: <span className="font-medium">{linkedCorrectiveAction.title}</span>
+                {linkedCorrectiveAction.due_at ? ` — due ${fmt(linkedCorrectiveAction.due_at)}` : ""}
+              </p>
+            ) : canManageAction ? (
+              <div className="mt-3">
+                <CreateSourceLinkedCorrectiveActionButton
+                  kind="incident"
+                  recordId={incident.id}
+                  defaultTitle={`Incident follow-up — ${typeLabel}`}
+                  defaultReason={incident.description}
+                />
+              </div>
+            ) : (
+              <p className="mt-2 font-sans text-sm text-muted">Follow-up required — no corrective action tracked yet.</p>
+            )}
+          </section>
+        )}
 
         {/* ─── D. Resolution ─── */}
         <section className="rounded-xl border border-ivory-border bg-white p-5">

@@ -44,6 +44,16 @@ export interface ComposedCorrectiveAction {
   dueAt: string | null;
   status: WorkforceComplianceAction["status"];
   createdAt: string;
+  // Governance Connective Slice v0.1 — passthrough of
+  // compliance_corrective_actions' own source columns (same "why" as
+  // actionType's passthrough above: lets a consumer, e.g.
+  // lib/qapi/signals.ts, summarize "how much open work traces back to a
+  // specific Incident/Infection/EPRP finding" without a second read).
+  // Always null for workforce-sourced rows — those columns only exist on
+  // compliance_corrective_actions.
+  sourceIncidentId: string | null;
+  sourceInfectionId: string | null;
+  sourceReviewItemId: string | null;
 }
 
 function fromWorkforce(action: WorkforceComplianceAction): ComposedCorrectiveAction {
@@ -62,6 +72,9 @@ function fromWorkforce(action: WorkforceComplianceAction): ComposedCorrectiveAct
     dueAt: action.due_at,
     status: action.status,
     createdAt: action.created_at,
+    sourceIncidentId: null,
+    sourceInfectionId: null,
+    sourceReviewItemId: null,
   };
 }
 
@@ -81,6 +94,9 @@ function fromAuditReadiness(action: ComplianceCorrectiveAction): ComposedCorrect
     dueAt: action.due_at,
     status: action.status,
     createdAt: action.created_at,
+    sourceIncidentId: action.source_incident_id,
+    sourceInfectionId: action.source_infection_id,
+    sourceReviewItemId: action.source_review_item_id,
   };
 }
 

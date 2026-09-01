@@ -299,3 +299,162 @@ export function mapNoNextActionToWorkItem(input: NoNextActionMapperInput): WorkI
     explanation: "Relationship is active but has no documented next step.",
   };
 }
+
+// ─── Incidents / Infections (Governance Connective Slice v0.1) ──────────
+//
+// Neither register has a due-date column at all (unlike wellness
+// follow-ups/relationship actions) — bucketing comes from
+// status/review_status/follow_up_required, not date math. dueAt is
+// deliberately left undefined rather than invented from occurred_at/
+// disclosed_at, which describe when the event happened, not when
+// follow-up work is due. priority is likewise left undefined for v0.1:
+// neither table carries a severity field to derive one from without
+// fabricating a judgment the record doesn't actually make (injury_occurred
+// on Incidents is a plausible future signal, deliberately not used here).
+// See docs/architecture/TODAYS_WORK_CONTINUITY.md's normalization contract
+// and the Slice One build plan's §3B.
+
+export interface IncidentWorkItemMapperInput {
+  id: string;
+  typeLabel: string;
+  reviewStatus: "not_reviewed" | "reviewed";
+  followUpRequired: boolean;
+  owner: string | null;
+  occurredAtLabel: string;
+  residentId: string | null;
+  residentDisplayName: string | null;
+}
+
+export function mapIncidentToWorkItem(input: IncidentWorkItemMapperInput): WorkItem {
+  const status = input.reviewStatus === "not_reviewed" ? "needs_attention" : "in_progress";
+  const explanation =
+    input.reviewStatus === "not_reviewed"
+      ? `Incident (${input.typeLabel}) recorded ${input.occurredAtLabel} has not been reviewed.`
+      : `Incident (${input.typeLabel}) is reviewed and awaiting follow-up${input.owner ? ` (owner: ${input.owner})` : ""}.`;
+
+  return {
+    id: `incident:${input.id}`,
+    sourceType: "incident",
+    title: `Incident — ${input.typeLabel}`,
+    status,
+    evidenceType: "explicit",
+    ownerId: input.owner ?? undefined,
+    ownerLabel: input.owner ?? undefined,
+    subjectType: input.residentId ? "resident" : undefined,
+    subjectId: input.residentId ?? undefined,
+    subjectLabel: input.residentDisplayName ?? undefined,
+    sourceRoute: `/qapi/incidents/${input.id}`,
+    explanation,
+  };
+}
+
+export interface CompletedIncidentWorkItemMapperInput {
+  id: string;
+  typeLabel: string;
+  resolvedAt: string;
+  resolvedBy: string | null;
+}
+
+export function mapCompletedIncidentToWorkItem(input: CompletedIncidentWorkItemMapperInput): WorkItem {
+  return {
+    id: `incident:${input.id}`,
+    sourceType: "incident",
+    title: `Incident — ${input.typeLabel}`,
+    status: "completed",
+    evidenceType: "explicit",
+    completedAt: input.resolvedAt,
+    ownerId: input.resolvedBy ?? undefined,
+    ownerLabel: input.resolvedBy ?? undefined,
+    sourceRoute: `/qapi/incidents/${input.id}`,
+    explanation: `Resolved${input.resolvedBy ? ` by ${input.resolvedBy}` : ""}.`,
+  };
+}
+
+export interface InfectionWorkItemMapperInput {
+  id: string;
+  reviewStatus: "not_reviewed" | "reviewed";
+  followUpRequired: boolean;
+  owner: string | null;
+  disclosedAtLabel: string;
+  residentId: string;
+  residentDisplayName: string | null;
+}
+
+export function mapInfectionToWorkItem(input: InfectionWorkItemMapperInput): WorkItem {
+  const status = input.reviewStatus === "not_reviewed" ? "needs_attention" : "in_progress";
+  const explanation =
+    input.reviewStatus === "not_reviewed"
+      ? `Infection record disclosed ${input.disclosedAtLabel} has not been reviewed.`
+      : `Infection record is reviewed and awaiting follow-up${input.owner ? ` (owner: ${input.owner})` : ""}.`;
+
+  return {
+    id: `infection:${input.id}`,
+    sourceType: "infection",
+    title: input.residentDisplayName ? `Infection — ${input.residentDisplayName}` : "Infection record",
+    status,
+    evidenceType: "explicit",
+    ownerId: input.owner ?? undefined,
+    ownerLabel: input.owner ?? undefined,
+    subjectType: "resident",
+    subjectId: input.residentId,
+    subjectLabel: input.residentDisplayName ?? undefined,
+    sourceRoute: `/qapi/infections/${input.id}`,
+    explanation,
+  };
+}
+
+export interface CompletedInfectionWorkItemMapperInput {
+  id: string;
+  residentDisplayName: string | null;
+  resolvedAt: string;
+  resolvedBy: string | null;
+}
+
+export function mapCompletedInfectionToWorkItem(input: CompletedInfectionWorkItemMapperInput): WorkItem {
+  return {
+    id: `infection:${input.id}`,
+    sourceType: "infection",
+    title: input.residentDisplayName ? `Infection — ${input.residentDisplayName}` : "Infection record",
+    status: "completed",
+    evidenceType: "explicit",
+    completedAt: input.resolvedAt,
+    ownerId: input.resolvedBy ?? undefined,
+    ownerLabel: input.resolvedBy ?? undefined,
+    sourceRoute: `/qapi/infections/${input.id}`,
+    explanation: `Resolved${input.resolvedBy ? ` by ${input.resolvedBy}` : ""}.`,
+  };
+}
+
+// ─── Emergency Preparedness due/overdue requirements (Governance
+// Connective Slice v0.1) ──────────────────────────────────────────────────
+//
+// Deliberately reuses the shared requirement evaluator's own output
+// (status + explanation) rather than recomputing due-state — Today's Work
+// must never become a second, potentially-diverging source of "due" truth.
+// No new persisted Obligation row: this mapper is called against a fresh
+// evaluation on every Today's Work read (see lib/data/todaysWork.ts), so a
+// requirement that becomes satisfied simply stops producing an item on the
+// next read — nothing to clean up.
+
+export interface EmergencyPreparednessObligationMapperInput {
+  requirementId: string;
+  requirementName: string;
+  status: "due_soon" | "overdue" | "missing_evidence";
+  explanation: string;
+  expirationDate: string | null;
+}
+
+export function mapEmergencyPreparednessObligationToWorkItem(input: EmergencyPreparednessObligationMapperInput): WorkItem {
+  const status = input.status === "due_soon" ? "upcoming" : "needs_attention";
+
+  return {
+    id: `compliance_requirement:${input.requirementId}`,
+    sourceType: "compliance_requirement",
+    title: `Emergency Preparedness — ${input.requirementName}`,
+    status,
+    evidenceType: "deterministic",
+    dueAt: input.expirationDate ?? undefined,
+    sourceRoute: "/audit-readiness/emergency-preparedness",
+    explanation: input.explanation,
+  };
+}

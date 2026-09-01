@@ -10,6 +10,7 @@ import {
   canReviewIncidentOrInfection,
   canResolveIncidentOrInfection,
   canViewIncidentsAndInfections,
+  canManageCorrectiveActions,
 } from "../compliance/permissions.ts";
 import { getResidentById } from "../data/residents.ts";
 import {
@@ -19,8 +20,38 @@ import {
   markInfectionReviewed,
   resolveInfection,
 } from "../data/infections.ts";
+import { recordComplianceActivityForSource, resolveGovernanceActivitySubject } from "../data/complianceActivity.ts";
+import { syncCorrectiveAction } from "../data/complianceCorrectiveActions.ts";
 import type { AuthorizedProfile } from "../auth/profiles.ts";
-import type { Infection } from "../supabase/types.ts";
+import type { ComplianceCorrectiveAction, ComplianceCorrectiveActionPriority, Infection } from "../supabase/types.ts";
+
+// Governance Connective Slice v0.1 — mirrors emitIncidentActivity in
+// lib/actions/incidents.ts exactly. Infections are always resident-linked
+// (schema-enforced), so this always resolves subject_type='resident' in
+// practice — resolveGovernanceActivitySubject is still reused rather than
+// hand-rolling that fact, so both registers share one source of truth for
+// the subject-resolution rule.
+async function emitInfectionActivity(
+  infection: Infection,
+  eventType: "infection_created" | "infection_reviewed" | "infection_resolved",
+  eventTitle: string,
+  actor: string
+): Promise<void> {
+  const subject = resolveGovernanceActivitySubject(infection.resident_id, infection.community_id);
+  if (!subject) return;
+
+  await recordComplianceActivityForSource({
+    subjectType: subject.subjectType,
+    subjectId: subject.subjectId,
+    eventType,
+    eventTitle,
+    eventDescription: null,
+    source: "Serve OS",
+    sourceType: "infection",
+    sourceRecordId: infection.id,
+    createdBy: actor,
+  });
+}
 
 async function currentActor(): Promise<{ label: string; profile: AuthorizedProfile } | null> {
   const profile = await getCurrentAuthorizedUser();
@@ -93,7 +124,7 @@ export async function createInfectionAction(input: CreateInfectionActionInput): 
   const communityResult = await resolveCommunityIdForInfection(input.residentId);
   if ("error" in communityResult) return communityResult;
 
-  return createInfection({
+  const result = await createInfection({
     communityId: communityResult.communityId,
     residentId: input.residentId,
     disclosedAt: input.disclosedAt,
@@ -105,6 +136,12 @@ export async function createInfectionAction(input: CreateInfectionActionInput): 
     notes: input.notes,
     actor: actor.label,
   });
+
+  if (result.infection) {
+    await emitInfectionActivity(result.infection, "infection_created", "Infection recorded", actor.label);
+  }
+
+  return result;
 }
 
 export async function markInfectionReviewedAction(input: {
@@ -118,12 +155,18 @@ export async function markInfectionReviewedAction(input: {
     return { error: "You do not have permission to review an infection record." };
   }
 
-  return markInfectionReviewed({
+  const result = await markInfectionReviewed({
     infectionId: input.infectionId,
     followUpRequired: input.followUpRequired,
     owner: input.owner,
     actor: actor.label,
   });
+
+  if (result.infection) {
+    await emitInfectionActivity(result.infection, "infection_reviewed", "Infection record reviewed", actor.label);
+  }
+
+  return result;
 }
 
 export async function resolveInfectionAction(input: {
@@ -136,9 +179,58 @@ export async function resolveInfectionAction(input: {
     return { error: "You do not have permission to resolve an infection record." };
   }
 
-  return resolveInfection({
+  const result = await resolveInfection({
     infectionId: input.infectionId,
     resolutionNote: input.resolutionNote,
     actor: actor.label,
+  });
+
+  if (result.infection) {
+    await emitInfectionActivity(result.infection, "infection_resolved", "Infection record resolved", actor.label);
+  }
+
+  return result;
+}
+
+// Governance Connective Slice v0.1 — mirrors createIncidentCorrectiveActionAction
+// in lib/actions/incidents.ts exactly. Deliberate, human-confirmed, never
+// automatic on follow_up_required=true alone.
+export interface CreateInfectionCorrectiveActionInput {
+  infectionId: string;
+  title: string;
+  reason: string;
+  priority: ComplianceCorrectiveActionPriority;
+  dueAt: string | null;
+}
+
+export async function createInfectionCorrectiveActionAction(
+  input: CreateInfectionCorrectiveActionInput
+): Promise<{ action?: ComplianceCorrectiveAction; error?: string }> {
+  const actor = await currentActor();
+  if (!actor) return { error: "You must be signed in to create a corrective action." };
+  if (!canManageCorrectiveActions(actor.profile.role)) {
+    return { error: "You do not have permission to create a corrective action." };
+  }
+
+  const infection = await getInfectionById(input.infectionId);
+  if (!infection) return { error: "Infection record not found." };
+  if (infection.status !== "open") return { error: "This infection record is already resolved." };
+  if (!infection.follow_up_required) return { error: "This infection record was not marked as requiring follow-up." };
+
+  const subject = resolveGovernanceActivitySubject(infection.resident_id, infection.community_id);
+  if (!subject) return { error: "This infection record has no client or community context to attach a corrective action to." };
+
+  return syncCorrectiveAction({
+    subjectType: subject.subjectType,
+    subjectId: subject.subjectId,
+    requirementId: null,
+    domain: "infections",
+    actionType: "infection_follow_up_required",
+    title: input.title,
+    reason: input.reason,
+    priority: input.priority,
+    dueAt: input.dueAt,
+    actor: actor.label,
+    sourceInfectionId: infection.id,
   });
 }
