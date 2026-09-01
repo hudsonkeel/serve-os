@@ -359,6 +359,7 @@ export default async function ResidentDetailPage({
               residentId={id}
               residentDisplayName={record.residentName}
               currentRelationship={residentRelationshipDetail.projection.relationship}
+              naturalRelationship={residentRelationshipDetail.projection.naturalRelationship}
               axiscareMatch={residentRelationshipDetail.axiscareMatch}
               correction={residentRelationshipDetail.projection.correction}
               hasConflict={residentRelationshipDetail.projection.hasConflict}
@@ -512,6 +513,7 @@ export default async function ResidentDetailPage({
                 <ServeRelationshipCorrectionControl
                   residentId={id}
                   currentValue={residentRelationshipDetail.projection.relationship}
+                  naturalValue={residentRelationshipDetail.projection.naturalRelationship}
                 />
               </div>
             )}

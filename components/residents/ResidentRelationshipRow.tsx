@@ -140,7 +140,11 @@ export function ResidentRelationshipRow({ record, canCorrect }: ResidentRelation
 
         {canCorrect && (
           <div className="mt-2">
-            <ServeRelationshipCorrectionControl residentId={base.id} currentValue={projection.relationship} />
+            <ServeRelationshipCorrectionControl
+              residentId={base.id}
+              currentValue={projection.relationship}
+              naturalValue={projection.naturalRelationship}
+            />
           </div>
         )}
       </div>
