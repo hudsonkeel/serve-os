@@ -8,6 +8,7 @@ import { getEmergencyPreparednessReadinessEvaluation } from "@/lib/emergencyPrep
 import { EP_PLAN_MAINTAINED } from "@/lib/emergencyPreparedness/constants";
 import { listEmergencyPreparednessReviews } from "@/lib/data/emergencyPreparednessReviews";
 import { getComplianceActivityForSubject } from "@/lib/data/complianceActivity";
+import { getOpenCorrectiveActionsForSubject } from "@/lib/data/complianceCorrectiveActions";
 import { EvidenceViewButton } from "@/components/compliance/EvidenceViewButton";
 import { StartReviewButton } from "@/components/emergencyPreparedness/StartReviewButton";
 import { RequirementBoard, type RequirementBoardItem } from "@/components/emergencyPreparedness/RequirementBoard";
@@ -56,9 +57,10 @@ export default async function EmergencyPreparednessPage({
     );
   }
 
-  const [reviews, operationalEvents] = await Promise.all([
+  const [reviews, operationalEvents, openCorrectiveActions] = await Promise.all([
     listEmergencyPreparednessReviews(),
     getComplianceActivityForSubject("agency", evaluation.agency.id),
+    getOpenCorrectiveActionsForSubject("agency", evaluation.agency.id),
   ]);
 
   const canViewDocuments = canAccessWorkforceDocuments(profile?.role ?? null);
@@ -75,6 +77,18 @@ export default async function EmergencyPreparednessPage({
     (r) => r.status === "compliant" || r.status === "satisfied_by_event" || r.status === "exception"
   ).length;
 
+  // Today's Work Actionability slice — an open corrective Action keyed by
+  // requirement_id, so a WorkItem/summary-card deep link that lands here
+  // via ?requirement=CODE finds a working resolve affordance, not just a
+  // read-only status card. requirement_id is the only reliable join key
+  // available on both sides (compliance_corrective_actions and this
+  // evaluation) — source_review_item_id would additionally require
+  // resolving which Annual Review item map to which live requirement,
+  // which this page doesn't otherwise track.
+  const openActionByRequirementId = new Map(
+    openCorrectiveActions.filter((a) => a.requirement_id).map((a) => [a.requirement_id as string, a])
+  );
+
   const boardItems: RequirementBoardItem[] = evaluation.requirements.map((r) => ({
     requirementCode: r.requirement.requirement_code,
     requirementName: r.requirement.name,
@@ -83,6 +97,7 @@ export default async function EmergencyPreparednessPage({
     explanation: r.explanation,
     evidenceSummary: evidenceSummary(r.latestEvidence),
     evidenceDocumentId: r.latestEvidence?.document_id ?? null,
+    openCorrectiveAction: openActionByRequirementId.get(r.requirement.id) ?? null,
   }));
 
   return (

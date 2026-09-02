@@ -19,6 +19,7 @@ import { INCIDENT_TYPE_LABELS } from "@/components/incidents/incidentLabels";
 import { ReviewIncidentForm } from "@/components/incidents/ReviewIncidentForm";
 import { ResolveIncidentForm } from "@/components/incidents/ResolveIncidentForm";
 import { CreateSourceLinkedCorrectiveActionButton } from "@/components/compliance/CreateSourceLinkedCorrectiveActionButton";
+import { ResolveCorrectiveActionButton } from "@/components/compliance/ResolveCorrectiveActionButton";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -60,11 +61,17 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
   const typeLabel =
     incident.incident_type === "other" ? incident.incident_type_other || "Other" : INCIDENT_TYPE_LABELS[incident.incident_type];
 
-  // Governance Connective Slice v0.1 — eligible for a source-linked
+  // Governance Connective Slice v0.1 — eligible to CREATE a new source-linked
   // corrective action once reviewed, still open, and flagged as needing
   // follow-up. Never automatic — see CreateSourceLinkedCorrectiveActionButton.
   const correctiveActionEligible = incident.status === "open" && incident.review_status === "reviewed" && incident.follow_up_required;
-  const linkedCorrectiveAction = correctiveActionEligible ? await getOpenCorrectiveActionForIncident(incident.id) : null;
+  // Today's Work Actionability slice — fetched unconditionally, not gated
+  // on correctiveActionEligible: an already-linked open corrective Action
+  // must keep showing (and stay resolvable) here even after the Incident
+  // itself resolves, since Today's Work's own corrective_action WorkItem
+  // routes back to this exact page for as long as the Action stays open,
+  // independently of the Incident's lifecycle.
+  const linkedCorrectiveAction = await getOpenCorrectiveActionForIncident(incident.id);
 
   return (
     <PageContainer title="Incident">
@@ -205,14 +212,21 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
             still open, and flagged as needing follow-up. Never appears —
             and never auto-creates anything — merely because follow-up was
             checked "yes" at review time. */}
-        {correctiveActionEligible && (
+        {(linkedCorrectiveAction || correctiveActionEligible) && (
           <section className="rounded-xl border border-ivory-border bg-white p-5">
             <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Corrective Action</h2>
             {linkedCorrectiveAction ? (
-              <p className="mt-2 font-sans text-sm text-body">
-                Tracked: <span className="font-medium">{linkedCorrectiveAction.title}</span>
-                {linkedCorrectiveAction.due_at ? ` — due ${fmt(linkedCorrectiveAction.due_at)}` : ""}
-              </p>
+              <div className="mt-2 space-y-2">
+                <p className="font-sans text-sm text-body">
+                  Tracked: <span className="font-medium">{linkedCorrectiveAction.title}</span>
+                  {linkedCorrectiveAction.due_at ? ` — due ${fmt(linkedCorrectiveAction.due_at)}` : ""}
+                </p>
+                {canManageAction ? (
+                  <ResolveCorrectiveActionButton actionId={linkedCorrectiveAction.id} actionTitle={linkedCorrectiveAction.title} />
+                ) : (
+                  <p className="font-sans text-xs text-muted">Your role does not include corrective-action resolution.</p>
+                )}
+              </div>
             ) : canManageAction ? (
               <div className="mt-3">
                 <CreateSourceLinkedCorrectiveActionButton

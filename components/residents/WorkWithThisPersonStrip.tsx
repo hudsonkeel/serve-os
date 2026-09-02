@@ -90,12 +90,18 @@ export function WorkWithThisPersonStrip({
         className={SECONDARY_BUTTON_CLASS + mainActionClass}
       />
 
+      {/* Today's Work Actionability slice — relabeled from the ambiguous
+          "Follow-up" (this routes into the Relationships/CRM module's Next
+          Action list, a different record entirely from a resident
+          Wellness follow-up — see OpenFollowUpsList/CurrentPicture below
+          for that). A user arriving here from a Today's Work wellness
+          WorkItem must not be misdirected into this unrelated workflow. */}
       <Link
         href={relationshipId ? `/relationships/${relationshipId}#next-actions` : "#current-needs"}
         className={SECONDARY_BUTTON_CLASS + mainActionClass}
       >
         <CalendarClock size={17} strokeWidth={1.75} />
-        Follow-up
+        Relationship Follow-up
       </Link>
 
       <AssessmentCaptureButton

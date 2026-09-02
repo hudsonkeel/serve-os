@@ -101,6 +101,27 @@ export async function getRequirementById(id: string): Promise<PersonRequirement 
   return (data as PersonRequirement | null) ?? null;
 }
 
+// Bulk id -> requirement_code lookup, for callers (Today's Work's
+// corrective-action composition) resolving many compliance_corrective_actions
+// rows' requirement_id at once — one query, never one per row.
+export async function getRequirementsByIds(ids: readonly string[]): Promise<Map<string, PersonRequirement>> {
+  const result = new Map<string, PersonRequirement>();
+  if (ids.length === 0) return result;
+
+  const supabase = createServerClient();
+  const { data, error } = await supabase.from("person_requirements").select("*").in("id", ids as string[]);
+
+  if (error) {
+    console.error("[getRequirementsByIds]", { message: error.message });
+    return result;
+  }
+
+  for (const row of (data as PersonRequirement[] | null) ?? []) {
+    result.set(row.id, row);
+  }
+  return result;
+}
+
 export async function getRequirementByCode(requirementCode: string): Promise<PersonRequirement | null> {
   const supabase = createServerClient();
 

@@ -3,7 +3,9 @@ import { Badge } from "@/components/ui/Badge";
 import { withTodaysWorkOrigin } from "@/lib/workspace/originMarker";
 import type { WorkItem, WorkItemSourceType } from "@/lib/workspace/workItem";
 
-const SOURCE_LABELS: Record<WorkItemSourceType, string> = {
+// Exported for reuse by TodaysWorkView's active-source-filter chip — one
+// label vocabulary for a sourceType, never a second copy.
+export const SOURCE_LABELS: Record<WorkItemSourceType, string> = {
   relationship_action: "Relationship",
   resident_follow_up: "Resident",
   wellness_follow_up: "Wellness",
@@ -15,6 +17,8 @@ const SOURCE_LABELS: Record<WorkItemSourceType, string> = {
   incident: "Incident",
   infection: "Infection",
   compliance_requirement: "Emergency Preparedness",
+  // Today's Work Actionability slice
+  corrective_action: "Corrective Action",
 };
 
 const PRIORITY_TONE: Record<NonNullable<WorkItem["priority"]>, "danger" | "warning" | "neutral"> = {

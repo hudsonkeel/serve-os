@@ -292,7 +292,8 @@ function FollowUpCard({ residentId, followUp }: FollowUpCardProps) {
 
   return (
     <div
-      className={`rounded-lg border px-5 py-4 ${
+      id={`wellness-follow-up-${followUp.id}`}
+      className={`scroll-mt-24 rounded-lg border px-5 py-4 ${
         followUp.isOverdue
           ? "border-red-200 bg-overdue-surface"
           : "border-ivory-border bg-ivory"

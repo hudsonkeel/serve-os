@@ -13,8 +13,6 @@ import {
 import { PageContainer } from "@/components/PageContainer";
 import { WorkspaceLaunchCard } from "@/components/workspace/WorkspaceLaunchCard";
 import { TodaysSchedulePanel } from "@/components/scheduling/TodaysSchedulePanel";
-import { getCommunityMetrics } from "@/lib/data/communityMetrics";
-import { getRecruitingLeads } from "@/lib/data/recruitingLeads";
 import { getAxisCareTodaysSchedule } from "@/lib/scheduling/todaysSchedule";
 import {
   getWorkflowsByCategory,
@@ -30,6 +28,7 @@ import { buildAskServeContext } from "@/lib/askServe/buildContext";
 import { TODAY_WORK_CONTEXT } from "@/lib/askServe/areaContexts";
 import { getTodaysWorkItems } from "@/lib/data/todaysWork";
 import { TodaysWorkView } from "@/components/workspace/TodaysWorkView";
+import { buildWorkspaceHref, countActionableWorkItems, parseWorkspaceFilters } from "@/lib/workspace/urlFilters";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -40,9 +39,6 @@ const workspaceUrls = {
   viventium:
     process.env.NEXT_PUBLIC_VIVENTIUM_URL ??
     "https://hcm.viventium.com/apps/account/viventium/login",
-  serveIntake:
-    process.env.NEXT_PUBLIC_SERVE_INTAKE_URL ??
-    "https://serve-intake-mvp.vercel.app/",
   dialpad:
     process.env.NEXT_PUBLIC_DIALPAD_URL ?? "https://dialpad.com/login",
   gmail: process.env.NEXT_PUBLIC_GMAIL_URL ?? "https://mail.google.com/",
@@ -169,55 +165,66 @@ const workspaceSections = [
   },
 ];
 
-export default async function WorkspacePage() {
+export default async function WorkspacePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string; source?: string }>;
+}) {
   // Org-wide Today's Work dashboard, not the community-scoped People We
   // Serve surface — see the identical note in app/dashboard/page.tsx.
-  const [profile, community, recruiting, schedule, workItems] = await Promise.all([
+  const [profile, schedule, workItems, rawSearchParams] = await Promise.all([
     getCurrentAuthorizedUser(),
-    getCommunityMetrics({ mode: "all" }),
-    getRecruitingLeads(),
     getAxisCareTodaysSchedule(),
     getTodaysWorkItems(),
+    searchParams,
   ]);
   const currentUser = buildCurrentUserDisplay(profile);
   const greeting = getCentralTimeGreeting();
   const askServeEnabled = isContextualAskServeEnabled(currentUser.role);
+  const initialFilters = parseWorkspaceFilters(rawSearchParams);
 
-  const recruitingReviewCount = recruiting.leads.filter((lead) =>
-    ["new", "in_review"].includes(lead.status)
-  ).length;
-
-  const todaysWork = [
+  // Today's Work Actionability slice, product decision #2/"Summary Source
+  // of Truth" — every card below that claims to represent Today's Work is
+  // now a plain count over the SAME composed `workItems` array
+  // TodaysWorkView renders further down the page, filtered by the exact
+  // sourceType(s) that card's click-through reveals. No independent
+  // CRM/pipeline-population query backs any of these anymore (that
+  // divergence — a count that could silently disagree with what's actually
+  // listed below it — was the bug this slice fixes). Broader population
+  // metrics (e.g. "how many relationships are in assessment_scheduled at
+  // all," regardless of Continuity Rule staleness) still live on their own
+  // domain surfaces (Residents directory, Relationships/Prospects board,
+  // How We're Doing) — deliberately not reproduced here.
+  const operationalSummary = [
     {
       label: "Assessments",
-      value: community.metrics.pendingAssessments,
-      description: "Awaiting scheduling or completion",
-      href: "/residents",
+      value: countActionableWorkItems(workItems, "assessment"),
+      description: "Continuity-Rule actionable",
+      href: buildWorkspaceHref({ source: "assessment" }),
     },
     {
       label: "Follow-ups",
-      value: community.metrics.requiresFollowUp,
-      description: "Resident or family outreach",
-      href: "/residents",
+      value: countActionableWorkItems(workItems, "relationship_action"),
+      description: "Open relationship actions",
+      href: buildWorkspaceHref({ source: "relationship_action" }),
     },
     {
       label: "Wellness Follow-ups",
-      value: community.metrics.wellnessFollowUpsDueOrOverdue,
+      value: countActionableWorkItems(workItems, "wellness_follow_up"),
       description: "Due or overdue",
-      href: "/residents?tab=wellness_watch&wellnessDue=now",
+      href: buildWorkspaceHref({ source: "wellness_follow_up" }),
     },
     {
       label: "Proposals",
-      value: community.metrics.familiesAwaitingProposal,
-      description: "Awaiting review",
-      href: workspaceUrls.serveIntake,
-      external: true,
+      value: countActionableWorkItems(workItems, "proposal"),
+      description: "Continuity-Rule actionable",
+      href: buildWorkspaceHref({ source: "proposal" }),
     },
     {
       label: "Recruiting",
-      value: recruitingReviewCount,
-      description: "Applicants needing attention",
-      href: "/recruiting",
+      value: countActionableWorkItems(workItems, "recruiting"),
+      description: "Continuity-Rule actionable",
+      href: buildWorkspaceHref({ source: "recruiting" }),
     },
     {
       label: "Payroll",
@@ -225,6 +232,19 @@ export default async function WorkspacePage() {
       description: "Additional AxisCare integration in progress",
       href: workspaceUrls.viventium,
       external: true,
+    },
+    {
+      // One coherent card for every governance-shaped source (Incidents,
+      // Infections, Emergency Preparedness obligations, and Corrective
+      // Actions independently of what created them) rather than a
+      // separate card per source — see GOVERNANCE_SOURCE_TYPES in
+      // lib/workspace/urlFilters.ts. Deliberately not a QAPI Activity
+      // Signal (those are factual/historical counts on /qapi; this is the
+      // actionable-workload count for the exact items listed below).
+      label: "Governance & Quality",
+      value: countActionableWorkItems(workItems, "governance"),
+      description: "Incidents, Infections, EPRP, Corrective Actions",
+      href: buildWorkspaceHref({ source: "governance" }),
     },
   ];
 
@@ -247,12 +267,12 @@ export default async function WorkspacePage() {
           <AskServeTrigger
             context={buildAskServeContext(TODAY_WORK_CONTEXT, {
               userRole: currentUser.role ?? undefined,
-              // Reflects the continuity view's default filter (see
-              // components/workspace/TodaysWorkView.tsx) — the initial
-              // view, not necessarily a live-synced client tab; matches
-              // the same initial-value-only convention already used by
-              // app/residents/page.tsx's tab filters.
-              visibleFilters: { workFilter: "all" },
+              // Reflects the continuity view's actual initial filter now
+              // that it's URL-backed — still the initial-value-only
+              // convention already used by app/residents/page.tsx's tab
+              // filters, just sourced from the URL instead of a hardcoded
+              // default.
+              visibleFilters: { workFilter: initialFilters.view },
             })}
             label="Ask Serve about today's work"
           />
@@ -263,10 +283,10 @@ export default async function WorkspacePage() {
         <section className="pb-10">
           <div className="mb-5 flex items-baseline justify-between">
             <h2 className="font-serif text-section-title font-light text-body">Operational Summary</h2>
-            <p className="font-sans text-sm text-muted">Where to look — see Needs Attention below for exactly what to do.</p>
+            <p className="font-sans text-sm text-muted">Each number is exactly what&apos;s listed below — click to jump to it.</p>
           </div>
-          <div className="grid grid-cols-6 gap-4">
-            {todaysWork.map((item) => (
+          <div className="grid grid-cols-4 gap-4 lg:grid-cols-7">
+            {operationalSummary.map((item) => (
               <a
                 key={item.label}
                 href={item.href}
@@ -301,7 +321,11 @@ export default async function WorkspacePage() {
               Real, individually-addressable work — every item links back to its source and explains why it&apos;s here.
             </p>
           </div>
-          <TodaysWorkView items={workItems} currentUser={{ email: currentUser.email, fullName: currentUser.fullName }} />
+          <TodaysWorkView
+            items={workItems}
+            currentUser={{ email: currentUser.email, fullName: currentUser.fullName }}
+            initialFilters={initialFilters}
+          />
         </section>
 
         <TodaysSchedulePanel result={schedule} />

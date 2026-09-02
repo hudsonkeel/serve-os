@@ -73,7 +73,13 @@ export function mapWellnessFollowUpToWorkItem(input: WellnessFollowUpMapperInput
     subjectType: "resident",
     subjectId: input.residentId,
     subjectLabel: input.residentDisplayName,
-    sourceRoute: `/residents/${input.residentId}`,
+    // Item-scoped, not just person-scoped: the resident page's "Record &
+    // History" section (a native <details>) contains a FollowUpCard with
+    // this exact id — landing on this hash makes the browser auto-expand
+    // that <details> and scroll straight to the Complete/Edit/Dismiss
+    // controls for this specific follow-up, with no new JS. See
+    // components/residents/OpenFollowUpsList.tsx.
+    sourceRoute: `/residents/${input.residentId}#wellness-follow-up-${input.id}`,
     explanation,
   };
 }
@@ -143,7 +149,11 @@ export function mapRelationshipActionToWorkItem(input: RelationshipActionMapperI
     subjectType: "relationship",
     subjectId: input.relationshipId,
     subjectLabel: input.relationshipDisplayName,
-    sourceRoute: `/relationships/${input.relationshipId}`,
+    // Item-scoped: lands directly on this action's own card inside the
+    // relationship's "Next Action" panel (id set in
+    // components/relationships/RelationshipActionsList.tsx), not just the
+    // relationship page in general.
+    sourceRoute: `/relationships/${input.relationshipId}#relationship-action-${input.id}`,
     explanation,
   };
 }
@@ -270,33 +280,6 @@ export function mapOnHoldRelationshipToWorkItem(input: OnHoldRelationshipMapperI
     subjectLabel: input.displayName,
     sourceRoute: `/relationships/${input.relationshipId}`,
     explanation: "Relationship is on hold.",
-  };
-}
-
-// ─── No next action (reuses lib/relationships/attention.ts's existing,
-// already-deterministic "no_next_action" bucket verbatim — this is not a
-// new rule, just a new consumer of one that already exists) ─────────────
-
-export interface NoNextActionMapperInput {
-  relationshipId: string;
-  displayName: string;
-  ownerLabel: string | null;
-}
-
-export function mapNoNextActionToWorkItem(input: NoNextActionMapperInput): WorkItem {
-  return {
-    id: `relationship_no_next_action:${input.relationshipId}`,
-    sourceType: "other",
-    title: input.displayName,
-    status: "needs_attention",
-    evidenceType: "deterministic",
-    ownerLabel: input.ownerLabel ?? undefined,
-    subjectType: "relationship",
-    subjectId: input.relationshipId,
-    subjectLabel: input.displayName,
-    sourceRoute: `/relationships/${input.relationshipId}`,
-    recommendedNextStep: "Add a next action for this relationship.",
-    explanation: "Relationship is active but has no documented next step.",
   };
 }
 
@@ -438,6 +421,14 @@ export function mapCompletedInfectionToWorkItem(input: CompletedInfectionWorkIte
 
 export interface EmergencyPreparednessObligationMapperInput {
   requirementId: string;
+  // The stable requirement_code (e.g. "EP_PLAN_MAINTAINED") — distinct from
+  // requirementId (a person_requirements uuid). Needed to build the
+  // ?requirement= deep link below; the plain uuid can't be used there since
+  // the Emergency Preparedness page selects/highlights a requirement by
+  // code, not by id (see app/audit-readiness/emergency-preparedness/page.tsx
+  // and components/emergencyPreparedness/RequirementBoard.tsx's
+  // initialSelectedCode).
+  requirementCode: string;
   requirementName: string;
   status: "due_soon" | "overdue" | "missing_evidence";
   explanation: string;
@@ -454,7 +445,122 @@ export function mapEmergencyPreparednessObligationToWorkItem(input: EmergencyPre
     status,
     evidenceType: "deterministic",
     dueAt: input.expirationDate ?? undefined,
-    sourceRoute: "/audit-readiness/emergency-preparedness",
+    // Reuses the exact ?requirement=CODE convention already established by
+    // lib/compliance/auditReadinessDisplay.ts's resolveIssueHref() for the
+    // agency-subject case — the Emergency Preparedness page already reads
+    // this param and auto-selects/scrolls to the matching requirement card
+    // (RequirementBoard's initialSelectedCode), so this lands the user
+    // directly on the actionable requirement, not just the domain page.
+    sourceRoute: `/audit-readiness/emergency-preparedness?requirement=${encodeURIComponent(input.requirementCode)}`,
     explanation: input.explanation,
+  };
+}
+
+// ─── Corrective Actions (Today's Work Actionability slice) ──────────────
+//
+// compliance_corrective_actions composed independently of whatever
+// Incident/Infection/EPRP requirement created it (see this slice's
+// investigation and product decision #4): the originating record may
+// resolve/disappear on its own, but an open corrective Action stays
+// visible here until the Action itself is resolved via
+// ResolveCorrectiveActionButton (components/compliance/
+// ResolveCorrectiveActionButton.tsx), which calls the existing
+// resolveCorrectiveActionAction() server action — never a duplicate
+// workspace-owned completion field.
+//
+// Neither dueAt nor priority is ever fabricated here — both pass through
+// exactly what the canonical compliance_corrective_actions row already
+// carries (or stay undefined if the row itself has none).
+
+export type CorrectiveActionWorkItemPriority = "low" | "normal" | "high" | "urgent";
+
+export interface CorrectiveActionMapperInput {
+  id: string;
+  title: string;
+  reason: string;
+  status: "open";
+  priority: CorrectiveActionWorkItemPriority;
+  dueAt: string | null;
+  owner: string | null;
+  subjectType: "resident" | "agency" | "community";
+  subjectId: string;
+  subjectLabel: string | null;
+  // At most one of these three is ever set (DB-enforced exclusivity — see
+  // compliance_corrective_actions_source_exclusivity_check). requirementCode
+  // is the resolved person_requirements.requirement_code for whichever of
+  // requirementId/sourceReviewItemId is present (looked up by the I/O layer
+  // in lib/data/todaysWork.ts — this mapper stays pure, no DB access).
+  sourceIncidentId: string | null;
+  sourceInfectionId: string | null;
+  sourceReviewItemId: string | null;
+  requirementCode: string | null;
+}
+
+// Destination precedence mirrors how each provenance type is actually
+// resolvable today: an Incident/Infection-sourced action routes straight to
+// that exact record (where ResolveCorrectiveActionButton is surfaced
+// alongside the existing "Tracked: ..." line); an EPRP-review-item-sourced
+// or other requirement-linked action reuses the same ?requirement=CODE
+// convention as EPRP's own WorkItem mapper above / auditReadinessDisplay.ts;
+// a resident-subject action with a requirement but no EPRP source routes to
+// the resident's own page with the same query param; anything left over
+// (an 'agency'/'community' action with neither a source record nor a
+// requirement — a documented, currently-unused edge case per
+// lib/data/complianceCorrectiveActions.ts's own "KNOWN GAP" comment) falls
+// back to the Audit Readiness domain page rather than a broken link.
+function correctiveActionSourceRoute(input: CorrectiveActionMapperInput): string {
+  if (input.sourceIncidentId) return `/qapi/incidents/${input.sourceIncidentId}`;
+  if (input.sourceInfectionId) return `/qapi/infections/${input.sourceInfectionId}`;
+  if (input.requirementCode) {
+    if (input.subjectType === "resident") {
+      return `/residents/${input.subjectId}?requirement=${encodeURIComponent(input.requirementCode)}`;
+    }
+    return `/audit-readiness/emergency-preparedness?requirement=${encodeURIComponent(input.requirementCode)}`;
+  }
+  return "/audit-readiness";
+}
+
+function correctiveActionProvenanceNote(input: CorrectiveActionMapperInput): string {
+  if (input.sourceIncidentId) return "Follow-up from an Incident review.";
+  if (input.sourceInfectionId) return "Follow-up from an Infection review.";
+  if (input.sourceReviewItemId) return "Follow-up from an Emergency Preparedness Annual Review.";
+  if (input.requirementCode) return `Tied to requirement ${input.requirementCode}.`;
+  return "";
+}
+
+export function mapCorrectiveActionToWorkItem(input: CorrectiveActionMapperInput, now: Date = new Date()): WorkItem {
+  const overdue = isOverdue(input.dueAt, now);
+  const dueToday = !overdue && isDueTodayOrEarlier(input.dueAt, now);
+  const status = overdue ? "needs_attention" : dueToday ? "due_today" : "upcoming";
+  const provenance = correctiveActionProvenanceNote(input);
+
+  const explanation = [
+    overdue
+      ? `${input.reason} Was due ${formatDate(input.dueAt as string)} and remains open.`
+      : dueToday
+        ? `${input.reason} Due today.`
+        : input.dueAt
+          ? `${input.reason} Due ${formatDate(input.dueAt)}.`
+          : `${input.reason} No due date set.`,
+    provenance,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return {
+    id: `corrective_action:${input.id}`,
+    sourceType: "corrective_action",
+    title: input.title,
+    status,
+    evidenceType: "explicit",
+    priority: input.priority,
+    dueAt: input.dueAt ?? undefined,
+    ownerId: input.owner ?? undefined,
+    ownerLabel: input.owner ?? undefined,
+    subjectType: input.subjectType,
+    subjectId: input.subjectId,
+    subjectLabel: input.subjectLabel ?? undefined,
+    sourceRoute: correctiveActionSourceRoute(input),
+    explanation,
   };
 }

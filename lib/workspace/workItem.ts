@@ -19,7 +19,14 @@ export type WorkItemSourceType =
   // Incident/Infection/Emergency-Preparedness mappers.
   | "incident"
   | "infection"
-  | "compliance_requirement";
+  | "compliance_requirement"
+  // Today's Work Actionability slice — compliance_corrective_actions,
+  // composed independently of whatever Incident/Infection/EPRP requirement
+  // created it (see mapCorrectiveActionToWorkItem in mapping.ts). The
+  // originating record may resolve/disappear on its own; the corrective
+  // Action stays visible under this sourceType until it is itself
+  // resolved.
+  | "corrective_action";
 // "schedule_exception" is intentionally not included — schedule exceptions
 // are not wired into the Work Item model this phase; they stay in
 // components/scheduling/TodaysSchedulePanel.tsx's own dedicated view. See
