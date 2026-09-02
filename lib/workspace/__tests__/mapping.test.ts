@@ -8,10 +8,10 @@ import {
   mapCompletedInfectionToWorkItem,
   mapCompletedRelationshipActionToWorkItem,
   mapCompletedWellnessFollowUpToWorkItem,
+  mapCorrectiveActionToWorkItem,
   mapEmergencyPreparednessObligationToWorkItem,
   mapIncidentToWorkItem,
   mapInfectionToWorkItem,
-  mapNoNextActionToWorkItem,
   mapOnHoldRelationshipToWorkItem,
   mapPipelineStageToWorkItem,
   mapRecruitingLeadToWorkItem,
@@ -35,7 +35,7 @@ test("1. wellness follow-up: overdue due_at -> needs_attention, explicit evidenc
   assert.equal(item.status, "needs_attention");
   assert.equal(item.evidenceType, "explicit");
   assert.ok(item.explanation.length > 0);
-  assert.equal(item.sourceRoute, "/residents/r1");
+  assert.equal(item.sourceRoute, "/residents/r1#wellness-follow-up-f1");
 });
 
 test("2. wellness follow-up: due today -> due_today", () => {
@@ -76,7 +76,7 @@ test("6. relationship action: overdue -> needs_attention", () => {
   );
   assert.equal(item.status, "needs_attention");
   assert.equal(item.priority, "high");
-  assert.equal(item.sourceRoute, "/relationships/rel1");
+  assert.equal(item.sourceRoute, "/relationships/rel1#relationship-action-a1");
 });
 
 test("7. relationship action: due later -> upcoming", () => {
@@ -146,19 +146,19 @@ test("15. on-hold relationship -> waiting status, explicit evidence", () => {
   assert.equal(item.evidenceType, "explicit");
 });
 
-test("16. no-next-action relationship -> needs_attention, deterministic, carries a recommendedNextStep", () => {
-  const item = mapNoNextActionToWorkItem({ relationshipId: "rel6", displayName: "Patel Family", ownerLabel: null });
-  assert.equal(item.status, "needs_attention");
-  assert.equal(item.evidenceType, "deterministic");
-  assert.ok(item.recommendedNextStep && item.recommendedNextStep.length > 0);
-});
+// Test 16 (Today's Work Actionability slice, Acceptance A) — a bare
+// "active Prospect with no open action" no longer has a mapper at all;
+// mapNoNextActionToWorkItem was removed entirely, and no replacement
+// staleness threshold was invented (see product decision #1). This is
+// verified structurally by the import above no longer exporting it — if
+// it ever reappears, this file fails to typecheck/compile before any test
+// even runs.
 
 test("17. every mapper always produces a non-empty explanation", () => {
   const items = [
     mapWellnessFollowUpToWorkItem({ id: "x1", residentId: "r", residentDisplayName: "R", title: "T", status: "open", dueAt: null, assignedTo: null, priority: "routine" }, NOW),
     mapRelationshipActionToWorkItem({ id: "x2", relationshipId: "r", relationshipDisplayName: "R", title: "T", dueAt: null, assignedTo: null, priority: "normal" }, NOW),
     mapOnHoldRelationshipToWorkItem({ relationshipId: "r", displayName: "R", ownerLabel: null }),
-    mapNoNextActionToWorkItem({ relationshipId: "r", displayName: "R", ownerLabel: null }),
   ];
   for (const item of items) assert.ok(item.explanation.trim().length > 0);
 });
@@ -255,9 +255,10 @@ test("24. completed infection mapper -> completed status", () => {
   assert.equal(item.title, "Infection — Linda Kaplan");
 });
 
-test("25. EPRP due_soon requirement -> upcoming, dueAt from evidence expiration, no due-date math recomputed", () => {
+test("25. EPRP due_soon requirement -> upcoming, dueAt from evidence expiration, no due-date math recomputed, deep-links to the exact requirement", () => {
   const item = mapEmergencyPreparednessObligationToWorkItem({
     requirementId: "req1",
+    requirementCode: "EP_PLAN_MAINTAINED",
     requirementName: "Annual Plan Review",
     status: "due_soon",
     explanation: "Expires in 12 days.",
@@ -267,11 +268,13 @@ test("25. EPRP due_soon requirement -> upcoming, dueAt from evidence expiration,
   assert.equal(item.dueAt, "2026-09-10");
   assert.equal(item.evidenceType, "deterministic");
   assert.equal(item.explanation, "Expires in 12 days.");
+  assert.equal(item.sourceRoute, "/audit-readiness/emergency-preparedness?requirement=EP_PLAN_MAINTAINED");
 });
 
 test("26. EPRP overdue requirement -> needs_attention", () => {
   const item = mapEmergencyPreparednessObligationToWorkItem({
     requirementId: "req2",
+    requirementCode: "EP_ANNUAL_RESPONSE_DRILL",
     requirementName: "Annual Response Drill",
     status: "overdue",
     explanation: "Expired 5 days ago.",
@@ -283,6 +286,7 @@ test("26. EPRP overdue requirement -> needs_attention", () => {
 test("27. EPRP missing_evidence requirement -> needs_attention, no fabricated dueAt", () => {
   const item = mapEmergencyPreparednessObligationToWorkItem({
     requirementId: "req3",
+    requirementCode: "EP_RISK_ASSESSMENT_CURRENT",
     requirementName: "Risk Assessment Current",
     status: "missing_evidence",
     explanation: "No evidence on file.",
@@ -296,9 +300,109 @@ test("28. every new mapper always produces a non-empty explanation", () => {
   const items = [
     mapIncidentToWorkItem({ id: "x", typeLabel: "Fall", reviewStatus: "not_reviewed", followUpRequired: false, owner: null, occurredAtLabel: "today", residentId: null, residentDisplayName: null }),
     mapInfectionToWorkItem({ id: "x", reviewStatus: "reviewed", followUpRequired: true, owner: null, disclosedAtLabel: "today", residentId: "r", residentDisplayName: "R" }),
-    mapEmergencyPreparednessObligationToWorkItem({ requirementId: "x", requirementName: "R", status: "overdue", explanation: "Overdue.", expirationDate: null }),
+    mapEmergencyPreparednessObligationToWorkItem({ requirementId: "x", requirementCode: "X", requirementName: "R", status: "overdue", explanation: "Overdue.", expirationDate: null }),
   ];
   for (const item of items) assert.ok(item.explanation.trim().length > 0);
+});
+
+// ─── Corrective Actions (Today's Work Actionability slice) ─────────────
+
+test("29. corrective action overdue -> needs_attention, priority/dueAt pass through unfabricated", () => {
+  const item = mapCorrectiveActionToWorkItem(
+    {
+      id: "ca1",
+      title: "Follow up on fall risk",
+      reason: "Incident follow-up required.",
+      status: "open",
+      priority: "high",
+      dueAt: "2026-07-20T00:00:00.000Z",
+      owner: "Jordan Lee",
+      subjectType: "resident",
+      subjectId: "r1",
+      subjectLabel: "Ada Washington",
+      sourceIncidentId: "inc1",
+      sourceInfectionId: null,
+      sourceReviewItemId: null,
+      requirementCode: null,
+    },
+    NOW,
+  );
+  assert.equal(item.sourceType, "corrective_action");
+  assert.equal(item.status, "needs_attention");
+  assert.equal(item.priority, "high");
+  assert.equal(item.dueAt, "2026-07-20T00:00:00.000Z");
+  assert.equal(item.ownerLabel, "Jordan Lee");
+  assert.ok(item.explanation.includes("Incident"));
+});
+
+test("30. corrective action with no due date -> upcoming, no fabricated due date", () => {
+  const item = mapCorrectiveActionToWorkItem(
+    {
+      id: "ca2",
+      title: "Follow up on infection review",
+      reason: "Infection follow-up required.",
+      status: "open",
+      priority: "normal",
+      dueAt: null,
+      owner: null,
+      subjectType: "resident",
+      subjectId: "r2",
+      subjectLabel: "Linda Kaplan",
+      sourceIncidentId: null,
+      sourceInfectionId: "inf1",
+      sourceReviewItemId: null,
+      requirementCode: null,
+    },
+    NOW,
+  );
+  assert.equal(item.status, "upcoming");
+  assert.equal(item.dueAt, undefined);
+  assert.ok(item.explanation.includes("Infection"));
+});
+
+test("31. corrective action source routing: Incident-sourced routes to the exact incident record", () => {
+  const item = mapCorrectiveActionToWorkItem({
+    id: "ca3", title: "T", reason: "R", status: "open", priority: "normal", dueAt: null, owner: null,
+    subjectType: "resident", subjectId: "r1", subjectLabel: null,
+    sourceIncidentId: "inc42", sourceInfectionId: null, sourceReviewItemId: null, requirementCode: null,
+  }, NOW);
+  assert.equal(item.sourceRoute, "/qapi/incidents/inc42");
+});
+
+test("32. corrective action source routing: Infection-sourced routes to the exact infection record", () => {
+  const item = mapCorrectiveActionToWorkItem({
+    id: "ca4", title: "T", reason: "R", status: "open", priority: "normal", dueAt: null, owner: null,
+    subjectType: "resident", subjectId: "r1", subjectLabel: null,
+    sourceIncidentId: null, sourceInfectionId: "inf42", sourceReviewItemId: null, requirementCode: null,
+  }, NOW);
+  assert.equal(item.sourceRoute, "/qapi/infections/inf42");
+});
+
+test("33. corrective action source routing: EPRP-review-item-sourced (agency subject) routes to the requirement deep link", () => {
+  const item = mapCorrectiveActionToWorkItem({
+    id: "ca5", title: "T", reason: "R", status: "open", priority: "normal", dueAt: null, owner: null,
+    subjectType: "agency", subjectId: "agency1", subjectLabel: null,
+    sourceIncidentId: null, sourceInfectionId: null, sourceReviewItemId: "review1", requirementCode: "EP_PLAN_MAINTAINED",
+  }, NOW);
+  assert.equal(item.sourceRoute, "/audit-readiness/emergency-preparedness?requirement=EP_PLAN_MAINTAINED");
+});
+
+test("34. corrective action source routing: resident-subject requirement-linked (no incident/infection/review-item) routes to the resident's own page", () => {
+  const item = mapCorrectiveActionToWorkItem({
+    id: "ca6", title: "T", reason: "R", status: "open", priority: "normal", dueAt: null, owner: null,
+    subjectType: "resident", subjectId: "r9", subjectLabel: null,
+    sourceIncidentId: null, sourceInfectionId: null, sourceReviewItemId: null, requirementCode: "CR_ASSESSMENT_CURRENT",
+  }, NOW);
+  assert.equal(item.sourceRoute, "/residents/r9?requirement=CR_ASSESSMENT_CURRENT");
+});
+
+test("35. corrective action source routing: no source and no requirement falls back to the Audit Readiness domain page, never a broken link", () => {
+  const item = mapCorrectiveActionToWorkItem({
+    id: "ca7", title: "T", reason: "R", status: "open", priority: "low", dueAt: null, owner: null,
+    subjectType: "community", subjectId: "community1", subjectLabel: null,
+    sourceIncidentId: null, sourceInfectionId: null, sourceReviewItemId: null, requirementCode: null,
+  }, NOW);
+  assert.equal(item.sourceRoute, "/audit-readiness");
 });
 
 // ─── Runner ──────────────────────────────────────────────────────────

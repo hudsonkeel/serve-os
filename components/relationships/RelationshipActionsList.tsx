@@ -244,7 +244,7 @@ function ActionCard({ relationshipId, action }: ActionCardProps) {
   }
 
   return (
-    <div className="rounded-lg border border-ivory-border bg-ivory px-5 py-4">
+    <div id={`relationship-action-${action.id}`} className="scroll-mt-24 rounded-lg border border-ivory-border bg-ivory px-5 py-4">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         {action.priority !== "normal" && (
           <Badge tone={action.priority === "urgent" ? "danger" : "warning"}>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RequirementStatusCard, resolveStatusCardCta } from "@/components/compliance/AttentionCard";
 import { EvidenceViewButton } from "@/components/compliance/EvidenceViewButton";
+import { ResolveCorrectiveActionButton } from "@/components/compliance/ResolveCorrectiveActionButton";
 import { EvidenceUpdateForm } from "@/components/emergencyPreparedness/EvidenceUpdateForm";
 import { DrillOrResponseForm } from "@/components/emergencyPreparedness/DrillOrResponseForm";
 import { OperationalEventForm } from "@/components/emergencyPreparedness/OperationalEventForm";
@@ -13,6 +14,7 @@ import {
   EP_HHS_NOTIFICATION,
 } from "@/lib/emergencyPreparedness/constants";
 import type { AuditReadinessStatus } from "@/lib/compliance/auditReadinessStatus";
+import type { ComplianceCorrectiveAction } from "@/lib/supabase/types";
 
 export interface RequirementBoardItem {
   requirementCode: string;
@@ -22,6 +24,13 @@ export interface RequirementBoardItem {
   explanation: string;
   evidenceSummary: string | null;
   evidenceDocumentId: string | null;
+  // Today's Work Actionability slice — an open compliance_corrective_actions
+  // row tied to this requirement (via requirement_id), if one exists. When
+  // present, this is what a corrective_action WorkItem's ?requirement=CODE
+  // deep link is actually meant to resolve — surfaced here so that landing
+  // on this page from Today's Work reaches a real resolve affordance, not
+  // just the requirement's own evidence-based status.
+  openCorrectiveAction: ComplianceCorrectiveAction | null;
 }
 
 // The requirement-specific remediation experience each card's CTA opens
@@ -40,6 +49,31 @@ export interface RequirementBoardItem {
 //     evidence record — the Annual Review is where these get reaffirmed
 //     once a year, but establishing/replacing evidence isn't gated behind
 //     a review session.
+// Today's Work Actionability slice — an open corrective Action's resolve
+// affordance renders ABOVE whatever the requirement's own evidence action
+// is, never in place of it: the two are separate obligations (an Annual
+// Review flagged a follow-up; the requirement itself may still separately
+// need current evidence), and both can be true for the same requirement at
+// once.
+function OpenCorrectiveActionNotice({ action, canManage }: { action: ComplianceCorrectiveAction; canManage: boolean }) {
+  return (
+    <div className="mb-3 rounded-lg border border-amber-200 bg-warning-surface p-3">
+      <p className="font-sans text-xs font-semibold uppercase tracking-wide text-warning-text">Open Corrective Action</p>
+      <p className="mt-1 font-sans text-sm text-body">
+        {action.title}
+        {action.due_at ? ` — due ${new Date(action.due_at).toLocaleDateString()}` : ""}
+      </p>
+      {canManage ? (
+        <div className="mt-2">
+          <ResolveCorrectiveActionButton actionId={action.id} actionTitle={action.title} />
+        </div>
+      ) : (
+        <p className="mt-1 font-sans text-xs text-muted">Your role does not include corrective-action resolution.</p>
+      )}
+    </div>
+  );
+}
+
 function RequirementActions({
   item,
   canRun,
@@ -149,6 +183,9 @@ export function RequirementBoard({
           </div>
 
           <div className="mt-4 border-t border-ivory-border pt-4">
+            {selected.openCorrectiveAction && (
+              <OpenCorrectiveActionNotice action={selected.openCorrectiveAction} canManage={canManage} />
+            )}
             <RequirementActions item={selected} canRun={canRun} canManage={canManage} inProgressReviewHref={inProgressReviewHref} />
           </div>
         </div>
