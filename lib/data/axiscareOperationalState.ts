@@ -164,6 +164,44 @@ export async function getAxisCareOperationalStateForResidents(
   return (data ?? []).map(toRow);
 }
 
+// Historical Visit Fact ingestion's identity-resolution step
+// (lib/scheduling/visitFactsSync.ts): given the AxisCare client ids
+// appearing on a batch of Visit records, resolve each to its already-
+// matched Serve resident id and resolved Community — reusing exactly the
+// identity-matching and Community-resolution work the daily client sync
+// already did and stored, rather than re-running any matching logic here.
+// A client id with no row, or a row with no matched_resident_id yet,
+// resolves to { residentId: null } — the caller must treat that Visit as
+// not yet ready to become a Fact (see visitFacts.ts's "Unknown Is
+// Preferable to Invented" handling), never invent a resident.
+export interface AxisCareClientResidentMatch {
+  readonly axiscareClientId: string;
+  readonly residentId: string | null;
+  readonly resolvedCommunityId: string | null;
+}
+
+export async function getResidentMatchesByAxisCareClientIds(
+  axiscareClientIds: readonly string[]
+): Promise<AxisCareClientResidentMatch[]> {
+  if (axiscareClientIds.length === 0) return [];
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("axiscare_client_operational_state")
+    .select("axiscare_client_id, matched_resident_id, resolved_community_id")
+    .in("axiscare_client_id", axiscareClientIds as string[]);
+  if (error) {
+    console.error("[axiscareOperationalState:getResidentMatchesByClientIds:error]", { message: error.message });
+    return [];
+  }
+  return ((data ?? []) as { axiscare_client_id: string; matched_resident_id: string | null; resolved_community_id: string | null }[]).map(
+    (row) => ({
+      axiscareClientId: row.axiscare_client_id,
+      residentId: row.matched_resident_id,
+      resolvedCommunityId: row.resolved_community_id,
+    })
+  );
+}
+
 // Targeted freshness for the one moment staleness matters most: a human
 // just confirmed an identity match in Reconciliation
 // (confirmAxisCareResidentIdentity). Never a fresh AxisCare fetch — that
