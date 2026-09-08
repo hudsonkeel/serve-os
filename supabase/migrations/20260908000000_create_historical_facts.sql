@@ -4,110 +4,234 @@ begin;
 -- HistoricalFact primitive (see lib/intelligence/core/facts.ts and
 -- docs/intelligence/SERVE_INTELLIGENCE_CONSTITUTION.md Article VI/X).
 --
--- One table shared by every intelligence domain, not a domain-owned copy —
--- this is the specific thing Article X warns against ("a domain that finds
--- itself designing its own version of a Fact table has drifted"). The first
--- writer is scheduling.visit_recorded (see lib/scheduling/visitFacts.ts);
--- a future financial.* Fact, once authoritative source data exists, would
--- insert into this same table rather than a new one.
+-- One table shared by every intelligence domain, not a domain-owned copy.
+-- The first writer is scheduling.visit_recorded.
 --
--- Column names map directly to HistoricalFact's fields (facts.ts) plus its
--- SubjectReference and SourceProvenance components, flattened. Nothing here
--- was added without a corresponding field on the existing type.
+-- Future financial.* Facts, once authoritative source data exists, should
+-- use this same persistence layer rather than creating another Fact table.
+--
+-- Historical Facts are immutable:
+--   - new source record      -> insert Fact
+--   - unchanged source record -> no-op
+--   - corrected source record -> insert new Fact that supersedes prior Fact
+--
+-- Never destructively update historical truth.
+
 create table if not exists public.historical_facts (
-  id                     uuid primary key default gen_random_uuid(),
+  id uuid primary key default gen_random_uuid(),
 
-  -- IntelligenceDomain, e.g. 'scheduling' — open-ended, not a check
-  -- constraint, matching shared.ts's deliberately open union.
-  domain                 text not null,
-  -- NamespacedIdentifier "<domain>.<event>", e.g. 'scheduling.visit_recorded'.
-  fact_type              text not null,
+  -- IntelligenceDomain, e.g. 'scheduling'.
+  -- Intentionally open-ended to match the shared intelligence types.
+  domain text not null,
 
-  -- SubjectReference, flattened. subject_id intentionally has no foreign
-  -- key here: SubjectType is open-ended (shared.ts) and this table must
-  -- not hardcode which canonical table each subject_type points at.
-  subject_type           text not null,
-  subject_id             uuid not null,
+  -- NamespacedIdentifier, e.g. 'scheduling.visit_recorded'.
+  fact_type text not null,
 
-  -- OccurrenceTimestamps: when it happened in reality vs. when Serve
-  -- recorded it (facts.ts). recorded_at is what "current version" queries
-  -- order by — see the historical_facts_current view below.
-  occurred_at            timestamptz not null,
-  recorded_at            timestamptz not null default now(),
+  -- SubjectReference, flattened.
+  --
+  -- No FK is intentionally imposed because SubjectType is open-ended and
+  -- different subject types resolve to different canonical Serve entities.
+  subject_type text not null,
+  subject_id uuid not null,
 
-  -- Minimal, normalized fields only — never a raw vendor blob (facts.ts's
-  -- own doc comment). Enforced by code review / the normalizer, not by
-  -- this table.
-  payload                jsonb not null,
+  -- When the underlying event occurred versus when Serve recorded this
+  -- particular representation of it.
+  occurred_at timestamptz not null,
+  recorded_at timestamptz not null default now(),
+
+  -- Minimal normalized Serve-owned fields only.
+  -- Do not persist an unfiltered/raw vendor payload here.
+  payload jsonb not null,
 
   -- SourceProvenance, flattened.
-  source_system          text not null,
-  source_record_id       text,
-  provenance_confidence  text not null
-    check (provenance_confidence in ('confirmed', 'inferred', 'unknown')),
+  source_system text not null,
 
-  -- A correction is a NEW Fact whose supersedes_fact_id points at the Fact
-  -- it corrects. The superseded Fact is never edited or deleted (facts.ts).
-  supersedes_fact_id     uuid references public.historical_facts(id),
+  -- Persisted Historical Facts require a stable source identity because
+  -- source_record_id participates in:
+  --   - idempotent ingestion
+  --   - supersession
+  --   - current-version resolution
+  --   - source provenance
+  --   - drill-down
+  --
+  -- Even Serve-generated Facts should receive a stable Serve-owned source
+  -- record identity rather than NULL.
+  source_record_id text not null,
 
-  created_at             timestamptz not null default now()
+  provenance_confidence text not null
+    check (
+      provenance_confidence in (
+        'confirmed',
+        'inferred',
+        'unknown'
+      )
+    ),
+
+  -- A correction is represented as a NEW Fact pointing to the Fact it
+  -- supersedes. The superseded Fact remains immutable.
+  supersedes_fact_id uuid
+    references public.historical_facts(id),
+
+  created_at timestamptz not null default now()
 );
 
--- Supports the natural-key lookup ingestion uses to decide
--- unchanged/insert-new/insert-superseding (source_record_id is nullable —
--- see facts.ts's SourceProvenance — so this is a plain index, not a unique
--- constraint; "one current Fact per natural key" is an ingestion-time
--- discipline, matching Engineering Standards §3's dedup-key-as-documentation
--- stance, not a DB-enforced constraint).
-create index if not exists historical_facts_natural_key_idx
-  on public.historical_facts (source_system, source_record_id, fact_type, recorded_at desc);
+-- ---------------------------------------------------------------------------
+-- INDEXES
+-- ---------------------------------------------------------------------------
 
--- Supports metric queries filtering by fact type over a time window.
-create index if not exists historical_facts_type_time_idx
-  on public.historical_facts (fact_type, occurred_at);
-
--- Supports drill-down and per-subject queries.
-create index if not exists historical_facts_subject_idx
-  on public.historical_facts (subject_type, subject_id);
-
-create index if not exists historical_facts_supersedes_idx
-  on public.historical_facts (supersedes_fact_id);
-
--- "Current" Fact per natural key = the row with the latest recorded_at for
--- that (source_system, source_record_id, fact_type) — true by construction,
--- since every correction is inserted with a later recorded_at than what it
--- supersedes. This is simpler and more robust than walking the
--- supersedes_fact_id chain, and gives every consumer one place to query
--- "current" without re-deriving this rule. See
--- lib/intelligence/persistence/historicalFacts.ts's selectCurrentFacts()
--- for the equivalent in-memory version used where a batch is already in
--- hand and a second round-trip would be wasteful.
+-- Primary natural-key/current-version lookup used by ingestion.
 --
--- recorded_at and created_at both default to now() at insert time, so in
--- the current ingestion path they're always equal — created_at is
--- included here anyway so this ordering stays correct if a future
--- ingestion path ever sets them differently (e.g. a backdated correction)
--- without needing this view revisited. id is the final, purely-for-
--- stability tiebreak: it carries no chronological meaning, but guarantees
--- the exact same row wins on every evaluation even in the (very unlikely,
--- but not impossible) case of two Facts sharing both timestamps —
--- "distinct on" is otherwise free to pick either arbitrarily.
-create or replace view public.historical_facts_current as
-select distinct on (source_system, source_record_id, fact_type)
+-- This is intentionally not UNIQUE. Multiple rows with the same natural
+-- source identity are expected when a source record changes over time.
+-- Supersession + recorded_at determine historical versions.
+create index if not exists historical_facts_natural_key_idx
+  on public.historical_facts (
+    source_system,
+    source_record_id,
+    fact_type,
+    recorded_at desc
+  );
+
+-- Metric and historical queries by Fact type and occurrence period.
+create index if not exists historical_facts_type_time_idx
+  on public.historical_facts (
+    fact_type,
+    occurred_at
+  );
+
+-- Drill-down and per-subject queries.
+create index if not exists historical_facts_subject_idx
+  on public.historical_facts (
+    subject_type,
+    subject_id
+  );
+
+-- Supersession-chain inspection.
+create index if not exists historical_facts_supersedes_idx
+  on public.historical_facts (
+    supersedes_fact_id
+  );
+
+-- ---------------------------------------------------------------------------
+-- CURRENT FACT VIEW
+-- ---------------------------------------------------------------------------
+
+-- One current Fact per natural source identity:
+--
+--   source_system
+--   + source_record_id
+--   + fact_type
+--
+-- recorded_at is the primary chronological selector.
+--
+-- created_at provides a deterministic secondary selector if a future
+-- ingestion path deliberately supplies recorded_at.
+--
+-- id is a final deterministic tie-breaker if both timestamps are identical.
+--
+-- security_invoker=true ensures queries against this view execute with the
+-- permissions of the caller rather than unintentionally bypassing the
+-- security posture of historical_facts.
+
+create or replace view public.historical_facts_current
+with (security_invoker = true)
+as
+select distinct on (
+  source_system,
+  source_record_id,
+  fact_type
+)
   *
 from public.historical_facts
-order by source_system, source_record_id, fact_type, recorded_at desc, created_at desc, id desc;
+order by
+  source_system,
+  source_record_id,
+  fact_type,
+  recorded_at desc,
+  created_at desc,
+  id desc;
+
+-- ---------------------------------------------------------------------------
+-- SECURITY
+-- ---------------------------------------------------------------------------
 
 alter table public.historical_facts enable row level security;
-revoke all on public.historical_facts from public, anon, authenticated;
-grant all on public.historical_facts to service_role;
+
+-- Historical intelligence Facts are backend-only infrastructure.
+--
+-- No browser/client role receives direct access. Application access should
+-- occur through trusted server-side code using service_role or through
+-- deliberately designed future server-side interfaces.
+
+revoke all on public.historical_facts
+  from public, anon, authenticated;
+
+grant all on public.historical_facts
+  to service_role;
+
+-- Explicitly secure the view as well.
+--
+-- Do not rely on implicit/default view privileges.
+
+revoke all on public.historical_facts_current
+  from public, anon, authenticated;
+
+grant select on public.historical_facts_current
+  to service_role;
+
+-- ---------------------------------------------------------------------------
+-- DOCUMENTATION
+-- ---------------------------------------------------------------------------
 
 comment on table public.historical_facts is
-  'Shared, immutable Historical Fact persistence (Serve Intelligence Constitution Article VI/X) — one table for every domain. First writer: scheduling.visit_recorded. Corrections are new rows (supersedes_fact_id), never mutations. Query historical_facts_current for the latest version per natural key.';
+  'Shared immutable Historical Fact persistence for the Serve Intelligence Platform. One table serves all intelligence domains. Corrections create new rows linked through supersedes_fact_id; historical Facts are never destructively rewritten.';
 
--- ROLLBACK:
+comment on view public.historical_facts_current is
+  'Current Historical Fact per (source_system, source_record_id, fact_type), selected deterministically by recorded_at DESC, created_at DESC, id DESC. Backend/service-role access only.';
+
+comment on column public.historical_facts.domain is
+  'Serve Intelligence domain that owns the Fact semantics, e.g. scheduling.';
+
+comment on column public.historical_facts.fact_type is
+  'Namespaced Serve Fact identifier, e.g. scheduling.visit_recorded.';
+
+comment on column public.historical_facts.subject_type is
+  'Canonical Serve subject type associated with the Fact.';
+
+comment on column public.historical_facts.subject_id is
+  'Canonical Serve identifier for the Fact subject.';
+
+comment on column public.historical_facts.occurred_at is
+  'Timestamp when the represented event occurred in reality.';
+
+comment on column public.historical_facts.recorded_at is
+  'Timestamp when this representation/version of the Fact was recorded by Serve.';
+
+comment on column public.historical_facts.payload is
+  'Minimal normalized Serve-owned Fact payload; never intended as an unfiltered raw vendor payload.';
+
+comment on column public.historical_facts.source_system is
+  'System from which the underlying evidence originated, e.g. axiscare or serve_os.';
+
+comment on column public.historical_facts.source_record_id is
+  'Stable source-system identity used for idempotency, supersession, current-version resolution, and provenance drill-down. Required for persisted Historical Facts.';
+
+comment on column public.historical_facts.provenance_confidence is
+  'Confidence classification for source provenance: confirmed, inferred, or unknown.';
+
+comment on column public.historical_facts.supersedes_fact_id is
+  'Prior Historical Fact corrected or replaced by this immutable Fact version.';
+
+-- ---------------------------------------------------------------------------
+-- ROLLBACK REFERENCE
+-- ---------------------------------------------------------------------------
+--
+-- If this migration must be manually reversed before dependent objects exist:
 --
 --   drop view if exists public.historical_facts_current;
 --   drop table if exists public.historical_facts;
+--
+-- Do not use this rollback casually after Historical Facts have begun
+-- accumulating in production.
 
 commit;

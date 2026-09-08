@@ -5,6 +5,7 @@
 // names, no real IDs (matching normalize.test.ts's convention).
 import assert from "node:assert/strict";
 import { buildVisitHistoricalFact, VISIT_FACT_DOMAIN, VISIT_FACT_TYPE, type VisitFactResolution } from "../visitFacts.ts";
+import { assertPersistableSourceRecordId } from "../../intelligence/persistence/historicalFacts.ts";
 import type { AxisCareRawVisit } from "../../integrations/axiscare/types.ts";
 import type { ServeScheduleVisit } from "../types.ts";
 
@@ -214,6 +215,35 @@ test("chargeRate/billableRateMode are preserved as normalized source attributes,
   assert.equal(attrs.billableRateMode, "hourly");
   assert.ok(!("serviceRevenue" in result.input.payload));
   assert.ok(!("directCaregiverLabor" in result.input.payload));
+});
+
+// ─── Persistence-boundary compatibility (no missing source identity) ────
+//
+// The generic persistence layer (historicalFacts.ts) now rejects a Fact
+// with a missing/blank sourceRecordId (see its own assertPersistableSourceRecordId).
+// This proves every scenario this file exercises that actually produces a
+// Fact (i.e. every non-skipped result) satisfies that requirement — the
+// Visit ingestion path never relies on the persistence layer to catch a
+// mistake it should never make in the first place.
+
+test("every non-skipped scenario in this file produces a sourceRecordId that satisfies the persistence boundary", () => {
+  const scenarios: Array<{ raw: AxisCareRawVisit; visit: ServeScheduleVisit; resolution: VisitFactResolution }> = [
+    { raw: rawVisit(), visit: scheduleVisit(), resolution: RESOLVED },
+    { raw: rawVisit(), visit: scheduleVisit({ removed: true, status: "removed" }), resolution: RESOLVED },
+    {
+      raw: rawVisit({ caregiver: undefined }),
+      visit: scheduleVisit({ caregiver: null, assigned: false, status: "unassigned" }),
+      resolution: { ...RESOLVED, caregiverWorkforceMemberId: null },
+    },
+    { raw: rawVisit(), visit: scheduleVisit(), resolution: { ...RESOLVED, communityId: null } },
+  ];
+
+  for (const { raw, visit, resolution } of scenarios) {
+    const result = buildVisitHistoricalFact(raw, visit, resolution);
+    assert.equal(result.skipped, false, "expected this scenario to produce a Fact, not a skip");
+    if (result.skipped) continue;
+    assert.doesNotThrow(() => assertPersistableSourceRecordId(result.input.sourceRecordId));
+  }
 });
 
 // ─── Runner ──────────────────────────────────────────────────────────

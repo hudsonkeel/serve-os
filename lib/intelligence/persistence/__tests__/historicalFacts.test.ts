@@ -8,7 +8,14 @@
 // logic and leaving I/O wrappers untested (see e.g. clientLifecycle.test.ts
 // vs. axiscareOperationalState.ts).
 import assert from "node:assert/strict";
-import { payloadsEqual, decideFactIngestionAction, selectCurrentFacts } from "../historicalFacts.ts";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import {
+  payloadsEqual,
+  decideFactIngestionAction,
+  selectCurrentFacts,
+  assertPersistableSourceRecordId,
+} from "../historicalFacts.ts";
 import type { HistoricalFact } from "../../core/index.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
@@ -129,6 +136,47 @@ test("identical recordedAt (a tie) resolves deterministically via id, not array/
   // Same winner regardless of input order — "bbb" > "aaa" lexically.
   assert.equal(forward[0]!.id, "fict-fact-bbb");
   assert.equal(reversed[0]!.id, "fict-fact-bbb");
+});
+
+// ─── assertPersistableSourceRecordId (persistence-boundary hardening) ──
+
+test("a valid, non-empty sourceRecordId is accepted (does not throw)", () => {
+  assert.doesNotThrow(() => assertPersistableSourceRecordId("fict-visit-1"));
+});
+
+test("an empty string sourceRecordId is rejected", () => {
+  assert.throws(() => assertPersistableSourceRecordId(""), /non-empty, stable source identity/);
+});
+
+test("a blank/whitespace-only sourceRecordId is rejected", () => {
+  assert.throws(() => assertPersistableSourceRecordId("   "), /non-empty, stable source identity/);
+});
+
+// ─── Migration structural verification (no local DB to test GRANT/REVOKE
+// behavior live against — see this module's report for why; this checks
+// the committed SQL text says what it's supposed to say) ────────────────
+
+test("the historical_facts migration text matches the approved security/schema hardening", () => {
+  const path = fileURLToPath(
+    new URL("../../../../supabase/migrations/20260908000000_create_historical_facts.sql", import.meta.url)
+  );
+  const sql = readFileSync(path, "utf8");
+
+  assert.ok(sql.includes("source_record_id text not null"), "source_record_id must be NOT NULL");
+  assert.ok(sql.includes("security_invoker = true"), "historical_facts_current must set security_invoker = true");
+  assert.ok(
+    sql.includes("revoke all on public.historical_facts_current"),
+    "historical_facts_current must explicitly revoke default access"
+  );
+  assert.ok(
+    sql.includes("grant select on public.historical_facts_current"),
+    "historical_facts_current must explicitly grant select to service_role only"
+  );
+  assert.ok(
+    sql.includes("revoke all on public.historical_facts\n  from public, anon, authenticated"),
+    "historical_facts table must explicitly revoke default access"
+  );
+  assert.ok(sql.includes("grant all on public.historical_facts\n  to service_role"), "historical_facts table must grant to service_role only");
 });
 
 // ─── Runner ──────────────────────────────────────────────────────────
