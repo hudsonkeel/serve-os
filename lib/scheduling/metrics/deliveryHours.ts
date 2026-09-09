@@ -14,6 +14,7 @@
 import "server-only";
 import { getCurrentFactsByTypeAndWindow } from "../../intelligence/persistence/historicalFacts.ts";
 import { VISIT_FACT_TYPE } from "../visitFacts.ts";
+import { businessDateRangeToUtcWindow } from "../businessTime.ts";
 import type { ServeVisitStatus } from "../types.ts";
 import type { HistoricalFact } from "../../intelligence/core/index.ts";
 
@@ -175,4 +176,28 @@ export async function getDeliveryHoursForWindow(
   const facts = await getCurrentFactsByTypeAndWindow(VISIT_FACT_TYPE, occurredFrom, occurredTo);
   const records = facts.map(mapFactToVisitRecord);
   return { rollup: calculateDeliveryHoursRollup(records), records };
+}
+
+// Business-date-aware entry point — converts an inclusive
+// [startDate, endDate] Serve business-date range (YYYY-MM-DD, Central
+// civil calendar — see businessTime.ts) into the correct UTC window
+// before delegating to getDeliveryHoursForWindow() above. All formulas,
+// qualification rules, and rollup behavior are unchanged; this only fixes
+// what "Sept 5 through Sept 7" actually means as a UTC occurredAt range.
+// See docs/intelligence/SERVE_VISIT_INTELLIGENCE_LIVE_VALIDATION.md §10
+// for the naive-UTC-boundary discrepancy this replaces.
+export async function getDeliveryHoursForBusinessDateRange(
+  startDate: string,
+  endDate: string
+): Promise<{ rollup: DeliveryHoursRollup; records: VisitFactDrillDownRecord[] }> {
+  const { startUtc, endUtcExclusive } = businessDateRangeToUtcWindow(startDate, endDate);
+  // getDeliveryHoursForWindow()'s occurredTo is inclusive (.lte in
+  // getCurrentFactsByTypeAndWindow) — businessDateRangeToUtcWindow's
+  // endUtcExclusive is, as named, exclusive. Converting by subtracting
+  // 1ms keeps the existing function's inclusive contract unchanged for
+  // every other caller while still giving this business-date range its
+  // correct, exact boundary (excludes the first instant of the next
+  // business day).
+  const inclusiveEnd = new Date(new Date(endUtcExclusive).getTime() - 1).toISOString();
+  return getDeliveryHoursForWindow(startUtc, inclusiveEnd);
 }

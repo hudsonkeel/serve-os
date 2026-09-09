@@ -20,6 +20,7 @@ import { getAuditEligibleActiveClientResidents } from "../../data/residentServeR
 import type { CommunityQueryFilter } from "../../auth/communityScope.ts";
 import { mapFactToVisitRecord, type VisitFactDrillDownRecord } from "./deliveryHours.ts";
 import { calculateVisitsPerActiveClient } from "./visitsPerActiveClientMath.ts";
+import { businessDateRangeToUtcWindow } from "../businessTime.ts";
 
 export { calculateVisitsPerActiveClient } from "./visitsPerActiveClientMath.ts";
 
@@ -66,4 +67,20 @@ export async function getVisitsPerActiveClient(
     activeClientDenominatorMethodology: "current_snapshot",
     denominatorPolicyStatus: "pending_hud_decision",
   };
+}
+
+// Business-date-aware entry point — same Central-civil-date window
+// conversion as deliveryHours.ts's getDeliveryHoursForBusinessDateRange(),
+// so "Sept 5 through Sept 7" means the same UTC instants in both metrics
+// (Phase 5's "avoid competing interpretations"). Only the Visit-count
+// period semantics are aligned here — the Active Client denominator
+// policy question is untouched and still pending_hud_decision.
+export async function getVisitsPerActiveClientForBusinessDateRange(
+  startDate: string,
+  endDate: string,
+  filter: CommunityQueryFilter
+): Promise<VisitsPerActiveClientResult> {
+  const { startUtc, endUtcExclusive } = businessDateRangeToUtcWindow(startDate, endDate);
+  const inclusiveEnd = new Date(new Date(endUtcExclusive).getTime() - 1).toISOString();
+  return getVisitsPerActiveClient(startUtc, inclusiveEnd, filter);
 }
