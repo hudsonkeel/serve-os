@@ -25,6 +25,13 @@ const PUBLIC_PATHS = [
   // (AXISCARE_SYNC_INTERNAL_SECRET), never cookie auth. See
   // app/api/axiscare/scheduled-sync/route.ts.
   "/api/axiscare/scheduled-sync",
+  // Same server-to-server pattern, for the Historical Visit Fact rolling
+  // sync's scheduled entry point — verifies its own shared-secret header
+  // (SCHEDULING_VISIT_SYNC_INTERNAL_SECRET), never cookie auth. "Public"
+  // only in the sense that this proxy lets the request through to the
+  // route; the route itself remains inaccessible without the internal
+  // secret. See app/api/scheduling/visit-facts-sync/route.ts.
+  "/api/scheduling/visit-facts-sync",
 ];
 
 function isPublicPath(pathname: string) {
