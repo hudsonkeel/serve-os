@@ -31,6 +31,19 @@ const OUTCOME_TONES: Record<EffectivenessReviewOutcome, "success" | "warning" | 
 // same review record. Domain-agnostic — corrective_action_effectiveness_reviews
 // isn't incident-specific, so this lives in components/compliance/ for any
 // QAPI domain to reuse once it has its own creation path into that table.
+//
+// Voided Effectiveness Review UX Follow-Up — presentation-only. Only the
+// current truth (Pending, or a valid recorded outcome) is ever rendered
+// here — a voided prior determination is real, permanent audit history
+// (voided_outcome/voided_evidence/voided_reviewed_by/voided_reviewed_at/
+// voided_by/voided_at/void_reason, untouched by this component and by the
+// admin-only void mechanism), but normal operational QAPI UX has no
+// business surfacing an invalidated outcome at all — not even collapsed
+// behind a disclosure. This component deliberately never reads those
+// seven voided_* fields. No lifecycle/RPC/schema logic changed: this
+// reads outcome/evidence/reviewed_by/reviewed_at exactly as the void RPC
+// leaves them (nulled back to pending) and reuses the same business-date
+// guard unchanged.
 export function EffectivenessReviewSection({
   review,
   canRecordOutcome,
@@ -58,6 +71,7 @@ export function EffectivenessReviewSection({
   // (strictly future) vs. "due" boundary. No early-review override exists
   // for v0.1: this is a hide, not a disabled-with-tooltip affordance.
   const dueDateReached = isBusinessDateDueTodayOrEarlier(review.due_at);
+  const dueDateLabel = formatPlainDate(review.due_at) ?? review.due_at;
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -86,11 +100,33 @@ export function EffectivenessReviewSection({
     <div className="mt-3 rounded-lg border border-ivory-border bg-ivory-warm p-3">
       <p className="font-sans text-label font-semibold uppercase tracking-widest text-subtle">Effectiveness Review</p>
 
-      <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
-        <div>
-          <dt className="font-sans text-[11px] font-medium text-muted">Due</dt>
-          <dd className="font-sans text-sm text-body">{formatPlainDate(review.due_at) ?? review.due_at}</dd>
+      {/* ─── Current truth — always leads, always dominates ─────────────── */}
+      {review.outcome ? (
+        <div className="mt-2 space-y-1.5">
+          <Badge tone={OUTCOME_TONES[review.outcome]}>{OUTCOME_LABELS[review.outcome]}</Badge>
+          <div>
+            <p className="font-sans text-[11px] font-medium text-muted">Evidence / Findings</p>
+            <p className="whitespace-pre-wrap font-sans text-sm text-body">{review.evidence}</p>
+          </div>
+          <p className="font-sans text-xs text-subtle">
+            {review.reviewed_by} · {review.reviewed_at ? formatCentralDateTime(review.reviewed_at) : "—"}
+          </p>
         </div>
+      ) : (
+        <div className="mt-2">
+          <Badge tone="blue">Pending</Badge>
+          <p className="mt-1 font-sans text-sm font-semibold text-body">Effectiveness review due {dueDateLabel}.</p>
+        </div>
+      )}
+
+      {/* ─── Current obligation — schedule context, always shown ────────── */}
+      <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-1.5 border-t border-ivory-border pt-3 sm:grid-cols-2">
+        {review.outcome && (
+          <div>
+            <dt className="font-sans text-[11px] font-medium text-muted">Due</dt>
+            <dd className="font-sans text-sm text-body">{dueDateLabel}</dd>
+          </div>
+        )}
         <div>
           <dt className="font-sans text-[11px] font-medium text-muted">Owner</dt>
           <dd className="font-sans text-sm text-body">{review.owner || "—"}</dd>
@@ -101,63 +137,19 @@ export function EffectivenessReviewSection({
         </div>
       </dl>
 
-      {/* Void-and-reopen correction mechanism — a read-only, permanent
-          record of an erroneously-recorded determination. Shown whenever
-          voided_at is set, independently of the active outcome fields
-          below (which are nulled back to pending at the same moment the
-          void happens, so the review can carry both "here's what was
-          wrongly recorded before" and "here's its current, real status"
-          at once). Never editable, never removable. */}
-      {review.voided_at && (
-        <div className="mt-3 rounded-lg border border-dashed border-ivory-border bg-ivory p-3">
-          <p className="font-sans text-[11px] font-semibold uppercase tracking-wide text-subtle">
-            Previously Recorded Effectiveness Outcome — Voided
-          </p>
-          <div className="mt-1.5 space-y-1.5">
-            <Badge tone={review.voided_outcome ? OUTCOME_TONES[review.voided_outcome] : "neutral"}>
-              {review.voided_outcome ? OUTCOME_LABELS[review.voided_outcome] : "—"}
-            </Badge>
-            <div>
-              <p className="font-sans text-[11px] font-medium text-muted">Evidence / Findings</p>
-              <p className="whitespace-pre-wrap font-sans text-sm text-body">{review.voided_evidence}</p>
-            </div>
-            <p className="font-sans text-xs text-subtle">
-              {review.voided_reviewed_by} · {review.voided_reviewed_at ? formatCentralDateTime(review.voided_reviewed_at) : "—"}
-            </p>
-            <div className="border-t border-ivory-border pt-1.5">
-              <p className="font-sans text-[11px] font-medium text-muted">Void Reason</p>
-              <p className="whitespace-pre-wrap font-sans text-sm text-body">{review.void_reason}</p>
-              <p className="mt-0.5 font-sans text-xs text-subtle">
-                Voided by {review.voided_by} · {review.voided_at ? formatCentralDateTime(review.voided_at) : "—"}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {review.outcome ? (
-        <div className="mt-3 space-y-1.5 border-t border-ivory-border pt-3">
-          <Badge tone={OUTCOME_TONES[review.outcome]}>{OUTCOME_LABELS[review.outcome]}</Badge>
-          <div>
-            <p className="font-sans text-[11px] font-medium text-muted">Evidence / Findings</p>
-            <p className="whitespace-pre-wrap font-sans text-sm text-body">{review.evidence}</p>
+        review.outcome !== "effective" &&
+        onRequestAdditionalAction && (
+          <div className="mt-3 border-t border-ivory-border pt-3">
+            <button
+              type="button"
+              onClick={onRequestAdditionalAction}
+              className="font-sans text-xs font-medium text-navy hover:text-navy-light"
+            >
+              + Add Additional Action
+            </button>
           </div>
-          <p className="font-sans text-xs text-subtle">
-            {review.reviewed_by} · {review.reviewed_at ? formatCentralDateTime(review.reviewed_at) : "—"}
-          </p>
-
-          {review.outcome !== "effective" && onRequestAdditionalAction && (
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={onRequestAdditionalAction}
-                className="font-sans text-xs font-medium text-navy hover:text-navy-light"
-              >
-                + Add Additional Action
-              </button>
-            </div>
-          )}
-        </div>
+        )
       ) : canRecordOutcome && dueDateReached ? (
         <form onSubmit={handleSubmit} className="mt-3 space-y-3 border-t border-ivory-border pt-3">
           <div>
@@ -182,7 +174,7 @@ export function EffectivenessReviewSection({
         </form>
       ) : !dueDateReached ? (
         <p className="mt-3 border-t border-ivory-border pt-3 font-sans text-xs text-muted">
-          Not yet due — the effectiveness outcome can be recorded starting {formatPlainDate(review.due_at) ?? review.due_at}.
+          Not yet due — effectiveness outcome can be recorded starting {dueDateLabel}.
         </p>
       ) : (
         <p className="mt-3 border-t border-ivory-border pt-3 font-sans text-xs text-muted">Awaiting effectiveness review outcome.</p>
