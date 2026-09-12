@@ -26,7 +26,16 @@ export type WorkItemSourceType =
   // originating record may resolve/disappear on its own; the corrective
   // Action stays visible under this sourceType until it is itself
   // resolved.
-  | "corrective_action";
+  | "corrective_action"
+  // Incident Corrective Action Lifecycle v0.1 — a scheduled effectiveness
+  // review (corrective_action_effectiveness_reviews) once its parent
+  // corrective action has actually been implemented and the review's own
+  // due date is approaching/overdue (see mapEffectivenessReviewToWorkItem
+  // in mapping.ts). Distinct from "corrective_action" — a single incident
+  // corrective action can produce two separate WorkItems in sequence: the
+  // implementation due date first, then (once implemented) the
+  // effectiveness-review due date.
+  | "effectiveness_review";
 // "schedule_exception" is intentionally not included — schedule exceptions
 // are not wired into the Work Item model this phase; they stay in
 // components/scheduling/TodaysSchedulePanel.tsx's own dedicated view. See

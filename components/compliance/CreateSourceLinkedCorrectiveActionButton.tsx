@@ -2,30 +2,34 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createIncidentCorrectiveActionAction } from "@/lib/actions/incidents";
 import { createInfectionCorrectiveActionAction } from "@/lib/actions/infections";
 import type { ComplianceCorrectiveActionPriority } from "@/lib/supabase/types";
 
 const PRIORITY_OPTIONS: ComplianceCorrectiveActionPriority[] = ["low", "normal", "high", "urgent"];
 
 // Governance Connective Slice v0.1 — the confirm-gated corrective-action
-// affordance for Incidents/Infections (see components/compliance/
+// affordance for Infections (see components/compliance/
 // CreateWorkforceCorrectiveActionDialog.tsx, whose interaction pattern
 // this mirrors). Deliberately never shown/wired automatically on
-// follow_up_required=true — the caller (the incident/infection detail
-// page) only renders this when status is open, follow_up_required is
-// true, and no corrective action is already linked; confirming here is
-// the one explicit, human decision that real tracked corrective work is
+// follow_up_required=true — the caller (the infection detail page) only
+// renders this when status is open, follow_up_required is true, and no
+// corrective action is already linked; confirming here is the one
+// explicit, human decision that real tracked corrective work is
 // warranted. title/reason are prefilled by the caller from the record's
 // own fields so nothing already known is re-typed — the reviewer can
 // still edit before confirming.
+//
+// Incidents moved to their own richer form (CreateIncidentCorrectiveActionForm
+// — see 20260910000000_add_incident_corrective_action_lifecycle.sql's
+// create_incident_corrective_action, a plain-insert RPC that supports
+// multiple actions per incident) and no longer use this component — it now
+// serves infections only, which remain on the original single-action
+// sync/upsert model.
 export function CreateSourceLinkedCorrectiveActionButton({
-  kind,
   recordId,
   defaultTitle,
   defaultReason,
 }: {
-  kind: "incident" | "infection";
   recordId: string;
   defaultTitle: string;
   defaultReason: string;
@@ -48,22 +52,13 @@ export function CreateSourceLinkedCorrectiveActionButton({
     }
 
     startTransition(async () => {
-      const res =
-        kind === "incident"
-          ? await createIncidentCorrectiveActionAction({
-              incidentId: recordId,
-              title: title.trim() || defaultTitle,
-              reason: reason.trim(),
-              priority,
-              dueAt: dueAt || null,
-            })
-          : await createInfectionCorrectiveActionAction({
-              infectionId: recordId,
-              title: title.trim() || defaultTitle,
-              reason: reason.trim(),
-              priority,
-              dueAt: dueAt || null,
-            });
+      const res = await createInfectionCorrectiveActionAction({
+        infectionId: recordId,
+        title: title.trim() || defaultTitle,
+        reason: reason.trim(),
+        priority,
+        dueAt: dueAt || null,
+      });
 
       if (res.error) {
         setError(res.error);

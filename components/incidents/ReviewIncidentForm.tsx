@@ -3,6 +3,7 @@
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { AutoGrowTextarea } from "@/components/ui/AutoGrowTextarea";
 import { markIncidentReviewedAction } from "@/lib/actions/incidents";
 
 const fieldClassName =
@@ -11,15 +12,20 @@ const fieldClassName =
 // The formal review step — deliberately separate from the factual record
 // above it on the detail page (see app/qapi/incidents/[id]/page.tsx): this
 // never edits occurred_at/description/etc., it only records leadership's
-// follow-up decision. follow_up_required has no default — the RPC itself
-// rejects a null decision, and this form mirrors that by starting
-// unselected rather than pre-choosing "No" for the reviewer.
+// follow-up decision and the "why" behind it. follow_up_required has no
+// default — the RPC itself rejects a null decision, and this form mirrors
+// that by starting unselected rather than pre-choosing "No" for the
+// reviewer. Review Findings is frozen after this first submission
+// (mark_incident_reviewed) — this form only ever runs once per incident,
+// on the not-yet-reviewed path; see AddReviewFindingsForm for the
+// already-reviewed legacy-backfill case.
 export function ReviewIncidentForm({ incidentId }: { incidentId: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [followUp, setFollowUp] = useState<"yes" | "no" | null>(null);
   const [owner, setOwner] = useState("");
+  const [reviewFindings, setReviewFindings] = useState("");
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -39,6 +45,7 @@ export function ReviewIncidentForm({ incidentId }: { incidentId: string }) {
         incidentId,
         followUpRequired: followUp === "yes",
         owner: followUp === "yes" ? owner.trim() : null,
+        reviewFindings: reviewFindings.trim() || null,
       });
       if (res.error) {
         setError(res.error);
@@ -50,6 +57,18 @@ export function ReviewIncidentForm({ incidentId }: { incidentId: string }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <label className="block">
+        <span className="mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-subtle">
+          Review Findings / Contributing Factors
+        </span>
+        <AutoGrowTextarea
+          value={reviewFindings}
+          onChange={(e) => setReviewFindings(e.target.value)}
+          minRows={3}
+          placeholder="Why is follow-up / corrective action necessary — or not necessary?"
+        />
+      </label>
+
       <div>
         <span className="mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-subtle">
           Is follow-up required?

@@ -25,7 +25,7 @@ import {
   resolveIncident,
 } from "../data/incidents.ts";
 import { recordComplianceActivityForSource, resolveGovernanceActivitySubject } from "../data/complianceActivity.ts";
-import { syncCorrectiveAction } from "../data/complianceCorrectiveActions.ts";
+import { createIncidentCorrectiveAction } from "../data/complianceCorrectiveActions.ts";
 import type { AuthorizedProfile } from "../auth/profiles.ts";
 import type { ComplianceCorrectiveAction, ComplianceCorrectiveActionPriority, Incident, IncidentType } from "../supabase/types.ts";
 
@@ -190,6 +190,12 @@ export async function markIncidentReviewedAction(input: {
   incidentId: string;
   followUpRequired: boolean;
   owner: string | null;
+  // Only ever actually written on the incident's first review, or as a
+  // one-time legacy backfill when it was reviewed before this field
+  // existed and still reads null — see mark_incident_reviewed's own
+  // freeze-after-first-write discipline. Safe to pass on every call; the
+  // RPC decides whether it's actually used.
+  reviewFindings?: string | null;
 }): Promise<{ incident?: Incident; error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to review an incident." };
@@ -201,6 +207,7 @@ export async function markIncidentReviewedAction(input: {
     incidentId: input.incidentId,
     followUpRequired: input.followUpRequired,
     owner: input.owner,
+    reviewFindings: input.reviewFindings,
     actor: actor.label,
   });
 
@@ -238,21 +245,30 @@ export async function resolveIncidentAction(input: {
   return result;
 }
 
-// Governance Connective Slice v0.1 — a deliberate, human-confirmed step,
-// never automatic on follow_up_required=true alone (see the build plan's
-// explicit non-goal). The reviewer decides real tracked corrective work is
-// warranted; title/reason are prefilled from the incident's own fields by
-// the caller so nothing already known is re-typed. Gated on
+// Incident Corrective Action Lifecycle v0.1 — a deliberate, human-confirmed
+// step, never automatic on follow_up_required=true alone. The reviewer
+// decides real tracked corrective work is warranted; nothing here
+// pre-fills `finding` from the incident's own description — incident facts
+// already exist on the source incident, and copying them forward would
+// blur "why this action exists" with "what happened." Supports being
+// called more than once per incident (this is a plain insert, not the old
+// single-shot sync/upsert path — see 20260910000000's design decision 5),
+// so this is also the "Add Additional Action" path after a Partially
+// Effective/Ineffective effectiveness review. Gated on
 // canManageCorrectiveActions — the same trust tier already reused by
-// canReviewIncidentOrInfection/canResolveIncidentOrInfection, applied here
-// under its own name since this action literally manages a corrective
-// action, not just the incident record.
+// canReviewIncidentOrInfection/canResolveIncidentOrInfection.
 export interface CreateIncidentCorrectiveActionInput {
   incidentId: string;
   title: string;
-  reason: string;
+  finding: string;
+  actionPlan: string;
+  owner: string | null;
   priority: ComplianceCorrectiveActionPriority;
   dueAt: string | null;
+  effectivenessReviewRequired: boolean;
+  effectivenessReviewDueAt: string | null;
+  effectivenessReviewOwner: string | null;
+  effectivenessSuccessCriteria: string | null;
 }
 
 export async function createIncidentCorrectiveActionAction(
@@ -272,17 +288,27 @@ export async function createIncidentCorrectiveActionAction(
   const subject = resolveGovernanceActivitySubject(incident.resident_id, incident.community_id);
   if (!subject) return { error: "This incident has no client or community context to attach a corrective action to." };
 
-  return syncCorrectiveAction({
+  return createIncidentCorrectiveAction({
+    incidentId: incident.id,
     subjectType: subject.subjectType,
     subjectId: subject.subjectId,
-    requirementId: null,
-    domain: "incidents",
-    actionType: "incident_follow_up_required",
     title: input.title,
-    reason: input.reason,
+    finding: input.finding,
+    actionPlan: input.actionPlan,
+    owner: input.owner,
     priority: input.priority,
     dueAt: input.dueAt,
+    effectivenessReviewRequired: input.effectivenessReviewRequired,
+    effectivenessReviewDueAt: input.effectivenessReviewDueAt,
+    effectivenessReviewOwner: input.effectivenessReviewOwner,
+    effectivenessSuccessCriteria: input.effectivenessSuccessCriteria,
     actor: actor.label,
-    sourceIncidentId: incident.id,
   });
 }
+
+// markCorrectiveActionImplementedAction / cancelCorrectiveActionImplementationAction /
+// recordEffectivenessReviewOutcomeAction / addCorrectiveActionUpdateAction
+// moved to lib/actions/correctiveActions.ts (Incident Corrective Action
+// Lifecycle v0.1 reuse review) — none of them are incident-specific; they
+// operate on a corrective-action/effectiveness-review id directly and
+// belong to any QAPI domain that sources rows into the same shared tables.

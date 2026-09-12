@@ -3,7 +3,14 @@
 // fetching and calls these. See docs/architecture/TODAYS_WORK_CONTINUITY.md
 // for the "attention should be earned" / Continuity Rule principles these
 // mappers implement, especially for assessments/proposals and recruiting.
-import { getCentralDayBoundaryUtc } from "../utils/date.ts";
+import {
+  CENTRAL_TIME_ZONE,
+  formatPlainDate,
+  getCentralDayBoundaryUtc,
+  isBusinessDateDueTodayOrEarlier,
+  isBusinessDateOnly,
+  isBusinessDateOverdue,
+} from "../utils/date.ts";
 import type { WorkItem } from "./workItem.ts";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -12,16 +19,34 @@ function daysBetween(earlier: string, now: Date): number {
   return Math.floor((now.getTime() - new Date(earlier).getTime()) / MS_PER_DAY);
 }
 
+// Live-validation regression fix — a due date can be either a `date`
+// column (compliance_corrective_actions.due_at, corrective_action_effectiveness_reviews.due_at,
+// person_evidence.expiration_date via EPRP) or a `timestamptz` column
+// (wellness follow-ups, relationship actions). Auto-detected by string
+// shape (see lib/utils/date.ts's isBusinessDateOnly) so every existing
+// call site below is unchanged — a `date`-only value is now compared/
+// formatted as the exact calendar day it names, in America/Chicago,
+// never as a UTC instant; a real instant keeps its previous, correct
+// Central-boundary handling. The previous version of formatDate/isOverdue/
+// isDueTodayOrEarlier had no explicit timeZone at all for the instant
+// case either (silently inheriting the host process's local timezone) —
+// now explicit here too, so display no longer depends on where the
+// server happens to be running.
 function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" }).format(new Date(iso));
+  if (isBusinessDateOnly(iso)) return formatPlainDate(iso, { monthStyle: "long", includeYear: false }) ?? iso;
+  return new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL_TIME_ZONE, month: "long", day: "numeric" }).format(new Date(iso));
 }
 
 function isOverdue(dueAt: string | null, now: Date): boolean {
-  return dueAt !== null && new Date(dueAt).getTime() < getCentralDayBoundaryUtc(-1, now).getTime();
+  if (dueAt === null) return false;
+  if (isBusinessDateOnly(dueAt)) return isBusinessDateOverdue(dueAt, now);
+  return new Date(dueAt).getTime() < getCentralDayBoundaryUtc(-1, now).getTime();
 }
 
 function isDueTodayOrEarlier(dueAt: string | null, now: Date): boolean {
-  return dueAt !== null && new Date(dueAt).getTime() < getCentralDayBoundaryUtc(0, now).getTime();
+  if (dueAt === null) return false;
+  if (isBusinessDateOnly(dueAt)) return isBusinessDateDueTodayOrEarlier(dueAt, now);
+  return new Date(dueAt).getTime() < getCentralDayBoundaryUtc(0, now).getTime();
 }
 
 // ─── Wellness follow-ups ─────────────────────────────────────────────────
@@ -561,6 +586,59 @@ export function mapCorrectiveActionToWorkItem(input: CorrectiveActionMapperInput
     subjectId: input.subjectId,
     subjectLabel: input.subjectLabel ?? undefined,
     sourceRoute: correctiveActionSourceRoute(input),
+    explanation,
+  };
+}
+
+// ─── Effectiveness reviews (Incident Corrective Action Lifecycle v0.1) ────
+// Composed independently of the corrective_action WorkItem above — a
+// single incident corrective action produces its implementation-due
+// WorkItem first (while lifecycle_stage='open'), then, once implemented,
+// this separate effectiveness-review-due WorkItem instead. The I/O layer
+// (lib/data/todaysWork.ts) only calls this mapper for reviews whose parent
+// action has actually reached lifecycle_stage='implemented' and whose
+// outcome is still null — a scheduled-but-not-yet-implemented review is
+// not yet real work.
+export interface EffectivenessReviewMapperInput {
+  id: string;
+  correctiveActionTitle: string;
+  dueAt: string;
+  owner: string | null;
+  subjectType: "resident" | "agency" | "community";
+  subjectId: string;
+  subjectLabel: string | null;
+  sourceIncidentId: string | null;
+}
+
+function effectivenessReviewSourceRoute(input: EffectivenessReviewMapperInput): string {
+  if (input.sourceIncidentId) return `/qapi/incidents/${input.sourceIncidentId}`;
+  return "/audit-readiness";
+}
+
+export function mapEffectivenessReviewToWorkItem(input: EffectivenessReviewMapperInput, now: Date = new Date()): WorkItem {
+  const overdue = isOverdue(input.dueAt, now);
+  const dueToday = !overdue && isDueTodayOrEarlier(input.dueAt, now);
+  const status = overdue ? "needs_attention" : dueToday ? "due_today" : "upcoming";
+
+  const explanation = overdue
+    ? `Effectiveness review for "${input.correctiveActionTitle}" was due ${formatDate(input.dueAt)} and remains outstanding.`
+    : dueToday
+      ? `Effectiveness review for "${input.correctiveActionTitle}" is due today.`
+      : `Effectiveness review for "${input.correctiveActionTitle}" due ${formatDate(input.dueAt)}.`;
+
+  return {
+    id: `effectiveness_review:${input.id}`,
+    sourceType: "effectiveness_review",
+    title: `Effectiveness Review — ${input.correctiveActionTitle}`,
+    status,
+    evidenceType: "explicit",
+    dueAt: input.dueAt,
+    ownerId: input.owner ?? undefined,
+    ownerLabel: input.owner ?? undefined,
+    subjectType: input.subjectType,
+    subjectId: input.subjectId,
+    subjectLabel: input.subjectLabel ?? undefined,
+    sourceRoute: effectivenessReviewSourceRoute(input),
     explanation,
   };
 }

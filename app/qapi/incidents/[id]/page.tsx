@@ -13,13 +13,18 @@ import {
 import { getIncidentById } from "@/lib/data/incidents";
 import { getResidentById } from "@/lib/data/residents";
 import { getWorkforceMemberById } from "@/lib/data/workforceMembers";
-import { getOpenCorrectiveActionForIncident } from "@/lib/data/complianceCorrectiveActions";
+import {
+  getCorrectiveActionsForIncident,
+  getEffectivenessReviewForAction,
+  getUpdatesForCorrectiveAction,
+} from "@/lib/data/complianceCorrectiveActions";
 import { formatCentralDateTime } from "@/lib/utils/date";
 import { INCIDENT_TYPE_LABELS } from "@/components/incidents/incidentLabels";
 import { ReviewIncidentForm } from "@/components/incidents/ReviewIncidentForm";
-import { ResolveIncidentForm } from "@/components/incidents/ResolveIncidentForm";
-import { CreateSourceLinkedCorrectiveActionButton } from "@/components/compliance/CreateSourceLinkedCorrectiveActionButton";
-import { ResolveCorrectiveActionButton } from "@/components/compliance/ResolveCorrectiveActionButton";
+import { AddReviewFindingsForm } from "@/components/incidents/AddReviewFindingsForm";
+import { IncidentCorrectiveActionsSection } from "@/components/incidents/IncidentCorrectiveActionsSection";
+import { IncidentResolutionCard } from "@/components/incidents/IncidentResolutionCard";
+import type { CorrectiveActionEffectivenessReview, CorrectiveActionUpdate } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -50,10 +55,29 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
   if (filter.mode === "none") notFound();
   if (filter.mode === "single" && incident.community_id !== filter.communityId) notFound();
 
-  const [resident, workforceMember] = await Promise.all([
+  const [resident, workforceMember, correctiveActions] = await Promise.all([
     incident.resident_id ? getResidentById(incident.resident_id) : Promise.resolve(null),
     incident.workforce_member_id ? getWorkforceMemberById(incident.workforce_member_id) : Promise.resolve(null),
+    getCorrectiveActionsForIncident(incident.id),
   ]);
+
+  // Effectiveness reviews and follow-up updates for every corrective action
+  // linked to this incident — bulk-ish per-action fetch (a handful of
+  // actions per incident at most), mirrors this page's existing
+  // Promise.all-per-related-record convention rather than N sequential
+  // round trips.
+  const [effectivenessReviewEntries, updateEntries] = await Promise.all([
+    Promise.all(
+      correctiveActions
+        .filter((a) => a.effectiveness_review_required)
+        .map(async (a): Promise<[string, CorrectiveActionEffectivenessReview | null]> => [a.id, await getEffectivenessReviewForAction(a.id)])
+    ),
+    Promise.all(correctiveActions.map(async (a): Promise<[string, CorrectiveActionUpdate[]]> => [a.id, await getUpdatesForCorrectiveAction(a.id)])),
+  ]);
+  const effectivenessReviewsByActionId = new Map<string, CorrectiveActionEffectivenessReview>(
+    effectivenessReviewEntries.filter((entry): entry is [string, CorrectiveActionEffectivenessReview] => entry[1] !== null)
+  );
+  const updatesByActionId = new Map<string, CorrectiveActionUpdate[]>(updateEntries);
 
   const canReview = canReviewIncidentOrInfection(profile?.role ?? null);
   const canResolve = canResolveIncidentOrInfection(profile?.role ?? null);
@@ -61,17 +85,11 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
   const typeLabel =
     incident.incident_type === "other" ? incident.incident_type_other || "Other" : INCIDENT_TYPE_LABELS[incident.incident_type];
 
-  // Governance Connective Slice v0.1 — eligible to CREATE a new source-linked
-  // corrective action once reviewed, still open, and flagged as needing
-  // follow-up. Never automatic — see CreateSourceLinkedCorrectiveActionButton.
-  const correctiveActionEligible = incident.status === "open" && incident.review_status === "reviewed" && incident.follow_up_required;
-  // Today's Work Actionability slice — fetched unconditionally, not gated
-  // on correctiveActionEligible: an already-linked open corrective Action
-  // must keep showing (and stay resolvable) here even after the Incident
-  // itself resolves, since Today's Work's own corrective_action WorkItem
-  // routes back to this exact page for as long as the Action stays open,
-  // independently of the Incident's lifecycle.
-  const linkedCorrectiveAction = await getOpenCorrectiveActionForIncident(incident.id);
+  // Eligible to CREATE a new corrective action once reviewed, still open,
+  // and flagged as needing follow-up. Never automatic — see
+  // CreateIncidentCorrectiveActionForm.
+  const correctiveActionCreateEligible = incident.status === "open" && incident.review_status === "reviewed" && incident.follow_up_required;
+  const showCorrectiveActionsSection = correctiveActions.length > 0 || correctiveActionCreateEligible;
 
   return (
     <PageContainer title="Incident">
@@ -178,26 +196,43 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
           <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Review &amp; Follow-up</h2>
 
           {incident.review_status === "reviewed" ? (
-            <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-              <div>
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Reviewed By</dt>
-                <dd className="mt-0.5 font-sans text-sm text-body">{incident.reviewed_by}</dd>
-              </div>
-              <div>
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Reviewed Date</dt>
-                <dd className="mt-0.5 font-sans text-sm text-body">{fmt(incident.reviewed_at)}</dd>
-              </div>
-              <div>
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Follow-up Required</dt>
-                <dd className="mt-0.5 font-sans text-sm text-body">{incident.follow_up_required ? "Yes" : "No"}</dd>
-              </div>
-              {incident.follow_up_required && (
+            <>
+              <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
                 <div>
-                  <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Owner</dt>
-                  <dd className="mt-0.5 font-sans text-sm text-body">{incident.owner || "—"}</dd>
+                  <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Reviewed By</dt>
+                  <dd className="mt-0.5 font-sans text-sm text-body">{incident.reviewed_by}</dd>
                 </div>
+                <div>
+                  <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Reviewed Date</dt>
+                  <dd className="mt-0.5 font-sans text-sm text-body">{fmt(incident.reviewed_at)}</dd>
+                </div>
+                <div>
+                  <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Follow-up Required</dt>
+                  <dd className="mt-0.5 font-sans text-sm text-body">{incident.follow_up_required ? "Yes" : "No"}</dd>
+                </div>
+                {incident.follow_up_required && (
+                  <div>
+                    <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Owner</dt>
+                    <dd className="mt-0.5 font-sans text-sm text-body">{incident.owner || "—"}</dd>
+                  </div>
+                )}
+                {incident.review_findings && (
+                  <div className="sm:col-span-2">
+                    <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">
+                      Review Findings / Contributing Factors
+                    </dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap font-sans text-sm text-body">{incident.review_findings}</dd>
+                  </div>
+                )}
+              </dl>
+              {!incident.review_findings && canReview && (
+                <AddReviewFindingsForm
+                  incidentId={incident.id}
+                  followUpRequired={incident.follow_up_required}
+                  owner={incident.owner}
+                />
               )}
-            </dl>
+            </>
           ) : canReview ? (
             <div className="mt-3">
               <ReviewIncidentForm incidentId={incident.id} />
@@ -207,69 +242,37 @@ export default async function IncidentDetailPage({ params }: { params: Promise<{
           )}
         </section>
 
-        {/* ─── Corrective Action (Governance Connective Slice v0.1) ───────
-            Only rendered when there's a real decision to make: reviewed,
-            still open, and flagged as needing follow-up. Never appears —
-            and never auto-creates anything — merely because follow-up was
+        {/* ─── Corrective Actions ───────────────────────────────────────
+            Only rendered when there's something to show or do: at least
+            one action already exists, or the incident is reviewed, still
+            open, and flagged as needing follow-up. Never appears — and
+            never auto-creates anything — merely because follow-up was
             checked "yes" at review time. */}
-        {(linkedCorrectiveAction || correctiveActionEligible) && (
+        {showCorrectiveActionsSection && (
           <section className="rounded-xl border border-ivory-border bg-white p-5">
-            <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Corrective Action</h2>
-            {linkedCorrectiveAction ? (
-              <div className="mt-2 space-y-2">
-                <p className="font-sans text-sm text-body">
-                  Tracked: <span className="font-medium">{linkedCorrectiveAction.title}</span>
-                  {linkedCorrectiveAction.due_at ? ` — due ${fmt(linkedCorrectiveAction.due_at)}` : ""}
-                </p>
-                {canManageAction ? (
-                  <ResolveCorrectiveActionButton actionId={linkedCorrectiveAction.id} actionTitle={linkedCorrectiveAction.title} />
-                ) : (
-                  <p className="font-sans text-xs text-muted">Your role does not include corrective-action resolution.</p>
-                )}
-              </div>
-            ) : canManageAction ? (
-              <div className="mt-3">
-                <CreateSourceLinkedCorrectiveActionButton
-                  kind="incident"
-                  recordId={incident.id}
-                  defaultTitle={`Incident follow-up — ${typeLabel}`}
-                  defaultReason={incident.description}
-                />
-              </div>
-            ) : (
-              <p className="mt-2 font-sans text-sm text-muted">Follow-up required — no corrective action tracked yet.</p>
-            )}
+            <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Corrective Actions</h2>
+            <div className="mt-3">
+              <IncidentCorrectiveActionsSection
+                incidentId={incident.id}
+                actions={correctiveActions}
+                effectivenessReviewsByActionId={effectivenessReviewsByActionId}
+                updatesByActionId={updatesByActionId}
+                canManage={canManageAction}
+                canCreate={canManageAction && correctiveActionCreateEligible}
+              />
+            </div>
           </section>
         )}
 
         {/* ─── D. Resolution ─── */}
         <section className="rounded-xl border border-ivory-border bg-white p-5">
           <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Resolution</h2>
-
-          {incident.status === "resolved" ? (
-            <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-              <div>
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Resolved By</dt>
-                <dd className="mt-0.5 font-sans text-sm text-body">{incident.resolved_by}</dd>
-              </div>
-              <div>
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Resolved Date</dt>
-                <dd className="mt-0.5 font-sans text-sm text-body">{fmt(incident.resolved_at)}</dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Resolution Note</dt>
-                <dd className="mt-0.5 whitespace-pre-wrap font-sans text-sm text-body">{incident.resolution_note}</dd>
-              </div>
-            </dl>
-          ) : incident.review_status !== "reviewed" ? (
-            <p className="mt-2 font-sans text-sm text-muted">Available once this incident has been reviewed.</p>
-          ) : canResolve ? (
-            <div className="mt-3">
-              <ResolveIncidentForm incidentId={incident.id} />
-            </div>
-          ) : (
-            <p className="mt-2 font-sans text-sm text-muted">Reviewed — awaiting resolution.</p>
-          )}
+          <IncidentResolutionCard
+            incident={incident}
+            sourceLinkedActions={correctiveActions}
+            effectivenessReviewsByActionId={effectivenessReviewsByActionId}
+            canResolve={canResolve}
+          />
         </section>
       </div>
     </PageContainer>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/Badge";
 import { withTodaysWorkOrigin } from "@/lib/workspace/originMarker";
+import { CENTRAL_TIME_ZONE, formatPlainDate, isBusinessDateOnly } from "@/lib/utils/date";
 import type { WorkItem, WorkItemSourceType } from "@/lib/workspace/workItem";
 
 // Exported for reuse by TodaysWorkView's active-source-filter chip — one
@@ -19,6 +20,8 @@ export const SOURCE_LABELS: Record<WorkItemSourceType, string> = {
   compliance_requirement: "Emergency Preparedness",
   // Today's Work Actionability slice
   corrective_action: "Corrective Action",
+  // Incident Corrective Action Lifecycle v0.1
+  effectiveness_review: "Effectiveness Review",
 };
 
 const PRIORITY_TONE: Record<NonNullable<WorkItem["priority"]>, "danger" | "warning" | "neutral"> = {
@@ -28,8 +31,18 @@ const PRIORITY_TONE: Record<NonNullable<WorkItem["priority"]>, "danger" | "warni
   low: "neutral",
 };
 
+// Live-validation regression fix — a `date`-only value (corrective action/
+// effectiveness review/EPRP due dates) must render as the exact calendar
+// day it names, never shifted by whatever timezone this process happens
+// to be running in (the previous version had no explicit timeZone at all,
+// so a Central-time dev machine rendering a UTC-midnight-parsed date one
+// day early — "Sep 24" showing as "Sep 23" — was reproducible exactly as
+// reported). A real timestamptz (wellness/relationship completedAt/dueAt)
+// keeps its own explicit Central-time formatting instead. See
+// lib/utils/date.ts's isBusinessDateOnly for the auto-detection.
 function formatDueDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(iso));
+  if (isBusinessDateOnly(iso)) return formatPlainDate(iso, { includeYear: false }) ?? iso;
+  return new Intl.DateTimeFormat("en-US", { timeZone: CENTRAL_TIME_ZONE, month: "short", day: "numeric" }).format(new Date(iso));
 }
 
 export function WorkItemRow({ item }: { item: WorkItem }) {
