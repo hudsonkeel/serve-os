@@ -211,7 +211,6 @@ export default async function InfectionDetailPage({ params }: { params: Promise<
             ) : canManageAction ? (
               <div className="mt-3">
                 <CreateSourceLinkedCorrectiveActionButton
-                  kind="infection"
                   recordId={infection.id}
                   defaultTitle={`Infection follow-up — disclosed ${fmtDisclosedDate(infection.disclosed_at)}`}
                   defaultReason={infection.condition_description}

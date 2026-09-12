@@ -3,6 +3,7 @@
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { AutoGrowTextarea } from "@/components/ui/AutoGrowTextarea";
 import { resolveIncidentAction } from "@/lib/actions/incidents";
 
 const MIN_NOTE_LENGTH = 10;
@@ -43,12 +44,11 @@ export function ResolveIncidentForm({ incidentId }: { incidentId: string }) {
         <span className="mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-subtle">
           Resolution Note
         </span>
-        <textarea
+        <AutoGrowTextarea
           value={resolutionNote}
           onChange={(e) => setResolutionNote(e.target.value)}
-          rows={3}
+          minRows={3}
           placeholder="What was done, and why this incident is now closed."
-          className="w-full rounded-md border border-ivory-border bg-surface px-3 py-2 font-sans text-base text-body outline-none placeholder:text-subtle focus:border-gold/60"
         />
       </label>
 

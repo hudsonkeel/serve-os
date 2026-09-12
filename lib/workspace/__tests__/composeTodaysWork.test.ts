@@ -50,6 +50,7 @@ const EMPTY_INPUT: ComposeTodaysWorkInput = {
   recentlyResolvedInfections: [],
   eprpEvaluation: null,
   openCorrectiveActions: [],
+  pendingEffectivenessReviews: [],
 };
 
 // ─── Acceptance A — passive Prospect removal ────────────────────────────
@@ -105,6 +106,7 @@ test("G1. an Incident's open corrective Action is composed as its own WorkItem, 
           sourceInfectionId: null,
           sourceReviewItemId: null,
           requirementCode: null,
+          lifecycleStage: "open" as const,
         },
       ],
     },
@@ -143,6 +145,7 @@ test("G2. the Incident resolving (moving to recentlyResolvedIncidents) does not 
           review_status: "reviewed",
           reviewed_by: "Jordan Lee",
           reviewed_at: "2026-07-19T00:00:00.000Z",
+          review_findings: null,
           status: "resolved",
           resolution_note: "Resolved.",
           resolved_by: "Jordan Lee",
@@ -169,6 +172,7 @@ test("G2. the Incident resolving (moving to recentlyResolvedIncidents) does not 
           sourceInfectionId: null,
           sourceReviewItemId: null,
           requirementCode: null,
+          lifecycleStage: "open" as const,
         },
       ],
     },
@@ -184,6 +188,175 @@ test("G2. the Incident resolving (moving to recentlyResolvedIncidents) does not 
 test("G3. resolving the corrective Action itself (absent from openCorrectiveActions on the next read) removes its WorkItem", () => {
   const items = composeTodaysWorkItems({ ...EMPTY_INPUT, openCorrectiveActions: [] }, NOW);
   assert.equal(items.filter((i) => i.sourceType === "corrective_action").length, 0);
+});
+
+// Live-validation regression fix: an action that reached lifecycle_stage
+// 'implemented' while status stays 'open' (an incident action awaiting its
+// required effectiveness review — see 20260910000000's closure-decision
+// note) must no longer appear as outstanding IMPLEMENTATION work; the
+// effectiveness review that follows it is its own, separately-composed
+// WorkItem (Acceptance H) — this was the exact "still shows under Needs
+// Attention" bug confirmed in live validation.
+test("G4. an implemented action awaiting its effectiveness review no longer produces a corrective_action WorkItem", () => {
+  const items = composeTodaysWorkItems(
+    {
+      ...EMPTY_INPUT,
+      openCorrectiveActions: [
+        {
+          id: "ca1",
+          title: "Implement medication-assistance verification protocol",
+          reason: "Medication administered without required verification step.",
+          priority: "high",
+          dueAt: "2026-07-01",
+          owner: "Jordan Lee",
+          subjectType: "resident",
+          subjectId: "r1",
+          subjectLabel: "Ada Washington",
+          sourceIncidentId: "inc1",
+          sourceInfectionId: null,
+          sourceReviewItemId: null,
+          requirementCode: null,
+          lifecycleStage: "implemented" as const,
+        },
+      ],
+      pendingEffectivenessReviews: [
+        {
+          id: "rev1",
+          correctiveActionTitle: "Implement medication-assistance verification protocol",
+          dueAt: "2026-08-15",
+          owner: "Jordan Lee",
+          subjectType: "resident",
+          subjectId: "r1",
+          subjectLabel: "Ada Washington",
+          sourceIncidentId: "inc1",
+        },
+      ],
+    },
+    NOW,
+  );
+  assert.equal(items.filter((i) => i.sourceType === "corrective_action").length, 0);
+  assert.equal(items.filter((i) => i.sourceType === "effectiveness_review").length, 1);
+});
+
+test("G5. a verified_effective or cancelled action produces no corrective_action WorkItem either (both are terminal — status auto-closes them anyway, but the composer's own filter must not depend on that alone)", () => {
+  const items = composeTodaysWorkItems(
+    {
+      ...EMPTY_INPUT,
+      openCorrectiveActions: [
+        {
+          id: "ca1",
+          title: "T1",
+          reason: "R",
+          priority: "normal",
+          dueAt: null,
+          owner: null,
+          subjectType: "resident",
+          subjectId: "r1",
+          subjectLabel: null,
+          sourceIncidentId: "inc1",
+          sourceInfectionId: null,
+          sourceReviewItemId: null,
+          requirementCode: null,
+          lifecycleStage: "verified_effective" as const,
+        },
+        {
+          id: "ca2",
+          title: "T2",
+          reason: "R",
+          priority: "normal",
+          dueAt: null,
+          owner: null,
+          subjectType: "resident",
+          subjectId: "r1",
+          subjectLabel: null,
+          sourceIncidentId: "inc1",
+          sourceInfectionId: null,
+          sourceReviewItemId: null,
+          requirementCode: null,
+          lifecycleStage: "cancelled" as const,
+        },
+      ],
+    },
+    NOW,
+  );
+  assert.equal(items.filter((i) => i.sourceType === "corrective_action").length, 0);
+});
+
+// ─── Acceptance H — effectiveness review composed independently ─────────
+// (Incident Corrective Action Lifecycle v0.1, Today's Work integration)
+
+test("H1. a pending effectiveness review is composed as its own WorkItem, independent of the corrective Action's own WorkItem", () => {
+  const items = composeTodaysWorkItems(
+    {
+      ...EMPTY_INPUT,
+      pendingEffectivenessReviews: [
+        {
+          id: "rev1",
+          correctiveActionTitle: "Implement medication-assistance verification protocol",
+          dueAt: "2026-07-20",
+          owner: "Jordan Lee",
+          subjectType: "resident",
+          subjectId: "r1",
+          subjectLabel: "Ada Washington",
+          sourceIncidentId: "inc1",
+        },
+      ],
+    },
+    NOW,
+  );
+  assert.equal(items.length, 1);
+  assert.equal(items[0].sourceType, "effectiveness_review");
+  assert.equal(items[0].sourceRoute, "/qapi/incidents/inc1");
+  assert.equal(items[0].status, "needs_attention"); // 2026-07-20 due date is before NOW (2026-07-26)
+});
+
+test("H2. a corrective Action's implementation-due WorkItem and its effectiveness-review-due WorkItem can both compose at once, as two distinct items", () => {
+  const items = composeTodaysWorkItems(
+    {
+      ...EMPTY_INPUT,
+      openCorrectiveActions: [
+        {
+          id: "ca1",
+          title: "Implement medication-assistance verification protocol",
+          reason: "Medication administered without required verification step.",
+          priority: "high",
+          dueAt: "2026-08-01",
+          owner: "Jordan Lee",
+          subjectType: "resident",
+          subjectId: "r1",
+          subjectLabel: "Ada Washington",
+          sourceIncidentId: "inc1",
+          sourceInfectionId: null,
+          sourceReviewItemId: null,
+          requirementCode: null,
+          lifecycleStage: "open" as const,
+        },
+      ],
+      pendingEffectivenessReviews: [
+        {
+          id: "rev1",
+          correctiveActionTitle: "Implement medication-assistance verification protocol",
+          dueAt: "2026-08-15",
+          owner: "Jordan Lee",
+          subjectType: "resident",
+          subjectId: "r1",
+          subjectLabel: "Ada Washington",
+          sourceIncidentId: "inc1",
+        },
+      ],
+    },
+    NOW,
+  );
+  assert.equal(items.length, 2);
+  assert.deepEqual(
+    items.map((i) => i.sourceType).sort(),
+    ["corrective_action", "effectiveness_review"],
+  );
+});
+
+test("H3. no effectiveness review WorkItem is ever produced for one lib/data/todaysWork.ts didn't supply (not-yet-implemented reviews are filtered at the I/O layer, not here)", () => {
+  const items = composeTodaysWorkItems(EMPTY_INPUT, NOW);
+  assert.equal(items.length, 0);
 });
 
 // ─── Acceptance I / J — no fabricated due state, no duplicate source of truth ──
@@ -207,6 +380,7 @@ test("no corrective Action WorkItem ever fabricates a due date it wasn't given",
           sourceInfectionId: "inf1",
           sourceReviewItemId: null,
           requirementCode: null,
+          lifecycleStage: "open" as const,
         },
       ],
     },

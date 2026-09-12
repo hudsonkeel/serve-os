@@ -89,8 +89,14 @@ test("matchesSourceFilter: an exact sourceType matches only itself", () => {
   assert.ok(!matchesSourceFilter(item({ sourceType: "proposal" }), "assessment"));
 });
 
-test("matchesSourceFilter: 'governance' matches incident/infection/compliance_requirement/corrective_action, nothing else", () => {
-  for (const sourceType of ["incident", "infection", "compliance_requirement", "corrective_action"] as const) {
+test("matchesSourceFilter: 'governance' matches incident/infection/compliance_requirement/corrective_action/effectiveness_review, nothing else", () => {
+  for (const sourceType of [
+    "incident",
+    "infection",
+    "compliance_requirement",
+    "corrective_action",
+    "effectiveness_review",
+  ] as const) {
     assert.ok(matchesSourceFilter(item({ sourceType }), "governance"), `${sourceType} should match governance`);
   }
   for (const sourceType of ["wellness_follow_up", "relationship_action", "assessment", "proposal", "recruiting", "other"] as const) {

@@ -3,47 +3,41 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
+import { OPERATIONAL_STATE_LABELS, OPERATIONAL_STATE_ORDER, OPERATIONAL_STATE_TONES } from "./operationalStateLabels";
+import type { IncidentOperationalState } from "@/lib/compliance/incidentOperationalState";
 
 export interface IncidentRowView {
   id: string;
   occurredAtLabel: string;
   involvedLabel: string;
   typeLabel: string;
-  status: "open" | "resolved";
-  reviewStatus: "not_reviewed" | "reviewed";
-  followUpRequired: boolean;
+  operationalState: IncidentOperationalState;
   owner: string | null;
 }
 
-type FilterTab = "all" | "open" | "needs_review" | "resolved";
+type FilterTab = "all" | IncidentOperationalState;
 
 const FILTER_TABS: { id: FilterTab; label: string }[] = [
   { id: "all", label: "All" },
-  { id: "open", label: "Open" },
-  { id: "needs_review", label: "Needs Review" },
-  { id: "resolved", label: "Resolved" },
+  ...OPERATIONAL_STATE_ORDER.map((state) => ({ id: state, label: OPERATIONAL_STATE_LABELS[state] })),
 ];
 
 function matchesFilter(row: IncidentRowView, tab: FilterTab): boolean {
-  switch (tab) {
-    case "all":
-      return true;
-    case "open":
-      return row.status === "open";
-    case "needs_review":
-      return row.reviewStatus === "not_reviewed";
-    case "resolved":
-      return row.status === "resolved";
-  }
+  return tab === "all" || row.operationalState === tab;
 }
 
+// Incident Corrective Action Lifecycle v0.1 — the register answers "What
+// happened? What requires my attention next? Who owns it?" via one derived
+// operational-state badge (lib/compliance/incidentOperationalState.ts)
+// rather than separately-shown status/review/follow-up flags, which the
+// state itself already accounts for.
 export function IncidentRegisterTable({ rows }: { rows: IncidentRowView[] }) {
   const [tab, setTab] = useState<FilterTab>("all");
   const filtered = rows.filter((row) => matchesFilter(row, tab));
 
   return (
     <div>
-      <div className="mb-3 flex gap-2">
+      <div className="mb-3 flex flex-wrap gap-2">
         {FILTER_TABS.map((f) => (
           <button
             key={f.id}
@@ -71,7 +65,6 @@ export function IncidentRegisterTable({ rows }: { rows: IncidentRowView[] }) {
                 <th className="px-4 py-3 font-medium text-muted">Involved</th>
                 <th className="px-4 py-3 font-medium text-muted">Type</th>
                 <th className="px-4 py-3 font-medium text-muted">Status</th>
-                <th className="px-4 py-3 font-medium text-muted">Review</th>
                 <th className="px-4 py-3 font-medium text-muted">Owner</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -83,17 +76,9 @@ export function IncidentRegisterTable({ rows }: { rows: IncidentRowView[] }) {
                   <td className="px-4 py-3 text-body">{row.involvedLabel}</td>
                   <td className="px-4 py-3 text-muted">{row.typeLabel}</td>
                   <td className="px-4 py-3">
-                    <Badge tone={row.status === "resolved" ? "success" : "blue"}>
-                      {row.status === "resolved" ? "Resolved" : "Open"}
+                    <Badge tone={OPERATIONAL_STATE_TONES[row.operationalState]}>
+                      {OPERATIONAL_STATE_LABELS[row.operationalState]}
                     </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <Badge tone={row.reviewStatus === "reviewed" ? "neutral" : "warning"}>
-                        {row.reviewStatus === "reviewed" ? "Reviewed" : "Needs Review"}
-                      </Badge>
-                      {row.followUpRequired && <Badge tone="warning">Follow-up Required</Badge>}
-                    </div>
                   </td>
                   <td className="px-4 py-3 text-muted">{row.owner ?? "—"}</td>
                   <td className="px-4 py-3 text-right">

@@ -98,6 +98,12 @@ export interface MarkIncidentReviewedInput {
   incidentId: string;
   followUpRequired: boolean;
   owner: string | null;
+  // Incident Corrective Action Lifecycle v0.1 — only written by the RPC on
+  // the FIRST review; a re-affirm call (incident already reviewed) ignores
+  // whatever is passed here, matching reviewed_by/reviewed_at's existing
+  // frozen-after-first-review discipline. Optional so the pre-existing
+  // call site (which doesn't collect this yet) keeps compiling unchanged.
+  reviewFindings?: string | null;
   actor: string;
 }
 
@@ -109,6 +115,7 @@ export async function markIncidentReviewed(input: MarkIncidentReviewedInput): Pr
       p_incident_id: input.incidentId,
       p_follow_up_required: input.followUpRequired,
       p_owner: input.owner,
+      p_review_findings: input.reviewFindings ?? null,
       p_actor: input.actor,
     })
     .single();

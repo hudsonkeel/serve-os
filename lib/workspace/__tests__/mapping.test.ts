@@ -9,6 +9,7 @@ import {
   mapCompletedRelationshipActionToWorkItem,
   mapCompletedWellnessFollowUpToWorkItem,
   mapCorrectiveActionToWorkItem,
+  mapEffectivenessReviewToWorkItem,
   mapEmergencyPreparednessObligationToWorkItem,
   mapIncidentToWorkItem,
   mapInfectionToWorkItem,
@@ -360,6 +361,36 @@ test("30. corrective action with no due date -> upcoming, no fabricated due date
   assert.ok(item.explanation.includes("Infection"));
 });
 
+// Live-validation regression fix — compliance_corrective_actions.due_at is
+// a `date` column and PostgREST/supabase-js always serialize it as a bare
+// YYYY-MM-DD string (unlike test 29's dueAt, which used a full ISO
+// timestamp — a shape this field never actually has in real data, so that
+// test never exercised the real date-only bug). A due date equal to
+// today's own Central calendar date must read as due_today, never overdue.
+test("29b. corrective action with a real (bare YYYY-MM-DD) due_at equal to today -> due_today, not overdue", () => {
+  const item = mapCorrectiveActionToWorkItem(
+    {
+      id: "ca1b",
+      title: "Follow up on fall risk",
+      reason: "Incident follow-up required.",
+      status: "open",
+      priority: "high",
+      dueAt: "2026-07-26",
+      owner: "Jordan Lee",
+      subjectType: "resident",
+      subjectId: "r1",
+      subjectLabel: "Ada Washington",
+      sourceIncidentId: "inc1",
+      sourceInfectionId: null,
+      sourceReviewItemId: null,
+      requirementCode: null,
+    },
+    NOW,
+  );
+  assert.equal(item.status, "due_today");
+  assert.equal(item.dueAt, "2026-07-26");
+});
+
 test("31. corrective action source routing: Incident-sourced routes to the exact incident record", () => {
   const item = mapCorrectiveActionToWorkItem({
     id: "ca3", title: "T", reason: "R", status: "open", priority: "normal", dueAt: null, owner: null,
@@ -402,6 +433,83 @@ test("35. corrective action source routing: no source and no requirement falls b
     subjectType: "community", subjectId: "community1", subjectLabel: null,
     sourceIncidentId: null, sourceInfectionId: null, sourceReviewItemId: null, requirementCode: null,
   }, NOW);
+  assert.equal(item.sourceRoute, "/audit-readiness");
+});
+
+test("36. effectiveness review: overdue due date -> needs_attention, routes to the source incident, non-empty explanation", () => {
+  const item = mapEffectivenessReviewToWorkItem(
+    {
+      id: "rev1",
+      correctiveActionTitle: "Implement medication-assistance verification protocol",
+      dueAt: "2026-07-20",
+      owner: "Jordan Lee",
+      subjectType: "resident",
+      subjectId: "r1",
+      subjectLabel: "Ada Washington",
+      sourceIncidentId: "inc1",
+    },
+    NOW,
+  );
+  assert.equal(item.status, "needs_attention");
+  assert.equal(item.sourceType, "effectiveness_review");
+  assert.equal(item.sourceRoute, "/qapi/incidents/inc1");
+  assert.ok(item.explanation.length > 0);
+  assert.ok(item.explanation.includes("outstanding"));
+});
+
+// Live-validation regression fix: a date-only due date equal to today's
+// own Central calendar date now correctly reads as due_today, not overdue
+// (isBusinessDateOnly/isBusinessDateOverdue in lib/utils/date.ts — see its
+// own tests for the yesterday/today/tomorrow matrix this depends on).
+test("37. effectiveness review: due date equal to today's own calendar date -> due_today", () => {
+  const item = mapEffectivenessReviewToWorkItem(
+    {
+      id: "rev2",
+      correctiveActionTitle: "T",
+      dueAt: "2026-07-26",
+      owner: null,
+      subjectType: "resident",
+      subjectId: "r1",
+      subjectLabel: null,
+      sourceIncidentId: "inc1",
+    },
+    NOW,
+  );
+  assert.equal(item.status, "due_today");
+});
+
+test("38. effectiveness review: due in the future -> upcoming, dueAt passes through unfabricated", () => {
+  const item = mapEffectivenessReviewToWorkItem(
+    {
+      id: "rev3",
+      correctiveActionTitle: "T",
+      dueAt: "2026-08-15",
+      owner: null,
+      subjectType: "resident",
+      subjectId: "r1",
+      subjectLabel: null,
+      sourceIncidentId: "inc1",
+    },
+    NOW,
+  );
+  assert.equal(item.status, "upcoming");
+  assert.equal(item.dueAt, "2026-08-15");
+});
+
+test("39. effectiveness review: no source incident falls back to the Audit Readiness domain page, never a broken link", () => {
+  const item = mapEffectivenessReviewToWorkItem(
+    {
+      id: "rev4",
+      correctiveActionTitle: "T",
+      dueAt: "2026-08-15",
+      owner: null,
+      subjectType: "community",
+      subjectId: "community1",
+      subjectLabel: null,
+      sourceIncidentId: null,
+    },
+    NOW,
+  );
   assert.equal(item.sourceRoute, "/audit-readiness");
 });
 

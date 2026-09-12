@@ -2209,6 +2209,15 @@ export type ComplianceCorrectiveActionType =
 export type ComplianceCorrectiveActionPriority = "low" | "normal" | "high" | "urgent";
 export type ComplianceCorrectiveActionStatus = "open" | "resolved" | "dismissed";
 
+// Incident Corrective Action Lifecycle v0.1 — orthogonal to `status` above,
+// which keeps its exact original meaning for every consumer. lifecycle_stage
+// only answers "has the intervention happened, and been proven effective."
+// 'verified_effective' is reachable only via record_effectiveness_review_outcome
+// (an 'effective' outcome) from 'implemented'; 'cancelled' is an explicit,
+// reasoned withdrawal via cancel_corrective_action_implementation. See
+// 20260910000000_add_incident_corrective_action_lifecycle.sql.
+export type ComplianceCorrectiveActionLifecycleStage = "open" | "implemented" | "verified_effective" | "cancelled";
+
 export interface ComplianceCorrectiveAction {
   id: string;
   subject_type: ComplianceCorrectiveActionSubjectType;
@@ -2218,6 +2227,9 @@ export interface ComplianceCorrectiveAction {
   action_type: ComplianceCorrectiveActionType;
   title: string;
   reason: string;
+  // Incident Corrective Action Lifecycle v0.1 — "Action to Be Taken",
+  // distinct from `reason` ("Finding"). Null for legacy/non-incident rows.
+  action_plan: string | null;
   owner: string | null;
   priority: ComplianceCorrectiveActionPriority;
   due_at: string | null;
@@ -2225,6 +2237,16 @@ export interface ComplianceCorrectiveAction {
   resolution_note: string | null;
   resolved_by: string | null;
   resolved_at: string | null;
+  lifecycle_stage: ComplianceCorrectiveActionLifecycleStage;
+  implemented_at: string | null;
+  implemented_by: string | null;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_note: string | null;
+  // Only whether one was demanded — the due date itself lives solely on
+  // the child CorrectiveActionEffectivenessReview record (its due_at is
+  // canonical; this table deliberately does not duplicate it).
+  effectiveness_review_required: boolean;
   audit_session_item_id: string | null;
   // Governance Connective Slice v0.1 — at most one of these three, and at
   // most one of these three plus audit_session_item_id above, is ever
@@ -2235,6 +2257,51 @@ export interface ComplianceCorrectiveAction {
   created_by: string;
   created_at: string;
   updated_at: string;
+}
+
+// Incident Corrective Action Lifecycle v0.1 — dedicated child record (one
+// per corrective action). Scheduled (due_at/owner/success_criteria present,
+// outcome null) or completed (all four completion fields present) — never
+// half-way (DB-enforced).
+export type EffectivenessReviewOutcome = "effective" | "partially_effective" | "ineffective";
+
+export interface CorrectiveActionEffectivenessReview {
+  id: string;
+  corrective_action_id: string;
+  due_at: string;
+  owner: string | null;
+  success_criteria: string;
+  outcome: EffectivenessReviewOutcome | null;
+  evidence: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  // Incident Corrective Action Lifecycle v0.1 — the void-and-reopen
+  // correction mechanism (void_effectiveness_review_outcome). All seven
+  // present together, or all null — never half-way (DB-enforced). Once
+  // set, immutable history of an erroneously-recorded determination; the
+  // active outcome/evidence/reviewed_by/reviewed_at fields above are
+  // nulled back to pending at the same moment, never overwritten in
+  // place. See 20260912010000_add_effectiveness_review_void_mechanism.sql.
+  voided_outcome: EffectivenessReviewOutcome | null;
+  voided_evidence: string | null;
+  voided_reviewed_by: string | null;
+  voided_reviewed_at: string | null;
+  voided_by: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+// Incident Corrective Action Lifecycle v0.1 — append-only follow-up
+// activity, single-parented to a corrective action. No update/delete path
+// exists anywhere (DB trigger rejects both).
+export interface CorrectiveActionUpdate {
+  id: string;
+  corrective_action_id: string;
+  body: string;
+  created_by: string;
+  created_at: string;
 }
 
 export type AuditSessionStatus = "draft" | "in_progress" | "completed";
@@ -2474,6 +2541,12 @@ export interface Incident {
   review_status: IncidentInfectionReviewStatus;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  // Incident Corrective Action Lifecycle v0.1 — "why" follow-up/corrective
+  // action is or isn't necessary, distinct from `description` (the
+  // factual narrative, never overwritten by review). Frozen after the
+  // first review — mark_incident_reviewed's re-affirm path never rewrites
+  // it. See 20260910000000_add_incident_corrective_action_lifecycle.sql.
+  review_findings: string | null;
   status: IncidentInfectionRecordStatus;
   resolution_note: string | null;
   resolved_by: string | null;

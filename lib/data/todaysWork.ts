@@ -8,7 +8,11 @@
 // TODAYS_WORK_CONTINUITY.md — Today's Work is an aggregation layer, never
 // a system of record: nothing here writes anything, and every produced
 // WorkItem links back to its real source.
-import { composeTodaysWorkItems, type CorrectiveActionForCompose } from "../workspace/composeTodaysWork.ts";
+import {
+  composeTodaysWorkItems,
+  type CorrectiveActionForCompose,
+  type EffectivenessReviewForCompose,
+} from "../workspace/composeTodaysWork.ts";
 import type { WorkItem } from "../workspace/workItem.ts";
 import {
   getNearestOpenActionByRelationship,
@@ -20,7 +24,11 @@ import { getRecruitingLeads } from "./recruitingLeads.ts";
 import { getActionableIncidents, getRecentlyResolvedIncidents } from "./incidents.ts";
 import { getActionableInfections, getRecentlyResolvedInfections } from "./infections.ts";
 import { getEmergencyPreparednessReadinessEvaluation } from "../emergencyPreparedness/emergencyPreparednessReadiness.ts";
-import { getAllOpenCorrectiveActions } from "./complianceCorrectiveActions.ts";
+import {
+  getAllOpenCorrectiveActions,
+  getComplianceCorrectiveActionsByIds,
+  getPendingEffectivenessReviews,
+} from "./complianceCorrectiveActions.ts";
 import { getRequirementsByIds } from "./personRequirements.ts";
 import { getResidentDisplayNamesByIds } from "./residentRoster.ts";
 
@@ -57,7 +65,55 @@ async function loadCorrectiveActionsForCompose(): Promise<CorrectiveActionForCom
     sourceInfectionId: action.source_infection_id,
     sourceReviewItemId: action.source_review_item_id,
     requirementCode: action.requirement_id ? requirements.get(action.requirement_id)?.requirement_code ?? null : null,
+    lifecycleStage: action.lifecycle_stage,
   }));
+}
+
+// Incident Corrective Action Lifecycle v0.1 — Today's Work integration for
+// effectiveness-review due dates. A scheduled review only becomes real,
+// actionable work once its parent corrective action has actually reached
+// lifecycle_stage='implemented' (before that, nagging about an
+// effectiveness check would be premature — the intervention hasn't even
+// happened yet); getPendingEffectivenessReviews() already filters to
+// outcome IS NULL, so this only needs to additionally filter by the
+// parent's lifecycle_stage, which requires joining in the parent rows —
+// done here, in bulk, never per-review. The pure mapper
+// (lib/workspace/mapping.ts#mapEffectivenessReviewToWorkItem) never
+// touches the database itself.
+async function loadEffectivenessReviewsForCompose(): Promise<EffectivenessReviewForCompose[]> {
+  const reviews = await getPendingEffectivenessReviews();
+  if (reviews.length === 0) return [];
+
+  const actionIds = [...new Set(reviews.map((r) => r.corrective_action_id))];
+  const actions = await getComplianceCorrectiveActionsByIds(actionIds);
+  const actionById = new Map(actions.map((a) => [a.id, a]));
+
+  const implementedReviews = reviews.filter((r) => actionById.get(r.corrective_action_id)?.lifecycle_stage === "implemented");
+  if (implementedReviews.length === 0) return [];
+
+  const residentIds = [
+    ...new Set(
+      implementedReviews
+        .map((r) => actionById.get(r.corrective_action_id))
+        .filter((a): a is NonNullable<typeof a> => a !== undefined && a.subject_type === "resident")
+        .map((a) => a.subject_id)
+    ),
+  ];
+  const residentNames = await getResidentDisplayNamesByIds(residentIds);
+
+  return implementedReviews.map((review) => {
+    const action = actionById.get(review.corrective_action_id)!;
+    return {
+      id: review.id,
+      correctiveActionTitle: action.title,
+      dueAt: review.due_at,
+      owner: review.owner ?? action.owner,
+      subjectType: action.subject_type,
+      subjectId: action.subject_id,
+      subjectLabel: action.subject_type === "resident" ? (residentNames.get(action.subject_id) ?? null) : null,
+      sourceIncidentId: action.source_incident_id,
+    };
+  });
 }
 
 export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkItem[]> {
@@ -74,6 +130,7 @@ export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkIt
     recentlyResolvedInfections,
     eprpEvaluation,
     openCorrectiveActions,
+    pendingEffectivenessReviews,
   ] = await Promise.all([
     getAllOpenWellnessFollowUps(),
     getRecentlyCompletedWellnessFollowUps(),
@@ -87,6 +144,7 @@ export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkIt
     getRecentlyResolvedInfections(),
     getEmergencyPreparednessReadinessEvaluation(),
     loadCorrectiveActionsForCompose(),
+    loadEffectivenessReviewsForCompose(),
   ]);
 
   return composeTodaysWorkItems(
@@ -103,6 +161,7 @@ export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkIt
       recentlyResolvedInfections,
       eprpEvaluation,
       openCorrectiveActions,
+      pendingEffectivenessReviews,
     },
     now,
   );

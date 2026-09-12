@@ -36,6 +36,7 @@ function incident(overrides: Partial<Incident> = {}): Incident {
     review_status: "not_reviewed",
     reviewed_by: null,
     reviewed_at: null,
+    review_findings: null,
     status: "open",
     resolution_note: null,
     resolved_by: null,

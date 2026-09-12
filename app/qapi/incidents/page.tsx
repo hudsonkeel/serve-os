@@ -7,10 +7,12 @@ import { canCreateIncidentOrInfection, canViewIncidentsAndInfections } from "@/l
 import { listIncidents } from "@/lib/data/incidents";
 import { getResidentsByIds } from "@/lib/data/residents";
 import { getWorkforceMembersByIds } from "@/lib/data/workforceMembers";
+import { getCorrectiveActionsForIncidents, getEffectivenessReviewsForActions } from "@/lib/data/complianceCorrectiveActions";
+import { deriveIncidentOperationalState } from "@/lib/compliance/incidentOperationalState";
 import { formatCentralDateTime } from "@/lib/utils/date";
 import { INCIDENT_TYPE_LABELS } from "@/components/incidents/incidentLabels";
 import { IncidentRegisterTable, type IncidentRowView } from "@/components/incidents/IncidentRegisterTable";
-import type { Incident } from "@/lib/supabase/types";
+import type { ComplianceCorrectiveAction, CorrectiveActionEffectivenessReview, Incident } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,15 +46,31 @@ export default async function IncidentsRegisterPage() {
   const workforceIds = [
     ...new Set(incidents.map((i) => i.workforce_member_id).filter((id): id is string => id !== null)),
   ];
+  const incidentIds = incidents.map((i) => i.id);
 
-  const [residents, workforceMembers] = await Promise.all([
+  const [residents, workforceMembers, correctiveActions] = await Promise.all([
     getResidentsByIds(residentIds),
     getWorkforceMembersByIds(workforceIds),
+    getCorrectiveActionsForIncidents(incidentIds),
   ]);
+
+  const effectivenessReviews = await getEffectivenessReviewsForActions(correctiveActions.map((a) => a.id));
 
   const residentNameById = new Map(residents.map((r) => [r.id, r.display_name || r.full_name || "Unknown"]));
   const workforceNameById = new Map(workforceMembers.map((w) => [w.id, w.display_name]));
 
+  const actionsByIncidentId = new Map<string, ComplianceCorrectiveAction[]>();
+  for (const action of correctiveActions) {
+    if (!action.source_incident_id) continue;
+    const existing = actionsByIncidentId.get(action.source_incident_id) ?? [];
+    existing.push(action);
+    actionsByIncidentId.set(action.source_incident_id, existing);
+  }
+  const reviewsByActionId = new Map<string, CorrectiveActionEffectivenessReview>(
+    effectivenessReviews.map((r) => [r.corrective_action_id, r])
+  );
+
+  const now = new Date();
   const rows: IncidentRowView[] = incidents.map((incident) => ({
     id: incident.id,
     occurredAtLabel: formatCentralDateTime(incident.occurred_at) ?? incident.occurred_at,
@@ -61,9 +79,12 @@ export default async function IncidentsRegisterPage() {
       incident.incident_type === "other"
         ? incident.incident_type_other || "Other"
         : INCIDENT_TYPE_LABELS[incident.incident_type],
-    status: incident.status,
-    reviewStatus: incident.review_status,
-    followUpRequired: incident.follow_up_required,
+    operationalState: deriveIncidentOperationalState(
+      incident,
+      actionsByIncidentId.get(incident.id) ?? [],
+      reviewsByActionId,
+      now
+    ),
     owner: incident.owner,
   }));
 

@@ -14,6 +14,7 @@ import {
   mapCompletedRelationshipActionToWorkItem,
   mapCompletedWellnessFollowUpToWorkItem,
   mapCorrectiveActionToWorkItem,
+  mapEffectivenessReviewToWorkItem,
   mapEmergencyPreparednessObligationToWorkItem,
   mapIncidentToWorkItem,
   mapInfectionToWorkItem,
@@ -50,8 +51,22 @@ const EPRP_ACTIONABLE_STATUSES = new Set(["due_soon", "overdue", "missing_eviden
 // requirementCode (person_requirements.requirement_code) in bulk before
 // calling composeTodaysWorkItems, so this module stays pure/no I/O. Status
 // is always "open": resolved/dismissed actions are never fetched in the
-// first place (see getAllOpenCorrectiveActions()), so there is nothing to
-// filter out here.
+// first place (see getAllOpenCorrectiveActions()).
+//
+// lifecycleStage IS something this module filters on, though (Incident
+// Corrective Action Lifecycle v0.1, live-validation fix): an incident
+// corrective action can sit at status='open' for its entire implementation
+// + effectiveness-review arc (see 20260910000000's closure-decision note)
+// — genuinely still open from the Governance & Quality rollup's point of
+// view (getAllOpenCorrectiveActions() and correctiveActionComposition.ts's
+// dashboard count are UNCHANGED and must stay that way) — but once
+// lifecycle_stage advances past 'open', "implement this by <dueAt>" is no
+// longer real outstanding work; the effectiveness review (a separate,
+// already-composed WorkItem) becomes the one live actionable item instead.
+// So this WorkItem is only ever produced while lifecycleStage is still
+// 'open' — every other domain's rows (EPRP/evidence/infection-sourced)
+// never advance lifecycle_stage away from its 'open' default, so this
+// filter is a no-op for them.
 export interface CorrectiveActionForCompose {
   id: string;
   title: string;
@@ -66,6 +81,25 @@ export interface CorrectiveActionForCompose {
   sourceInfectionId: string | null;
   sourceReviewItemId: string | null;
   requirementCode: string | null;
+  lifecycleStage: "open" | "implemented" | "verified_effective" | "cancelled";
+}
+
+// Incident Corrective Action Lifecycle v0.1 — one already-fetched,
+// already-joined effectiveness review row whose parent action has reached
+// lifecycle_stage='implemented' and whose outcome is still null. The I/O
+// layer (lib/data/todaysWork.ts) resolves subjectLabel and applies that
+// implemented+outcome-null filter before calling composeTodaysWorkItems,
+// so this module stays pure/no I/O, matching CorrectiveActionForCompose's
+// own convention exactly.
+export interface EffectivenessReviewForCompose {
+  id: string;
+  correctiveActionTitle: string;
+  dueAt: string;
+  owner: string | null;
+  subjectType: "resident" | "agency" | "community";
+  subjectId: string;
+  subjectLabel: string | null;
+  sourceIncidentId: string | null;
 }
 
 export interface ComposeTodaysWorkInput {
@@ -81,6 +115,7 @@ export interface ComposeTodaysWorkInput {
   recentlyResolvedInfections: readonly InfectionWithResidentName[];
   eprpEvaluation: EmergencyPreparednessReadinessEvaluation | null;
   openCorrectiveActions: readonly CorrectiveActionForCompose[];
+  pendingEffectivenessReviews: readonly EffectivenessReviewForCompose[];
 }
 
 export function composeTodaysWorkItems(input: ComposeTodaysWorkInput, now: Date = new Date()): WorkItem[] {
@@ -284,8 +319,17 @@ export function composeTodaysWorkItems(input: ComposeTodaysWorkInput, now: Date 
   // EPRP requirement (if any) created them. Already filtered to status
   // 'open' by getAllOpenCorrectiveActions(); an Action whose originating
   // Incident/Infection/EPRP requirement has since resolved still appears
-  // here until the Action itself is resolved. ─────────────────────────
+  // here until the Action itself is resolved.
+  //
+  // Live-validation fix: an action past lifecycle_stage 'open' (already
+  // implemented, verified effective, or cancelled) never produces this
+  // "implement by <dueAt>" WorkItem, even while status stays 'open' for
+  // an incident action still awaiting its effectiveness review — that
+  // review is its own, separately-composed WorkItem below. See
+  // CorrectiveActionForCompose's own comment for why the Governance &
+  // Quality dashboard count is unaffected by this. ────────────────────
   for (const action of input.openCorrectiveActions) {
+    if (action.lifecycleStage !== "open") continue;
     items.push(
       mapCorrectiveActionToWorkItem(
         {
@@ -303,6 +347,28 @@ export function composeTodaysWorkItems(input: ComposeTodaysWorkInput, now: Date 
           sourceInfectionId: action.sourceInfectionId,
           sourceReviewItemId: action.sourceReviewItemId,
           requirementCode: action.requirementCode,
+        },
+        now,
+      ),
+    );
+  }
+
+  // ─── Effectiveness Reviews (Incident Corrective Action Lifecycle v0.1)
+  // — composed independently of the corrective_action item above; the I/O
+  // layer only supplies reviews whose parent action has actually reached
+  // lifecycle_stage='implemented' with outcome still null. ─────────────
+  for (const review of input.pendingEffectivenessReviews) {
+    items.push(
+      mapEffectivenessReviewToWorkItem(
+        {
+          id: review.id,
+          correctiveActionTitle: review.correctiveActionTitle,
+          dueAt: review.dueAt,
+          owner: review.owner,
+          subjectType: review.subjectType,
+          subjectId: review.subjectId,
+          subjectLabel: review.subjectLabel,
+          sourceIncidentId: review.sourceIncidentId,
         },
         now,
       ),

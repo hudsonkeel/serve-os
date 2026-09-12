@@ -78,3 +78,13 @@ export function canReviewIncidentOrInfection(role: string | null | undefined): b
 export function canResolveIncidentOrInfection(role: string | null | undefined): boolean {
   return Boolean(role && (CORRECTIVE_ACTION_MANAGE_ROLES as readonly string[]).includes(role));
 }
+
+// Voiding a recorded effectiveness-review outcome reverses a compliance
+// determination and reopens an already-resolved corrective action —
+// admin-only, mirroring canSupersedeRequirement's admin-only precedent for
+// this codebase's other "rewrites what the system asserts as fact" action
+// class. Deliberately narrower than canManageCorrectiveActions
+// (admin+manager), which governs the normal, forward-moving lifecycle.
+export function canVoidEffectivenessReviewOutcome(role: string | null | undefined): boolean {
+  return role === "admin";
+}
