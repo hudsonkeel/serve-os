@@ -140,6 +140,10 @@ Expected to require accounting or general-ledger data for community-direct and s
 
 Source ownership and exact definitions will be established in the Serve Business Ontology and Metric Registry rather than assumed by this charter.
 
+### Community Capacity Economics
+
+Future Community Care capacity intelligence must be judged by the Business Ontology's Community Shift Optimization Objective — sustainable Direct Service Contribution and reliable Client service, subject to caregiver fillability and workload constraints — never by utilization or Visit count alone. Executive Intelligence should not present a capacity recommendation, or a leadership-facing capacity metric, that implies maximizing caregiver utilization is itself the goal.
+
 ---
 
 ## 7. Visit as the Core Economic Bridge
@@ -155,6 +159,8 @@ and:
 > **Caregiver → Visit → Payable Activity → Direct Labor**
 
 The Visit therefore becomes a key bridge between operational truth and financial truth.
+
+This holds directly under Serve's Traditional Care model, where a caregiver's Visit is simultaneously the service event and the caregiver's unit of labor responsibility. It does not hold universally: under Serve's Community Care model, a caregiver's direct labor is anchored to the caregiver's Community Shift rather than to any individual resident Visit delivered during that Shift, even though each such Visit still drives Client-side revenue in the usual way. Executive Intelligence should not assume every Visit is also the labor unit — see the Business Ontology's Work Assignment model for the governing distinction. This does not change the Visit's role as the Client-side economic bridge for revenue.
 
 This should allow financial performance to be understood not only at the enterprise level, but eventually by:
 
@@ -218,7 +224,7 @@ What current evidence suggests will occur.
 
 What leadership wants to occur.
 
-These values should never be treated as interchangeable.
+These values should never be treated as interchangeable. Nor should "Actual" itself be treated as arriving all at once: for Community Care in particular, service-delivery Actual, invoice Actual, and payroll Actual may mature at different times (Business Ontology's Service-Day Data Maturity, §58), and a Visit being verified in AxisCare must not be assumed to mean its Revenue or labor cost is already final. Executive Intelligence should present recent figures with their actual maturity state, not a false appearance of completeness.
 
 Material variance between them is itself a source of intelligence.
 

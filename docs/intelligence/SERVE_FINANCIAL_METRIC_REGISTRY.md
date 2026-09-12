@@ -258,6 +258,8 @@ Enterprise → Community → Caregiver / Client → Visit → Payable Activity
 
 AxisCare operational payroll calculation and Viventium executed payroll are distinct concepts and must not be silently treated as identical.
 
+**Two-Model Note:** "Visit" in the Supported Grain above means Traditional Visit. For Community Care, the natural payable grain is the Community Shift, not the Community Visit — see Part XIV, §50 for the full Traditional Care vs. Community Care semantics.
+
 ---
 
 ## 6. Direct Service Contribution
@@ -310,6 +312,8 @@ Contribution → Revenue + Direct Labor → underlying Billable and Payable Acti
 
 Direct Service Contribution is not net income, operating profit, or fully loaded margin.
 
+**Two-Model Note:** at Visit grain, this metric is Direct Labor Actual only for a Traditional Visit. At Community-Visit grain, the labor component is necessarily Allocated Direct Labor — see Part XIV, §50.
+
 ---
 
 ## 7. Direct Labor Percentage of Service Revenue
@@ -360,6 +364,8 @@ Labor percentage must be interpreted alongside:
 - quality;
 - client needs;
 - and other operating conditions.
+
+**Two-Model Note:** see Part XIV, §50 — below the Community-Shift grain, this ratio's labor term is Allocated Direct Labor for Community Care.
 
 ---
 
@@ -437,6 +443,8 @@ The Visit denominator must correspond to the service activity represented in the
 - Caregiver
 - Service Type
 - Time Period
+
+**Two-Model Caution:** for Community Care, this metric is **not an actual per-Visit labor cost**. A caregiver is paid for the Community Shift, not per resident Visit within it; `Community Shift labor ÷ Community Visits` is at best an aggregate efficiency measure, not Direct Labor Actual for any individual Community Visit. See Part XIV, §50–§51 before presenting this metric for Community Care.
 
 ---
 
@@ -529,6 +537,8 @@ Direct Caregiver Labor
 
 This is an operating labor-cost measure and is not necessarily equivalent to a Caregiver's nominal hourly wage.
 
+**Two-Model Note:** for Community Care, the numerator (labor) is naturally Community-Shift-grain while the denominator (Delivered Care Hours) is naturally Community-Visit-grain — different natural grains. Aggregating both sides to a common Community/period population is authoritative; computing this ratio at the individual-Community-Visit level requires Allocated Direct Labor. See Part XIV, §50.
+
 ---
 
 ## 12. Direct Contribution per Delivered Care Hour
@@ -571,6 +581,8 @@ Revenue per Delivered Care Hour
 **Strategic Value**
 
 This is expected to become a particularly useful measure for comparing care-delivery economics across Clients, Communities, and service models with different Visit durations.
+
+**Two-Model Note:** inherits the grain caution from §11 — authoritative at Community/Shift-population grain for Community Care; requires Allocated Direct Labor below that grain. See Part XIV, §50–§51.
 
 ---
 
@@ -770,6 +782,8 @@ This is not yet **Community Contribution** as defined in the Business Ontology.
 
 Community Contribution additionally requires Payroll Burden and Community-Direct Operating Costs.
 
+**Two-Model Note:** for Community Care, Community-attributed Direct Caregiver Labor sums Community Shift payable amounts for caregivers whose Shifts occurred in that Community — this is actually the *natural*, non-allocated case, since Community sits at or above the Shift grain. See Part XIV, §50.
+
 ---
 
 # PART V — DELIVERY AND LABOR RECONCILIATION
@@ -846,6 +860,8 @@ May expose:
 **Interpretation Boundary**
 
 Variance alone does not establish why the difference occurred.
+
+**Two-Model Note:** this metric is Visit-grain for both Traditional and Community Care and is **unaffected** by the Work Assignment distinction — it measures service delivery, not labor cost. A Community Shift also has its own scheduled/actual time, which is a distinct concept not currently in this metric's scope; do not conflate Shift-level and Visit-level scheduled/delivered hours. See Part XIV, §50.
 
 ---
 
@@ -929,6 +945,8 @@ Legitimate differences may result from:
 - administrative time;
 - rounding;
 - or other approved workforce policies.
+
+**Two-Model Note:** for Community Care, Billable Care Hours are naturally Community-Visit-grain while Paid Care Hours are naturally Community-Shift-grain — these do not share a natural grain. The ratio is directly meaningful at a grain where both can be validly aggregated (Caregiver-day, Community-day, or higher), not at the individual-Community-Visit level unless Paid Care Hours are allocated down to that Visit. See Part XIV, §50.
 
 ---
 
@@ -1647,6 +1665,494 @@ Financial Spine v0.1 does not require:
 - or a finished Executive Intelligence UI.
 
 Those capabilities should build on the financial spine after its foundational relationships are validated.
+
+---
+
+# PART XIV — TRADITIONAL CARE / COMMUNITY CARE LABOR AMENDMENT
+
+## 47. Purpose of This Amendment
+
+Serve operates at least two materially different care-delivery/economic models: **Traditional Care** and **Community Care** (Business Ontology Part XII). The original v0.1 financial spine (Parts II–VII above) is directionally correct on the revenue side for both models, but was written assuming the labor side always traces through the Visit. That assumption holds for Traditional Care and does not hold for Community Care, where the caregiver's payable Work Assignment is the Community Shift, not the individual Community Visit.
+
+This Part clarifies, for each affected metric, how Traditional Care and Community Care semantics differ. It does not change any metric's approved formula from Parts II–V; it clarifies grain, aggregation authority, and allocation requirements. Metrics not listed here — Service Revenue, Revenue per Visit, Active Clients, Service Revenue per Active Client, Visits per Active Client — are unaffected, because their natural grain is already the Visit/Client side, which this amendment does not change.
+
+---
+
+## 48. Natural Economic Grain Rule
+
+**Revenue and cost must be modeled at their natural authoritative economic grain before aggregation or allocation.**
+
+### Revenue
+
+Prefer the lowest authoritative billable grain — Visit / Billable Activity / Invoice Line — where source data supports it. This is unchanged by the two-model amendment and applies identically to Traditional Visits and Community Visits.
+
+### Direct Labor
+
+Prefer the lowest authoritative payable grain:
+
+- **Traditional Care:** Visit / Work Assignment (a Traditional Visit satisfies both roles — Ontology §53).
+- **Community Care:** Community Shift / Work Assignment (Ontology §54).
+
+Serve must not force both models into one vendor-shaped grain, and must not treat Community Visit as the natural payable grain for Community Care direct labor.
+
+---
+
+## 49. Direct Labor: Actual vs. Allocated
+
+See Business Ontology §61 for the canonical definitions of **Direct Labor Actual** and **Allocated Direct Labor**.
+
+For metric purposes: a metric computed at the natural payable Work Assignment grain (Traditional Visit or Community Shift) is Direct Labor Actual. A metric computed at any finer grain for Community Care (for example, per Community Visit or per Client, within a Shift) necessarily uses Allocated Direct Labor and must be labeled as such, carrying the allocation method, source Work Assignment, period, and model/version where applicable. No allocation method is approved by this registry.
+
+---
+
+## 50. Per-Metric Review — Traditional Care vs. Community Care
+
+For each metric: natural source grain; Traditional Care semantics; Community Care semantics; whether aggregation is authoritative; whether lower-grain reporting requires allocation; current data-source support. Data-source findings are not re-derived here — see `SERVE_FINANCIAL_INTELLIGENCE_V0.1_INVESTIGATION_REPORT.md` for the underlying AxisCare/CINCH capability findings; this section states the semantic implication, not a new capability finding.
+
+### `financial.direct_caregiver_labor` (§5)
+
+1. **Natural source grain:** Traditional Visit (Work Assignment) for Traditional Care; Community Shift (Work Assignment) for Community Care.
+2. **Traditional Care semantics:** unchanged from §5 — Visit-linked payable amounts.
+3. **Community Care semantics:** the sum of qualifying Community Shift payable amounts for the caregiver population in scope — not the sum of amounts attributed to individual Community Visits.
+4. **Aggregation authoritative?** Yes, at Caregiver / Community / Enterprise / Time Period, for both models, since both aggregate from their own natural grain.
+5. **Lower-grain (per-Visit) reporting requires allocation?** Yes, for Community Care, if a per-Community-Visit or per-Client figure is ever required. Not for Traditional Care, where Visit already is the natural grain.
+6. **Current data-source support:** No — both AxisCare payroll/payable data and any CINCH-side Shift payable data remain unconfirmed/unintegrated as of the Investigation Report. Unchanged by this amendment.
+
+### `financial.direct_service_contribution` (§6)
+
+1. **Natural source grain:** inherits from its two inputs — see §5 (labor) and §4 (revenue, unaffected by this amendment).
+2. **Traditional Care semantics:** unchanged — Visit-level Revenue minus Visit-level Labor is directly meaningful.
+3. **Community Care semantics:** meaningful and authoritative at Community-Shift-and-its-Community-Visits grain or higher (e.g., Community, Enterprise). At the individual-Community-Visit grain, the labor term is necessarily Allocated Direct Labor (§49), so a per-Community-Visit contribution figure is an allocated metric, not an actual one.
+4. **Aggregation authoritative?** Yes, at Community/Enterprise for both models.
+5. **Lower-grain requires allocation?** Yes, for a per-Community-Visit figure under Community Care.
+6. **Current data-source support:** No, per §5/§4 — both inputs remain unconfirmed.
+
+### `financial.direct_labor_pct_revenue` (§7)
+
+1. **Natural source grain:** same population as its two inputs.
+2. **Traditional Care semantics:** unchanged.
+3. **Community Care semantics:** meaningful at Community-Shift-and-Community-Visits grain or higher. A per-Community-Visit ratio would divide Community-Visit-level Revenue by an Allocated Direct Labor figure — must be labeled as allocated/derived, not compared directly to a Traditional Care per-Visit ratio without noting the labor-cost basis difference.
+4. **Aggregation authoritative?** Yes, at Community/Enterprise.
+5. **Lower-grain requires allocation?** Yes, for Community Care below the Shift grain.
+6. **Current data-source support:** No.
+
+### `financial.direct_labor_per_visit` (§9) — see also §51
+
+1. **Natural source grain:** Traditional Visit for Traditional Care; not naturally Visit-grain for Community Care.
+2. **Traditional Care semantics:** unchanged — directly attributable.
+3. **Community Care semantics:** not an actual per-Visit labor cost. `Community Shift labor ÷ Community Visits` is, at best, an aggregate efficiency measure over the Shift's Visit population — see §51.
+4. **Aggregation authoritative?** Yes, only at Shift-and-its-Visits grain or higher; not authoritative at the individual-Community-Visit level.
+5. **Lower-grain requires allocation?** Yes, and the registry recommends against presenting it as Direct Labor Actual.
+6. **Current data-source support:** No.
+
+### `financial.direct_labor_per_delivered_hour` (§11)
+
+1. **Natural source grain:** Traditional Visit for Traditional Care; Community Shift for Community Care.
+2. **Traditional Care semantics:** unchanged — Direct Caregiver Labor ÷ Delivered Care Hours, both Visit-attributable.
+3. **Community Care semantics:** the denominator (Delivered Care Hours) is naturally Community-Visit-grain, while the numerator (Direct Caregiver Labor) is naturally Community-Shift-grain — different natural grains. Computing this ratio at the individual-Community-Visit level requires Allocated Direct Labor in the numerator. At the Community/Shift-population level, both sides can be aggregated to a common period/population without allocation.
+4. **Aggregation authoritative?** Yes, at Community/Enterprise, aggregating each side from its own natural grain first.
+5. **Lower-grain requires allocation?** Yes, at the individual-Community-Visit/Caregiver-hour level.
+6. **Current data-source support:** No (also inherits the Delivered Care Hour basis validation, §41).
+
+### `financial.direct_contribution_per_delivered_hour` (§12)
+
+1. **Natural source grain:** inherits from §6 and §11.
+2. **Traditional Care semantics:** unchanged.
+3. **Community Care semantics:** authoritative at Community/Shift-population grain; requires Allocated Direct Labor for any finer grain, same as §11.
+4. **Aggregation authoritative?** Yes, at Community/Enterprise.
+5. **Lower-grain requires allocation?** Yes.
+6. **Current data-source support:** No.
+
+### `financial.community_direct_service_contribution` (§16)
+
+1. **Natural source grain:** Community, aggregating Community-attributed Revenue (Visit-grain) and Community-attributed Direct Labor (Traditional Visit or Community Shift grain, per caregiver).
+2. **Traditional Care semantics:** unchanged from §16.
+3. **Community Care semantics:** Community-attributed Direct Labor sums Community Shift payable amounts for caregivers whose Shifts occurred in that Community — not a sum of per-Community-Visit allocated amounts. This is actually the natural, non-allocated case for Community Care, since Community sits at or above the Shift grain.
+4. **Aggregation authoritative?** Yes — one of the few metrics where Community Care's natural grain (Shift) already sits at or below the metric's own grain (Community), so no allocation is required to compute it authoritatively.
+5. **Lower-grain requires allocation?** Only if drilling below Community to individual Community Visit.
+6. **Current data-source support:** No, per existing §16 Source Status — unchanged; Community attribution for Shifts is an additional open item alongside the existing Community-attribution-for-Visits question (§43).
+
+### `operations.scheduled_vs_delivered_hours` (§17)
+
+1. **Natural source grain:** Visit (Traditional or Community) — this metric is about service delivery, not labor cost, so it is unaffected by the Work Assignment distinction. Scheduled/Delivered Care Hours are Visit-level concepts for both models.
+2. **Traditional Care semantics:** unchanged.
+3. **Community Care semantics:** unchanged — computed per Community Visit, exactly as for Traditional Visits. A Community Shift also has its own scheduled/actual time, a distinct concept not currently in this metric's scope; do not conflate Shift-level and Visit-level scheduled/delivered hours.
+4. **Aggregation authoritative?** Yes, unchanged.
+5. **Lower-grain requires allocation?** No.
+6. **Current data-source support:** Unchanged from §17 (Source Validation Required); see the Visit Intelligence documents for the Visit-history persistence work already underway.
+
+### `financial.billable_vs_paid_labor` (§18)
+
+1. **Natural source grain:** mixed — Billable Care Hours are naturally Visit-grain (Traditional or Community); Paid Care Hours are naturally Work-Assignment-grain (Traditional Visit or Community Shift).
+2. **Traditional Care semantics:** unchanged — both sides share the same Visit grain.
+3. **Community Care semantics:** the two sides do not share a natural grain. Billable Care Hours aggregate from Community Visits; Paid Care Hours aggregate from Community Shifts. A Community Care Paid-to-Billable ratio is only directly meaningful at a grain where both can be validly aggregated (e.g., Caregiver-day, Community-day, or higher) — not at the individual-Community-Visit level unless Paid Care Hours are allocated down to that Visit.
+4. **Aggregation authoritative?** Yes, at Caregiver/Community/Enterprise/Time Period, aggregating each side from its own natural grain.
+5. **Lower-grain requires allocation?** Yes, for a per-Community-Visit ratio.
+6. **Current data-source support:** No, per existing §18 Source Status — unchanged; this amendment adds a grain-alignment caution on top of the existing source gap.
+
+---
+
+## 51. Important Metric Caution — Labor/Contribution per Visit Under Community Care
+
+Some metrics remain mathematically computable under Community Care but would be semantically misleading if presented as though they meant the same thing as their Traditional Care counterpart.
+
+**Labor per Visit** (§9): for Traditional Care, this is naturally attributable — the Visit is the Work Assignment. For Community Care:
+
+> Community Shift labor ÷ Community Visits (within that Shift)
+
+may be a useful **aggregate efficiency measure**, but it is **not** the actual labor cost of any individual Community Visit. A caregiver is not paid per resident Visit during a Community Shift; the Visits within a Shift may vary in duration, service type, and billable rate while the caregiver's pay for that Shift does not vary by which resident Visit is being performed at a given moment.
+
+**Contribution per Visit**, similarly, may require Allocated Direct Labor (§49) for Community Care and must be presented as an allocated/derived figure, never as Direct Service Contribution Actual, when computed below the Community-Shift grain.
+
+Any Financial Intelligence surface presenting either metric for Community Care must distinguish:
+
+- **authoritative metric** — computed at a grain the current data actually supports without allocation;
+- **derived aggregate** — a ratio computed across a shared population without allocation (e.g., the Shift-level efficiency measure above);
+- **allocated metric** — uses Allocated Direct Labor and must carry `allocated` semantics per §49;
+- **not yet supportable** — the required source data does not yet exist.
+
+---
+
+## 52. Candidate Future Community Economics Metrics
+
+The following are identified as candidate future metrics arising from the Community Care model. None are added to the 15-metric v0.1 Financial Spine (§19) by this amendment; each would require its own definition, source validation, and Metric Implementation Gate (§37) review before implementation.
+
+- Community Shift Revenue
+- Community Shift Direct Labor
+- Community Shift Direct Service Contribution
+- Revenue per paid Shift hour
+- Contribution per paid Shift hour
+- Delivered service minutes per paid Shift hour
+- Community Shift utilization
+- Visits per Shift
+- Revenue per Community Visit
+- Allocated labor per Community Visit
+
+### Most likely valuable, in the registry's assessment
+
+**Community Shift Direct Service Contribution** and **Contribution per paid Shift hour** appear most valuable first, because they are computable at Community Care's *natural* payable grain (the Shift) without requiring any allocation methodology to be decided first — matching the Natural Economic Grain Rule (§48) and avoiding the allocation-policy dependency most of the other candidates carry. **Community Shift utilization** (delivered service minutes per paid Shift hour) is a close second, since it directly answers a real operating question — how much of a paid Shift is spent in resident-facing service — without requiring Billable Activity data at all; it could plausibly be built before the revenue side of Community Care is even source-validated.
+
+The remaining candidates (Revenue per Community Visit, Allocated labor per Community Visit, Visits per Shift) are reasonable future measures but either require an allocation methodology decision (§49) or duplicate information already available via the metrics above at a coarser, non-allocated grain.
+
+---
+
+## 53. Source Truth vs. Serve Economic Truth — Financial States
+
+See Business Ontology §57 for the canonical statement of this distinction. For Financial Intelligence specifically: none of the 15 v0.1 metrics may be computed by reading a single vendor status (a CINCH or AxisCare "completed" flag, for example) as simultaneously meaning delivered, verified, billable, invoiced, payable, and paid. Each metric's Source Status and Required Validation fields (Parts II, IV, V above) should be read as implicitly requiring the specific state that metric actually needs — for example, `financial.service_revenue` needs invoiced state, not merely delivered or verified state.
+
+## 54. Service-Day Data Maturity — Metric Implication
+
+See Business Ontology §58 for the canonical concept and §57 for the four-state model (service completion / AxisCare appearance / AxisCare verification / financial realization) this section relies on. Implication for this registry: any metric computed for the current (`open`) or still-`settling` service day should be understood as provisional, particularly for Community Care, where CINCH activity can precede AxisCare verification within the same day. This registry does not yet define a finalization policy or delay; per §58, that should follow measurement of actual lag between the four states, not an assumed value.
+
+**Different metrics mature at different times and must not share one finalization clock.** A narrow read-only investigation of the AxisCare Customer API (Ontology §57) confirmed that AxisCare's `verified` flag gates further edits to ADL and care-note documentation, but found no documented evidence that it gates billing-field validity, and found no evidence either way for invoice generation or payroll/payable processing (no invoice or payroll endpoint exists in this API surface at all). Concretely:
+
+- **Service-delivery actual** (e.g., §17 Scheduled vs Delivered Care Hours) may mature earliest, since clock-in/out data does not depend on verification.
+- **Invoice actual** (e.g., §4 Service Revenue) may mature later, once billability and invoicing — states this registry has no confirmed evidence are tied to verification — are actually established.
+- **Payroll actual** (e.g., §5 Direct Caregiver Labor) may mature later still, following payroll processing.
+
+A metric's `finalized` state must be justified against the specific state it actually needs (§53), not assumed equal to "AxisCare verification complete" by default.
+
+Serve currently verifies CINCH-populated Visits in AxisCare manually; AxisCare is reportedly expected to eventually automate more of this verification, with an observed current backlog of roughly two to three days (a USER-OBSERVED OPERATIONAL FACT to measure, not a policy value). Per Business Ontology §76, automating verification would reduce settlement lag but must **not** be read as changing the underlying Community Care economic grain — Revenue remains Visit/Billable Activity grain and Direct Labor remains Community Shift/Work Assignment grain regardless of how quickly verification occurs.
+
+To measure the actual lag and eventually support a finalization policy, future instrumentation should capture, per Community Visit, the four §57 timestamps:
+
+- CINCH completion timestamp;
+- AxisCare first-seen (appearance) timestamp;
+- AxisCare verification timestamp;
+- any subsequent correction timestamp.
+
+No instrumentation is implemented by this registry. These fields are named here so a future measurement effort has an approved starting point rather than inventing its own. Separately, the outstanding verification backlog itself is identified as a candidate future operational work item (Ontology §78, "Review and resolve unverified Community Visits") — not implemented by this registry, and not itself a metric.
+
+---
+
+# PART XV — COMMUNITY SHIFT CAPACITY AND ECONOMICS METRICS
+
+## 55. Purpose of This Companion Section
+
+Business Ontology Part XIII establishes the business concepts needed to eventually evaluate and optimize Community Shift capacity. This Part promotes sixteen of those concepts into formally **designed** Metric Registry entries, using this registry's existing Metric Status Vocabulary (§3).
+
+These metrics are kept in a dedicated companion section rather than folded into the fifteen-metric Financial Spine (§19, Part VI) because they answer a different class of business question (Community Shift capacity and optimization, not the core Revenue/Labor/Contribution spine) and because most remain source-blocked today. Designed-but-not-implemented status is expected and acceptable — see §37, Metric Implementation Gate. No metric here is authorized for implementation by virtue of appearing in this registry; each must independently satisfy §37 first, and any that would become a Signal or Recommendation must independently satisfy the Financial Intelligence Rule Gate (§38).
+
+All money/hour/minute-based metrics below follow the Natural Economic Grain Rule (Part XIV, §48): Revenue-side inputs are Visit/Billable-Activity grain; Direct-Labor-side inputs are Community-Shift/Work-Assignment grain. Any metric that would require Direct Labor at a finer grain than the Community Shift is an **allocated** metric under §49 and is called out as such below.
+
+---
+
+## 56. Community Shift Revenue
+
+**Metric ID:** `financial.community_shift_revenue`
+
+**Business Question:** How much Service Revenue is attributable to Community Visits delivered during a given Community Shift (or Shift population)?
+
+**Canonical Definition:** Sum of qualifying Community Visit Revenue for Visits delivered during the Shift(s) in scope.
+
+**Primary Source:** AxisCare/CINCH Community Visit billing activity (see §4, Service Revenue — same open Revenue-basis questions apply).
+
+**Source Status:** Future Source Required — inherits §4's blocked status; no Community-Visit-to-Shift linkage is confirmed either (Ontology §56).
+
+**Supported Grain — Intended:** Community Shift; Caregiver; Community; Time Period.
+
+---
+
+## 57. Community Shift Direct Labor
+
+**Metric ID:** `financial.community_shift_direct_labor`
+
+**Business Question:** How much direct caregiver compensation is attributable to a given Community Shift?
+
+**Canonical Definition:** Sum of qualifying payable amounts for the Community Shift — the natural, non-allocated Direct Labor Actual grain for Community Care (Ontology §61).
+
+**Primary Source:** AxisCare/CINCH caregiver Shift payable activity (see §5, Direct Caregiver Labor).
+
+**Source Status:** Future Source Required — inherits §5's blocked status.
+
+**Supported Grain — Intended:** Community Shift; Caregiver; Community; Time Period.
+
+---
+
+## 58. Community Shift Direct Service Contribution
+
+**Metric ID:** `financial.community_shift_direct_service_contribution`
+
+**Canonical Formula:** `Community Shift Revenue (§56) − Community Shift Direct Labor (§57)`
+
+**Business Question:** What Direct Service Contribution did a Community Shift generate?
+
+**Primary Sources:** §56, §57.
+
+**Source Status:** Future Source Required — dependent on both inputs.
+
+**Supported Grain — Intended:** Community Shift; Caregiver; Community; Time Period.
+
+**Note:** this is the natural, non-allocated grain for Community Care contribution — see Part XIV §50's treatment of `financial.community_direct_service_contribution` for the Community-level (not Shift-level) aggregate.
+
+---
+
+## 59. Revenue per Paid Community Shift Hour
+
+**Metric ID:** `financial.revenue_per_paid_community_shift_hour`
+
+**Canonical Formula:** `Community Shift Revenue (§56) ÷ Paid Community Shift Hours`
+
+**Business Question:** How much Revenue does a paid hour of Community Shift capacity generate?
+
+**Required Guardrail:** if Paid Community Shift Hours are zero, undefined rather than zero.
+
+**Source Status:** Future Source Required.
+
+**Supported Grain — Intended:** Community Shift; Caregiver; Community; Time Period.
+
+---
+
+## 60. Direct Service Contribution per Paid Community Shift Hour
+
+**Metric ID:** `financial.direct_service_contribution_per_paid_community_shift_hour`
+
+**Canonical Formula:** `Community Shift Direct Service Contribution (§58) ÷ Paid Community Shift Hours`
+
+**Business Question:** How much Direct Service Contribution does a paid hour of Community Shift capacity generate?
+
+**Required Guardrail:** if Paid Community Shift Hours are zero, undefined rather than zero.
+
+**Source Status:** Future Source Required.
+
+**Supported Grain — Intended:** Community Shift; Caregiver; Community; Time Period.
+
+**Strategic Value:** identified in Part XIV §52 as one of the two candidate metrics most likely to be buildable first, since it uses Community Care's natural payable grain without requiring an allocation methodology.
+
+---
+
+## 61. Visits per Community Shift
+
+**Metric ID:** `operations.visits_per_community_shift`
+
+**Canonical Formula:** `Count of qualifying Community Visits ÷ Count of qualifying Community Shifts`
+
+**Business Question:** How much Visit activity does a Community Shift carry?
+
+**Source Status:** Partial Source Available — Community Visit and Shift existence may be partially observable via CINCH/AxisCare today; SOURCE_PROVEN Shift-to-Visit linkage (Ontology §56) is confirmed absent from AxisCare's Customer API (no shift/assignment ID field exists on the Visit object; `scheduleId` is a distinct, unrelated concept). Any near-term implementation of this metric would use at best a DETERMINISTIC_DERIVED or HEURISTIC linkage per Ontology §56's classification, not a source-proven one.
+
+**Supported Grain — Intended:** Community Shift; Caregiver; Community; Time Period.
+
+**Known Limitation:** volume alone does not determine capacity — see Ontology §64.
+
+---
+
+## 62. Client Service Minutes per Paid Community Shift Hour
+
+**Metric ID:** `operations.client_service_minutes_per_paid_community_shift_hour`
+
+**Canonical Formula:** `Client service minutes delivered during the Shift ÷ Paid Community Shift Hours`
+
+**Business Question:** How many minutes of direct Client service does a paid Shift hour produce?
+
+**Source Status:** Future Source Required — service-minute and paid-Shift-hour data are not yet confirmed available at Shift grain.
+
+**Supported Grain — Intended:** Community Shift; Caregiver; Community; Time Period.
+
+---
+
+## 63. Client Service Utilization
+
+**Metric ID:** `operations.client_service_utilization`
+
+**Canonical Formula:** `Client service minutes delivered during a Community Shift ÷ Paid Community Shift minutes`
+
+**Business Question:** What portion of paid Community Shift time became direct Client service time?
+
+**Source Status:** Future Source Required.
+
+**Supported Grain — Intended:** Community Shift; Caregiver; Community; Time Period.
+
+**Interpretation Boundary (Ontology §65):** an observed efficiency measure, not the optimization target. 100% is not ideal — caregivers require legitimate non-client-service time.
+
+---
+
+## 64. Practical Capacity Utilization
+
+**Metric ID:** `operations.practical_capacity_utilization`
+
+**Canonical Formula:** `Planned/expected service demand ÷ Practical Capacity (Ontology §66)`
+
+**Business Question:** How much of a Community Shift's *practical* (not raw) capacity is being used?
+
+**Source Status:** Leadership Definition Required — Practical Capacity is a versioned, evidence-calibrated operating parameter (Ontology §66, §80), not a fixed constant; this metric cannot be computed until an initial value is established from observed operating history and recorded in a Community Capacity Policy Version.
+
+**Supported Grain — Intended:** Community Shift; Community; Time Period.
+
+---
+
+## 65. Peak Demand Density
+
+**Metric ID:** `operations.peak_demand_density`
+
+**Canonical Definition:** A measure of Community Visit demand concentration within a rolling time window inside a Shift, distinguishing total Shift demand from simultaneous/clustered demand (Ontology §68).
+
+**Source Status:** Leadership Definition Required — the rolling-window size (30/60/90-minute or other) is a versioned, evidence-calibrated operating parameter (Ontology §68, §80), not approved yet.
+
+**Supported Grain — Intended:** Community Shift; Community; Time Period.
+
+---
+
+## 66. Capacity Headroom
+
+**Metric ID:** `operations.capacity_headroom`
+
+**Canonical Definition:** The additional Community Visit demand a Shift can absorb while remaining within approved Practical Capacity and service-quality constraints (Ontology §69), expressible as service minutes, expected Visits, revenue opportunity, or contribution opportunity.
+
+**Source Status:** Future Source Required — depends on Practical Capacity Utilization (§64) and Peak Demand Density (§65), both themselves undefined pending policy/evidence.
+
+**Supported Grain — Intended:** Community Shift; Community; Time Period.
+
+---
+
+## 67. Additional Shift Readiness
+
+**Metric ID:** `intelligence.additional_shift_readiness`
+
+**Business Question:** Is current and expected Community Visit demand sufficiently dense, time-constrained, and economically valuable to justify adding another minimum Community Shift (Ontology §63, §70)?
+
+**Canonical Definition:** Not a single deterministic formula — an intelligence assessment combining Demand, Existing Capacity, Client Experience, Caregiver Experience, and Economics inputs, per Ontology §70.
+
+**Source Status:** Future Source Required — depends on §61–§66, §68–§71, none of which are source-available yet.
+
+**Supported Grain — Intended:** Community; Community Shift population.
+
+**Important Boundary:** this is a candidate future intelligence **output**, not a metric in the usual sense — it would require its own Financial Intelligence Rule Gate (§38) review (thresholds, evidence, false-positive analysis, AI boundary) before ever producing a Recommendation. This registry entry names and scopes it; it does not approve building it.
+
+---
+
+## 68. Incremental Revenue of Added Shift Capacity
+
+**Metric ID:** `financial.incremental_revenue_added_shift_capacity`
+
+**Business Question:** How much additional Revenue would a proposed additional Community Shift plausibly enable?
+
+**Canonical Definition:** Revenue attributable specifically to constrained/unserved demand unlocked by added capacity (Ontology §73) — must exclude existing demand merely redistributed across a new configuration.
+
+**Source Status:** Future Source Required; also Leadership Definition Required for the forecasting/estimation approach, since this is inherently a Forecast (§34), not an Actual.
+
+**Supported Grain — Intended:** Community; proposed Shift configuration.
+
+---
+
+## 69. Incremental Direct Labor of Added Shift Capacity
+
+**Metric ID:** `financial.incremental_direct_labor_added_shift_capacity`
+
+**Business Question:** How much additional Direct Labor cost would a proposed additional Community Shift require?
+
+**Canonical Definition:** The Community Shift Direct Labor (§57) expected for the proposed additional minimum Shift(s) (Ontology §63).
+
+**Source Status:** Future Source Required.
+
+**Supported Grain — Intended:** Community; proposed Shift configuration.
+
+---
+
+## 70. Incremental Direct Service Contribution of Added Shift Capacity
+
+**Metric ID:** `financial.incremental_direct_service_contribution_added_shift_capacity`
+
+**Canonical Formula:** `Incremental Revenue of Added Shift Capacity (§68) − Incremental Direct Labor of Added Shift Capacity (§69)`
+
+**Business Question:** Would adding a Community Shift produce positive incremental Direct Service Contribution?
+
+**Source Status:** Future Source Required — dependent on §68, §69.
+
+**Supported Grain — Intended:** Community; proposed Shift configuration.
+
+**Strategic Value (Ontology §74):** expected to become one of the principal economic inputs to Additional Shift Readiness (§67).
+
+---
+
+## 71. Expected Utilization of Added Shift Capacity
+
+**Metric ID:** `operations.expected_utilization_added_shift_capacity`
+
+**Business Question:** How well-utilized would a proposed additional Community Shift plausibly be?
+
+**Canonical Definition:** A forecast Client Service Utilization (§63) and/or Practical Capacity Utilization (§64) for the proposed Shift, given expected demand redistribution and unlocked demand (Ontology §73).
+
+**Source Status:** Future Source Required; inherits the Leadership Definition Required status of §63/§64.
+
+**Supported Grain — Intended:** Community; proposed Shift configuration.
+
+---
+
+## 72. Deferred — Not Promoted
+
+The following remain explicitly **deferred**, not promoted to designed-metric status by this Part, because they require an approved allocation methodology (Ontology §61, §49) that does not yet exist:
+
+- Allocated Direct Labor per Community Visit;
+- allocated Direct Service Contribution per Community Visit;
+- any Client-level Community labor allocation.
+
+These must continue to be presented, if ever computed, as explicitly modeled/allocated figures — never as Direct Labor Actual or Direct Service Contribution Actual — per the labeling requirement in Ontology §61.
+
+---
+
+## 73. Community Capacity / Economics Metrics Summary
+
+| # | Metric | Metric ID | Group |
+|---|---|---|---|
+| 1 | Community Shift Revenue | `financial.community_shift_revenue` | Economic |
+| 2 | Community Shift Direct Labor | `financial.community_shift_direct_labor` | Economic |
+| 3 | Community Shift Direct Service Contribution | `financial.community_shift_direct_service_contribution` | Economic |
+| 4 | Revenue per Paid Community Shift Hour | `financial.revenue_per_paid_community_shift_hour` | Economic |
+| 5 | Direct Service Contribution per Paid Community Shift Hour | `financial.direct_service_contribution_per_paid_community_shift_hour` | Economic |
+| 6 | Visits per Community Shift | `operations.visits_per_community_shift` | Capacity |
+| 7 | Client Service Minutes per Paid Community Shift Hour | `operations.client_service_minutes_per_paid_community_shift_hour` | Capacity |
+| 8 | Client Service Utilization | `operations.client_service_utilization` | Capacity |
+| 9 | Practical Capacity Utilization | `operations.practical_capacity_utilization` | Capacity |
+| 10 | Peak Demand Density | `operations.peak_demand_density` | Capacity |
+| 11 | Capacity Headroom | `operations.capacity_headroom` | Capacity |
+| 12 | Additional Shift Readiness | `intelligence.additional_shift_readiness` | Decision / Intelligence Output |
+| 13 | Incremental Revenue of Added Shift Capacity | `financial.incremental_revenue_added_shift_capacity` | Decision / Intelligence Output |
+| 14 | Incremental Direct Labor of Added Shift Capacity | `financial.incremental_direct_labor_added_shift_capacity` | Decision / Intelligence Output |
+| 15 | Incremental Direct Service Contribution of Added Shift Capacity | `financial.incremental_direct_service_contribution_added_shift_capacity` | Decision / Intelligence Output |
+| 16 | Expected Utilization of Added Shift Capacity | `operations.expected_utilization_added_shift_capacity` | Decision / Intelligence Output |
+
+None of these sixteen are part of the fifteen-metric Financial Spine (§19). All sixteen are designed, none are implementation-ready (§37) as of this amendment.
 
 ---
 

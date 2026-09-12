@@ -260,6 +260,8 @@ A Caregiver may have:
 
 > Caregiver → Visits
 
+> Caregiver → Work Assignment
+
 > Caregiver → Payable Activity
 
 > Caregiver → Direct Labor
@@ -268,7 +270,7 @@ A Caregiver may have:
 
 > Caregiver → Workforce Capacity
 
-The Caregiver is the primary labor-side economic participant in care delivery.
+The Caregiver is the primary labor-side economic participant in care delivery. See Part XII for how a Caregiver's Work Assignment — the canonical unit of labor responsibility — is satisfied differently under Serve's Traditional Care and Community Care models.
 
 ---
 
@@ -352,6 +354,8 @@ and simultaneously:
 ### Workforce-side economics
 
 > **Caregiver → Visit → Payable Activity → Direct Labor**
+
+This workforce-side linkage holds directly for a **Traditional Visit** (§53), where the Visit is simultaneously the service event and the caregiver's Work Assignment (§52). It does not hold universally: in Serve's Community Care model, a caregiver's payable time is anchored to a **Community Shift** (§54), not to any single **Community Visit** (§55) delivered during that Shift, even though the Community Visit remains a Visit for service-delivery and revenue purposes. See Part XII for the full Work Assignment model. Visit itself is not redefined by this distinction — it remains the canonical unit of client service delivery described below, for both Traditional and Community Care.
 
 This relationship makes the Visit the primary unit through which Serve can eventually explain:
 
@@ -521,6 +525,8 @@ Payable Activity may contain or reference:
 ### Relationship
 
 > **Delivered Service → Payable Activity → Payroll / Direct Labor**
+
+For a Traditional Visit, Payable Activity may derive directly from the Visit, per the general relationship above. For Community Care, Payable Activity derives from the caregiver's Community Shift — the governing Work Assignment (§52) — rather than from any individual Community Visit occurring during that Shift. See Part XII, §52–§56.
 
 ---
 
@@ -924,6 +930,8 @@ Caregiver Payroll
 Direct Caregiver Labor
 ```
 
+This diagram represents the Traditional Care labor path, where the Work Assignment (Part XII, §52) is satisfied by the Visit itself. For Community Care, the equivalent path replaces "Visit" with **Community Shift** as the Work Assignment — see §56.
+
 ---
 
 ## 38. Visit as the Economic Bridge
@@ -945,6 +953,8 @@ Direct Caregiver Labor
 ```
 
 The Visit is the shared operating object that allows Serve to connect service delivery to both revenue and direct workforce cost.
+
+This diagram depicts the Traditional Care case, where one Visit is both the Billable-Activity-producing service event and the Payable-Activity-producing Work Assignment. For Community Care, the labor-side arrow instead runs from the caregiver's Community Shift; the Community Visit continues to drive Billable Activity independently. See Part XII.
 
 ---
 
@@ -1070,6 +1080,8 @@ Exact API capabilities must be validated.
 ### CINCH
 
 Authority for the community-care operational functions Serve uses within CINCH, including Visit Plan and task-level community-care workflows where applicable.
+
+CINCH may reflect that a Community Visit is scheduled, in progress, or completed before AxisCare reflects the same operational reality, because a Serve user has not yet verified or reconciled the Visit in AxisCare. This is an expected, transient integration state, not a data error. See Part XII, §57 for how Serve distinguishes source-evidence timing from canonical economic state.
 
 ### Viventium
 
@@ -1225,8 +1237,26 @@ The concepts considered foundational for the next stage of Executive and Financi
 30. Forecast
 31. Target
 32. Area
+33. Work Assignment
+34. Traditional Visit
+35. Community Shift
+36. Community Visit
+37. Direct Labor Actual / Allocated Direct Labor
+38. Community Capacity Intelligence
+39. Minimum Community Shift Length
+40. Client Service Utilization
+41. Practical Capacity
+42. Peak Demand Density
+43. Capacity Headroom
+44. Additional Shift Readiness
+45. Economic Density
+46. Community Shift Optimization Objective
+47. Community Capacity Policy Version
+48. Community Capacity Review
 
 Additional concepts should be added only when a real business or intelligence requirement requires them.
+
+Items 33–37 were added by the Work Assignment / Community Care labor amendment (Part XII) to correct an incomplete labor-side assumption in the original v0.1 list — see §52–§61. Items 38–48 were added by the Community Shift capacity and optimization amendment (Part XIII) — see §62–§80.
 
 ---
 
@@ -1271,6 +1301,456 @@ Area-level rollups (e.g., "this manager's Area") are computed by aggregating Com
 
 ---
 
+# PART XII — WORK ASSIGNMENT AND COMMUNITY CARE LABOR MODEL
+
+This Part amends the ontology to reflect that Serve operates at least two materially different care-delivery/economic models — **Traditional Care** and **Community Care** — and that the original Visit-only labor assumption (§10, §16, §37, §38) is directionally correct for Traditional Care but incomplete for Community Care. It is additive: nothing in Parts I–XI is superseded, and Visit remains the canonical unit of client service delivery for both models.
+
+## 52. Work Assignment
+
+**Work Assignment** is the canonical unit of caregiver labor responsibility for which Serve incurs or expects to incur direct caregiver labor.
+
+Work Assignment is a Serve-owned business concept. It is not defined by, or dependent on, any AxisCare or CINCH object name.
+
+A Work Assignment may currently be satisfied by either:
+
+1. a **Traditional Visit** (§53), or
+2. a **Community Shift** (§54).
+
+### Relationship
+
+> **Caregiver → Work Assignment → Payable Activity → Payroll / Direct Labor**
+
+Work Assignment is the general form of the labor-side relationship already described for Visit in §10. Visit remains the general form of the client-side, service-delivery/revenue relationship; it is not redefined as a labor object.
+
+---
+
+## 53. Traditional Visit
+
+A **Traditional Visit** is a Visit (§10) delivered under Serve's Traditional Care model, in which a caregiver is assigned to a Client-specific Visit or time block.
+
+A Traditional Visit may simultaneously be:
+
+- a Visit / service event, satisfying the Client-side relationship in §10; and
+- a Work Assignment (§52), satisfying the workforce-side relationship.
+
+Therefore both of the following may be valid, and this is intentional rather than duplicative:
+
+> **Traditional Visit → Billable Activity**
+
+> **Traditional Visit → Payable Activity**
+
+This dual role is the Traditional Care case already described generally in §10 and in the Part VIII diagrams (§37, §38).
+
+---
+
+## 54. Community Shift
+
+A **Community Shift** is a caregiver Work Assignment (§52) representing a bounded period during which the caregiver provides Community Care capacity within a specific Community.
+
+A Community Shift:
+
+- belongs to a Caregiver;
+- belongs to the service Community;
+- has scheduled time;
+- may later have actual/payable time;
+- has a minimum practical length (§63);
+- may support zero, one, or many Community Visits (§55);
+- is the natural labor grain for Community Care unless authoritative evidence establishes otherwise.
+
+For future Community capacity intelligence (Part XIII), a Community Shift should eventually be understood in terms of: the Visits associated with it; service minutes delivered during it; operational/non-client-service time within it; its practical reserve capacity; its Direct Labor; the Visit Revenue attributable to service delivered during it; and its resulting Direct Service Contribution. This ontology does not assert that all of these are currently available from any source system — see Metric Registry Part XV for source status per metric.
+
+A Community Shift is not itself automatically a billable Client Visit, and does not by itself generate Billable Activity.
+
+Illustrative example, not a data model: a caregiver's AM Community Shift (approximately four hours) and PM Community Shift (approximately four hours) at a Community.
+
+---
+
+## 55. Community Visit
+
+A **Community Visit** is a resident/Client-level service event delivered during Community Care operations.
+
+A Community Visit is a Visit (§10) — it does not replace or compete with the general Visit concept; it specializes it for the Community Care model, exactly as Traditional Visit (§53) specializes it for Traditional Care.
+
+A Community Visit:
+
+- belongs to a Client;
+- belongs to a Community;
+- may be associated with a Community Shift (§56);
+- may have its own service duration, distinct from the enclosing Shift's duration;
+- may have its own billing/rate semantics;
+- may generate Billable Activity;
+- does not automatically determine caregiver paid time.
+
+Serve must not model Community Care direct labor as though each Community Visit independently generates the caregiver's payable time, unless an authoritative source explicitly establishes that relationship for a specific case.
+
+---
+
+## 56. Shift ↔ Visit Relationship
+
+The conceptual relationship between Community Shift and Community Visit remains:
+
+> **Community Shift → 0..many Community Visits**
+
+> **Community Visit → 0..1 identified Community Shift**
+
+This section separates two distinct questions that earlier drafts conflated: whether this relationship exists in business reality, and whether it exists as an explicit, source-proven technical linkage. These are answered differently.
+
+### A. Business relationship — established
+
+**USER-OBSERVED OPERATIONAL FACT:** Community resident Visits arise from Community-care activity performed within a Community caregiver Shift. Serve schedules caregivers into Community Shifts (for example, an AM and a PM Community Shift at a Community); the individual resident Visits performed during a Shift are part of that caregiver's work during that Shift. This business relationship is treated as established and is no longer conceptually uncertain.
+
+### B. Technical linkage mechanism — confirmed absent from the AxisCare Customer API surface; unknown for CINCH
+
+**REPO-CONFIRMED / SOURCE-DOCUMENTED FACT:** No explicit shift ID, assignment ID, caregiver-assignment ID, batch ID, or session ID field exists anywhere in AxisCare's Customer API — neither in this repository's typed `AxisCareRawVisit`/`AxisCareRawSchedule` models (`lib/integrations/axiscare/types.ts`) nor in the OpenAPI specification's documented Visit or Schedule schemas (`docs/integrations/axiscare/AxisCare-Customer-API-OpenAPI.yaml`). The word "shift" does not appear anywhere in that specification as a modeled object.
+
+The one parent-style identifier that does exist is `scheduleId` (embedded directly in a Visit's own composite id, e.g. `v={visitId}:s={scheduleId}:d={date}`). **This must not be confused with a Shift ID.** `scheduleId` links a Visit to its AxisCare "schedule" entry — the client's own recurring appointment/service-plan template (Ontology §11, Scheduled Service) — not to a caregiver's Community Shift / Work Assignment. Treating `scheduleId` as Shift evidence would be a real modeling error, not a shortcut.
+
+**OPEN QUESTION:** CINCH's own API was not investigated — no CINCH API documentation exists anywhere in this repository (only a one-way, human-approved care-plan *content* projection at `lib/assessmentIntelligence/cinchProjection.ts`, which is unrelated to visit/shift scheduling and confirms there is no CINCH read or write integration in this codebase at all). Whether CINCH itself exposes a Shift/assignment identifier that AxisCare does not is genuinely unknown from this repository and would require direct CINCH API access to determine.
+
+**Conclusion:** SOURCE_PROVEN Shift-to-Visit linkage is confirmed absent from the currently available AxisCare Customer API surface. CINCH technical linkage remains unknown, because no CINCH API documentation or source was available for this investigation — it is an open question, not a second confirmed absence. A future implementation would need a Serve-derived relationship (§B below) unless CINCH access later proves otherwise.
+
+### Candidate-relationship classification
+
+Any candidate Shift-to-Visit relationship Serve derives must be classified as exactly one of:
+
+- **SOURCE_PROVEN** — a specific vendor record explicitly links a Community Visit to a Community Shift or caregiver assignment. Not currently true for AxisCare (§B above); unknown for CINCH.
+- **DETERMINISTIC_DERIVED** — Serve computes the linkage from a fixed, unambiguous rule over source data (for example, exactly one active Shift exists for that caregiver/Community/date covering the Visit's time window) such that the result is reproducible and has no plausible alternative match.
+- **HEURISTIC** — Serve derives a probable linkage using matching dimensions such as Community, caregiver, business date, Visit timestamp, Shift start/end, service type, or Client, but more than one Shift or caregiver could plausibly match, or the rule is not guaranteed correct in every case.
+- **AMBIGUOUS** — more than one equally plausible Shift/caregiver candidate exists for a given Visit and Serve cannot resolve it without human review.
+- **UNRESOLVED** — no linkage is currently available or derivable at all.
+
+Serve must not treat a HEURISTIC or DETERMINISTIC_DERIVED linkage as SOURCE_PROVEN, and must not infer a Visit belongs to a Shift merely because timestamps overlap, if multiple Shifts or caregivers could plausibly match — that case is AMBIGUOUS, not DETERMINISTIC_DERIVED. No specific derivation algorithm is approved by this ontology; §B above establishes that one will be needed, not what it should be.
+
+### Community Care labor path
+
+> **Caregiver → Community Shift → Payable Activity → Payroll / Direct Labor**
+
+### Community Care revenue path
+
+> **Client → Community Visit → Billable Activity → Invoice / Revenue**
+
+These two paths share a Community and, typically, a caregiver and a time window — but they are not the same economic object. Revenue attributable to a Community Visit must not be assumed to determine the labor cost of the enclosing Community Shift, or vice versa.
+
+---
+
+## 57. Source Truth vs. Serve Economic Truth
+
+Vendor systems supply source *evidence*. Serve owns the interpretation of that evidence into canonical economic state — the same principle already established for Active Client status (Metric Registry §13) applies generally to service, billing, and payroll state.
+
+Community Care currently spans CINCH and AxisCare. CINCH may reflect that a Community Visit is scheduled, in progress, or completed before AxisCare reflects the same operational reality, because a Serve user has not yet verified or reconciled the Visit in AxisCare. A condition such as:
+
+> CINCH = completed, AxisCare = missed / not yet verified
+
+is an expected, transient state of the integration, not a data error and not evidence that the Visit did not occur.
+
+Serve's canonical interpretation must be able to express, independently:
+
+- service scheduled;
+- service delivered;
+- service verified;
+- billability established;
+- invoiced;
+- payable;
+- paid.
+
+A single vendor status (for example, a raw CINCH or AxisCare "completed" flag) must not be allowed to silently establish all of these downstream economic states at once. Collapsing them into one generic `completed` status is exactly the kind of vendor-label passthrough the Governing Principle in §2 already prohibits.
+
+Representative source evidence, illustrative rather than exhaustive:
+
+- **CINCH:** scheduled, in progress, completed.
+- **AxisCare:** scheduled, missed, completed, verified, billable, payable, charge rate.
+- **Viventium:** expected future authoritative payroll/executed-labor evidence (§17).
+- **Accounting:** expected future authoritative financial/ledger evidence.
+
+### Observed CINCH → AxisCare workflow
+
+**USER-OBSERVED OPERATIONAL FACT:** a Community Visit currently flows: (1) the caregiver performs the Visit within a CINCH Community Shift; (2) CINCH marks the Visit completed; (3) the completed Visit populates AxisCare as a client-level Visit record, initially appearing unverified (observed as "orange"/missed-looking in the AxisCare UI even though the service actually occurred); (4) a Community Care Coordinator (CCC) performs a human verification step in AxisCare; (5) once verified, the Visit appears as verified/delivered care. Observed backlog before verification currently appears capable of reaching approximately two to three days. AxisCare/CINCH are reportedly expected to eventually automate more of this verification step — this is a reported future capability, not an implemented fact, and must not be treated as already in effect.
+
+### What AxisCare verification is confirmed to control
+
+A narrow, read-only investigation of this repository's AxisCare integration (`lib/integrations/axiscare/types.ts`) and the AxisCare Customer API OpenAPI specification (`docs/integrations/axiscare/AxisCare-Customer-API-OpenAPI.yaml`) found:
+
+- **CONFIRMED (source-documented):** `verified` is a distinct boolean field on the Visit, independent of `clockIn`/`clockOut`/`removed` — a Visit can be clocked in and out (service delivered) while still unverified. The specification's own PATCH-visit error taxonomy separately documents: *"ADLs cannot be modified on a verified visit"* and *"Care note text cannot be modified on a verified visit"* — verification locks further edits to Activities of Daily Living and care-note documentation.
+- **NOT SUPPORTED (source-documented, by absence):** the same specification documents `billableRateMode`/`chargeRate` validation ("Billing errors") as a category entirely separate from the verified-visit lock errors (ADL/care-note). No documented rule ties billing-field validity to verification status.
+- **UNKNOWN:** whether verification gates invoice generation or payroll/payable processing internally within AxisCare. This API surface has no `/invoices` or `/payroll` endpoint at all (consistent with the prior Investigation Report's finding), so neither this repository nor this specification can confirm or deny a relationship for those workflows. Separately, webhook events `scheduling.visit.payable` and `scheduling.visit.payRate` exist in the specification's event catalog as changes distinct from `scheduling.visit.verify`, which is suggestive that payability and pay rate are independently mutable from verification status — but their actual field shapes are not exposed anywhere in this API's documented request/response schemas, so this remains SUGGESTIVE, not CONFIRMED.
+- **UNKNOWN:** CINCH's own verification/completion semantics — no CINCH API documentation exists in this repository (§56.B).
+
+**Conclusion:** verification is confirmed to be a documentation-completion/compliance-style lock, not confirmed to be a billing or payroll gate, and not proven or disproven with respect to invoicing — those remain open questions pending direct AxisCare/CINCH API access beyond what this repository can observe. Serve's four-state model below (service completion / AxisCare appearance / AxisCare verification / financial realization) exists precisely because these must not be assumed to be the same event.
+
+### Four distinct timestamps/states
+
+Where source support eventually exists, Serve should be able to distinguish, for a given Community Visit:
+
+1. **Service completion** — when CINCH says the resident Visit was completed.
+2. **AxisCare appearance** — when that Visit first becomes visible in AxisCare.
+3. **AxisCare verification** — when the CCC verifies/finalizes the Visit in AxisCare.
+4. **Financial realization** — when the service becomes billable, invoiced, payable, or paid (itself potentially several distinct sub-states, per the list above).
+
+These four must not be assumed to be the same event, and must not be assumed to occur in lockstep. This distinction feeds Service-Day Data Maturity (§58).
+
+---
+
+## 58. Service-Day Data Maturity
+
+Community Visits can appear or change during a service day as CINCH activity occurs and AxisCare verification/synchronization catches up. Current-day service and economic figures should therefore be understood as provisional until the day matures.
+
+Serve should be able to express a service day's data-maturity state as one of:
+
+- **open** — the current service day; incomplete Visit activity is expected and normal.
+- **settling** — the service day has ended, but some combination of CINCH completion, AxisCare appearance, human verification, and source corrections (§57's four states) may still be outstanding.
+- **finalized** — the service day is sufficiently mature for official management reporting, under an approved, evidence-based finalization policy.
+- **corrected** — authoritative source evidence changed after finalization.
+
+**Finalized must not be defined merely as "all AxisCare Visits verified" unless investigation establishes that verification is actually required for the specific metric in question.** §57 already found verification confirmed to gate documentation completion but not confirmed (and not disproven) to gate billing, invoicing, or payroll. Different metrics may reach maturity at different times using different underlying states:
+
+- **service-delivery actual** (what occurred) may mature earliest — plausibly at or shortly after AxisCare appearance, since clock-in/out data does not depend on verification;
+- **invoice actual** may mature later, once billability and invoicing are confirmed;
+- **payroll actual** may mature later still, following payroll processing.
+
+A single, uniform "finalized" state for every metric would silently overstate what verification actually proves — Serve should track maturity per relevant financial-state category (§57's four-state model), not assume one maturity clock governs all of them.
+
+This ontology does not select a finalization delay or trigger for any of these. Before establishing such a policy, Serve should measure the actual lag between the four states in §57 as observed in practice (the current ~2–3-day AxisCare verification backlog is a USER-OBSERVED OPERATIONAL FACT to measure, not a policy value to adopt), rather than choosing an arbitrary delay. This is a design concept only; no implementation is authorized by this section.
+
+---
+
+## 59. Vendor-Edge Principle
+
+Vendor-specific objects and statuses are normalized at the integration edge. Internal Serve financial and operating models use Serve-owned canonical concepts.
+
+AxisCare, CINCH, Viventium, and accounting systems should not dictate Serve's ontology. Internal financial logic should be built around the stable Serve concepts defined here (Visit, Work Assignment, Community Shift, Billable Activity, Payable Activity, and the rest of this ontology) rather than around a specific vendor's field names or status vocabulary, even where a vendor concept currently maps closely to a Serve concept.
+
+This restates, for the two-model labor amendment specifically, the Governing Principle already established in §2.
+
+---
+
+## 60. Serve OS Strategic Boundary
+
+Serve OS may increasingly become the canonical operating and orchestration layer for care delivery, while:
+
+- CINCH remains a Community Care execution source;
+- AxisCare remains a scheduling/home-care operational system and downstream integration;
+- Viventium remains payroll execution;
+- accounting remains ledger/financial truth.
+
+This ontology does not propose replacing any of these systems. It exists only to ensure that Serve's ontology does not foreclose future Serve-owned capability — such as unified scheduling, Community Shift management, Visit orchestration, reconciliation, or service-day intelligence — should Serve choose to build it. This is a boundary statement, not a product roadmap.
+
+---
+
+## 61. Direct Labor: Actual vs. Allocated
+
+**Direct Labor Actual** is actual or authoritative labor cost associated with the natural payable Work Assignment (§52) that generated it — a Traditional Visit or a Community Shift.
+
+**Allocated Direct Labor** is a modeled distribution of a Work Assignment's labor cost across lower-grain objects, such as individual Community Visits or Clients, when a business question requires a finer grain than the natural payable unit provides.
+
+Allocated Direct Labor is not source truth. Any allocated figure must retain, at minimum:
+
+- the allocation method used;
+- the source Work Assignment it was allocated from;
+- a model/version identifier, where applicable;
+- the period covered;
+- explicit `allocated` semantics wherever presented, so it is never confused with Direct Labor Actual.
+
+No allocation algorithm is selected by this ontology. See Metric Registry Part XIV for how this distinction affects specific metrics.
+
+### Why allocation is a real, separate problem
+
+Illustrative example, not a data model: a four-hour Community Shift costs Serve a known, actual amount in caregiver labor. Multiple Client Visits occur inside that Shift. Serve knows the actual Shift labor cost — that is Direct Labor Actual, and it requires no allocation. Serve does **not** automatically know what portion of that cost belongs economically to any one of the individual Visits inside the Shift.
+
+**No allocation methodology is required to calculate authoritative Community Shift or Community-level Direct Service Contribution** — both are computable directly from the Shift's own actual Revenue and actual Direct Labor (Ontology §58 in Part XIII; Metric Registry §58). Allocation is only required for genuinely lower-grain questions, such as: contribution by individual Community Visit; contribution by resident; or per-Visit Community labor economics.
+
+Candidate future allocation approaches — none selected by this ontology — might include a service-minute share, an equal-per-Visit share, a Visit-type-weighted share, or a revenue share. Whichever is eventually approved, any resulting figure must be labeled **Allocated Direct Labor**, never **Direct Labor Actual**.
+
+---
+
+# PART XIII — COMMUNITY SHIFT CAPACITY AND OPTIMIZATION MODEL
+
+This Part extends Part XII with the business concepts needed to eventually evaluate and optimize Community Shift capacity. It is additive and defines business meaning only. Exact metric formulas, source status, and calculation grain belong in the Financial Metric Registry (Part XV there). No algorithm, threshold, or implementation is authorized by this Part.
+
+## 62. Community Capacity Intelligence
+
+**Community Capacity Intelligence** is a deterministic Serve Intelligence capability that evaluates Community Visit demand against available Community Shift capacity, service timing, caregiver constraints, and contribution economics to determine when additional caregiver capacity is operationally and economically justified.
+
+This does not establish a new Intelligence domain. It should be described as a capability/model within the existing Financial and Executive Intelligence architecture unless a future design determines a separate domain is genuinely required (Executive Intelligence Domain Charter §6).
+
+---
+
+## 63. Minimum Community Shift Length
+
+Serve's current staffing experience establishes a real operating constraint:
+
+> Community caregiver Shifts shorter than approximately four hours are materially harder to fill reliably.
+
+The v0.1 approved operating assumption is:
+
+> **Minimum Community Shift Length = 4 hours** (`minimumCommunityShiftHours = 4`)
+
+A future capacity recommendation should therefore normally evaluate added capacity in increments of at least one minimum Community Shift, not in arbitrary fractional caregiver blocks (for example, not a 60-, 90-, or 120-minute increment) merely because a mathematical model computes that as the exact additional service capacity needed.
+
+This is a Serve business constraint, not an AxisCare or CINCH concept. It should be treated as a configurable Serve business rule once implementation begins, not permanently hard-coded into any algorithm. This ontology approves the 4-hour value as the current operating assumption; it does not authorize building a configuration mechanism.
+
+---
+
+## 64. Demand Is Not Just Visit Count
+
+Visits per Community Shift alone cannot determine capacity. A Community Shift with ten evenly distributed Visits may be easier to operate than a Shift with seven Visits concentrated inside a narrow service window.
+
+Community capacity must eventually consider at least:
+
+1. Visit count;
+2. service duration;
+3. requested/preferred timing;
+4. actual timing;
+5. concentration of demand;
+6. transition/coordination time;
+7. unplanned service demand;
+8. service-quality constraints.
+
+---
+
+## 65. Client Service Utilization
+
+**Client Service Utilization** is the portion of paid Community Shift time that became direct Client service time — conceptually, Client service minutes delivered during a Community Shift, relative to paid Community Shift minutes.
+
+Client Service Utilization is an **observed efficiency measure**, not itself the optimization target. Community caregivers require legitimate non-client-service capacity for movement between residents, documentation, coordination, schedule variability, unexpected resident needs, service overruns, operational handoffs, and reasonable working conditions. Serve must not imply that 100% Client Service Utilization is ideal.
+
+---
+
+## 66. Practical Capacity
+
+**Practical Capacity** is the portion of paid Community Shift capacity that can reasonably be committed to planned Client Visits while preserving sufficient operating reserve for transitions, documentation, variability, and unplanned resident needs.
+
+No specific percentage or threshold is established by this ontology. Practical Capacity is not a value Serve simply chooses once and keeps — it is a **versioned, evidence-calibrated operating parameter** (§80, Community Capacity Policy Version). Serve may begin with a provisional management assumption, but that assumption should be tested and revised using real operating history: Visit count, service minutes, Visit timing, lateness, missed/delayed Visits, unserved demand, caregiver fillability, caregiver workload, client experience, Revenue, Direct Labor, and Direct Service Contribution (§77, §79).
+
+---
+
+## 67. Practical Capacity Utilization
+
+**Practical Capacity Utilization** relates planned/expected service demand to Practical Capacity (§66), rather than to raw paid Shift time. It is intended to eventually be more useful for capacity decisions than Client Service Utilization (§65) alone. No thresholds are established by this ontology; because it depends on Practical Capacity, it inherits that value's versioned, evidence-calibrated status.
+
+---
+
+## 68. Peak Demand Density
+
+**Peak Demand Density** describes how much Community Visit demand is concentrated inside narrower time windows within a Shift, distinguishing total Shift demand from simultaneous or tightly clustered demand.
+
+A Shift can have substantial aggregate headroom while still being unable to reliably meet a short, concentrated demand peak. No specific rolling-window size (for example, 30-, 60-, or 90-minute) is established by this ontology — like Practical Capacity (§66), the window size is a versioned, evidence-calibrated operating parameter (§80) to be set from observed demand-timing data, not chosen once arbitrarily.
+
+---
+
+## 69. Capacity Headroom
+
+**Capacity Headroom** is the amount of additional Community Visit demand a Shift can absorb while remaining within approved Practical Capacity (§66) and service-quality constraints.
+
+Capacity Headroom should eventually be expressible in forms such as service minutes, expected Visits, revenue opportunity, or contribution opportunity. No calculation is defined by this ontology.
+
+---
+
+## 70. Additional Shift Readiness
+
+**Additional Shift Readiness** is an intelligence assessment of whether current and expected Community Visit demand is sufficiently dense, time-constrained, and economically valuable to justify adding another minimum Community Shift (§63).
+
+"Additional Shift Readiness" is preferred terminology over describing this as "splitting" an existing Shift, since the operational outcome need not be a literal division. Justified added capacity may take the form of two concurrent minimum Shifts, overlapping minimum Shifts, staggered minimum Shifts, an AM/PM capacity change, or another configuration consistent with the minimum-Shift rule (§63). Serve must not assume the optimal answer is always two identical concurrent Shifts.
+
+Additional Shift Readiness should eventually weigh, at minimum:
+
+- **Demand:** Visit count, Visit durations, demand growth, time-of-day concentration, pending/unserved demand, delayed demand, and expected new-Client demand where evidence supports it.
+- **Existing capacity:** current Shift duration, Client Service Utilization (§65), Practical Capacity Utilization (§67), Peak Demand Density (§68), Capacity Headroom (§69).
+- **Client experience:** ability to meet preferred/required service windows, lateness/delay, continuity, rushed-service risk, missed/unserved demand, reliability.
+- **Caregiver experience:** minimum fillable Shift length, predictable schedule, reasonable service density, transition time, workload saturation, continuity/stability, and the likelihood a Shift can actually be staffed.
+- **Economics:** incremental Revenue, incremental Direct Labor, incremental Direct Service Contribution, expected contribution per paid Shift hour, Visit mix (§71), and expected utilization of added capacity.
+
+---
+
+## 71. Visit Mix and Economic Density
+
+Serve charges different amounts for different Community Visit durations and service configurations. Two Community Shifts with identical Visit counts, or identical service-minute utilization, can therefore have materially different Revenue and Direct Service Contribution.
+
+Community capacity optimization must consider **Visit mix**, not merely volume or minutes. Serve must not assume one Visit is an economically equivalent unit to another Visit, or that one service minute is economically equivalent to another; future intelligence must preserve the actual Billable Activity / rate economics associated with each Visit rather than averaging them away.
+
+**Economic Density** describes how effectively a Community Shift converts purchased caregiver capacity into economically valuable Client service. Candidate views of Economic Density include Revenue per Paid Shift Hour, Direct Service Contribution per Paid Shift Hour, and Contribution per Client Service Minute — see Metric Registry Part XV for the specific metric definitions. Any lower-grain view of Economic Density must apply the Direct Labor Actual / Allocated Direct Labor distinction (§61) and must not imply an actual per-Visit labor cost when Community labor originates at the Shift grain.
+
+---
+
+## 72. Margin-Aware Capacity Optimization
+
+Community capacity decisions must optimize sustainable Direct Service Contribution and service quality — not merely Visit count, Revenue, or caregiver utilization in isolation.
+
+Because different Visit durations and rate structures carry different contribution economics, a future capacity recommendation must consider Visit mix (§71), expected Revenue, incremental labor cost, expected contribution, service-quality effects, and caregiver constraints together, rather than optimizing any single input alone.
+
+---
+
+## 73. Existing, Enabled, and Forecast Demand
+
+Future capacity optimization must distinguish three categories of demand and must not mix them when calculating incremental economics:
+
+- **Existing demand redistributed** — Visits already being served by existing capacity, but redistributed across a changed Shift configuration. This may improve timeliness, caregiver workload, or client experience, but does not by itself create new Revenue.
+- **Constrained/unserved demand unlocked** — demand Serve currently cannot reliably accept or deliver because capacity is insufficient. Added capacity may create incremental Revenue by serving this demand.
+- **Future expected demand** — projected demand based on growth/pipeline evidence (§26, Pipeline). This is Forecast (§34), not Actual (§32), and must be labeled accordingly.
+
+---
+
+## 74. Incremental Direct Service Contribution of Added Capacity
+
+**Incremental Direct Service Contribution of Added Capacity** is the incremental Revenue enabled by added Community Shift capacity minus the incremental Direct Labor cost of that added capacity.
+
+This is expected to become one of the principal economic inputs to Additional Shift Readiness (§70). No forecasting methodology or calculation is authorized by this ontology.
+
+---
+
+## 75. Community Shift Optimization Objective
+
+The canonical Community Shift capacity objective is:
+
+> **Maximize sustainable Direct Service Contribution and reliable Client service, subject to caregiver fillability, minimum Shift length, service timing, practical capacity, continuity, and reasonable caregiver workload constraints.**
+
+This objective must not be reduced to "maximize utilization." Utilization (§65, §67) is an input to the objective, not the objective itself.
+
+---
+
+## 76. Verification Lag Does Not Change Economic Grain
+
+CINCH may show a Community Visit as completed before AxisCare reflects it as verified/completed, because Serve currently verifies CINCH-populated Visits in AxisCare manually (§57). AxisCare is reportedly expected to eventually automate more of this verification. This is a current source-system workflow limitation that may improve.
+
+Automatic AxisCare verification would reduce service-data settlement lag. It would **not** change the underlying Community Care economic grain: Revenue remains Visit / Billable Activity grain, and Direct Labor remains Community Shift / Work Assignment grain, regardless of how quickly or automatically verification occurs. A future integration improvement to verification timing must not be allowed to collapse this distinction.
+
+---
+
+## 77. Algorithmic Accuracy Principle
+
+Capacity thresholds should be calibrated from observed Serve operating history rather than chosen arbitrarily.
+
+Future capacity models should learn from actual Visit demand, actual Shift staffing, timing distributions, late/missed service, caregiver utilization, client-service outcomes, Shift fillability, Revenue, Direct Labor, and contribution. Initial rules may be deterministic, but any threshold used must be evidence-driven and versioned, consistent with the Constitution's "deterministic reasoning precedes AI" principle. Machine learning must not be introduced merely because optimization is a future goal.
+
+---
+
+## 78. Verification as an Operational Work Item
+
+Community Visits completed in CINCH but still awaiting required AxisCare verification (§57) may constitute actionable operational work for the Community Care Coordinator — the current observed ~2–3-day backlog (§57) represents real, outstanding work, not merely a data-quality footnote.
+
+A likely future Today's Work item — **"Review and resolve unverified Community Visits"** — would help identify CINCH-completed, AxisCare-present, still-unverified Visits, and the age of each pending verification. This is a Management Action (§31) candidate, using the platform's existing Action primitive rather than a new one.
+
+**This section identifies a future operational workflow. It does not implement it.** If future investigation establishes that verification is not operationally necessary for billing or payroll and exists purely as an optional documentation step, that finding should replace this section's premise rather than be silently ignored.
+
+---
+
+## 79. Community Capacity Review
+
+Before trusting a fully automated capacity-recommendation engine, Serve should review Community Shift performance on a recurring cadence, to accumulate the real operating evidence §77's calibration requires.
+
+A recommended design concept — not a specified workflow — is an initially weekly review that compares AM vs. PM Shifts and evaluates: current demand density (§64), Capacity Headroom (§69), Peak Demand Density (§68), fillability, contribution, constrained/unserved demand (§73), and growth trend. The purpose is to collect enough real operating evidence to calibrate the algorithm described in §77 — not to operate a standing dashboard for its own sake. No workflow, UI, or code is authorized by this section.
+
+---
+
+## 80. Community Capacity Policy Version
+
+A **Community Capacity Policy Version** is a future, explicitly versioned record of the operating parameters governing Community capacity decisions at a point in time — analogous to how a Forecast (§34) retains its assumptions and version.
+
+A future policy version may capture values such as: Minimum Community Shift Length (§63); the provisional Practical Capacity assumption (§66); the Peak Demand window definition (§68); minimum reserve capacity; Additional Shift Readiness rules (§70); review cadence (§79); and an effective date.
+
+The only value this ontology currently approves is the hard constraint in §63 (Minimum Community Shift Length = 4 hours). Every other value referenced above remains provisional and evidence-calibrated, not chosen by this document. No versioning mechanism is implemented by this section.
+
+---
+
 ## Ontology Statement
 
-> **Serve's business is understood through the relationships among people, care delivery, workforce, communities, growth, governance, and economics. The Visit is the primary bridge between operations and direct economics: Client service creates Billable Activity and Revenue, while Caregiver work creates Payable Activity and Direct Labor. Those relationships roll upward into Client, Community, and enterprise performance, allowing Serve Intelligence to explain not only what happened, but why the organization performed as it did.**
+> **Serve's business is understood through the relationships among people, care delivery, workforce, communities, growth, governance, and economics. The Visit is the primary bridge between client-side operations and revenue: Client service creates Billable Activity and Revenue. Caregiver work creates Payable Activity and Direct Labor through the caregiver's Work Assignment, which a Traditional Visit satisfies directly and which a Community Shift satisfies for Community Care. Those relationships roll upward into Client, Community, and enterprise performance, allowing Serve Intelligence to explain not only what happened, but why the organization performed as it did.**
