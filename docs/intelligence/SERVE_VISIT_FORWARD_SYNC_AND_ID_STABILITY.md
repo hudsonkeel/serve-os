@@ -111,3 +111,50 @@ Committing this code does **not** activate the production schedule. Before enabl
 8. **ID-stability diagnostics review plan for week one:** review the `console.log`-emitted `idStability` summary from each day's run; specifically watch whether `candidateContinuityMatches`/`suspectedPlaceholderToVisitTransitions` keep recurring for the *same* fingerprints (suggesting a stable, explicable pattern) versus new ones appearing daily (suggesting broader churn) — and, ideally, spot-check one or two of the six candidates already found against AxisCare's own UI to resolve whether they're the same logical Visit.
 
 **Hud must explicitly approve activating the production schedule.** This document and the code it describes only make that decision possible — they do not make it.
+
+---
+
+## BRANCH-DEPLOY MANUAL VALIDATION — PASSED
+
+A full, authenticated, end-to-end manual invocation of the production route was performed against the `feature/financial-intelligence-v0.1` branch deploy, resolving two upstream issues found during the attempt (a proxy allowlist gap and an internal-secret value mismatch, both since fixed) and confirming the deployment-gate checklist above is technically satisfiable. **This did not activate the production schedule** — see the still-open checklist items below.
+
+**Test date/time:** 2026-09-10 (Central), route responded within the same session as the request.
+
+**Deployed commit:** `17cf168ed67c761e020d77e3282904aa98f35792` (with the temporary auth-comparison diagnostic added for the investigation now removed in a follow-up commit — the route's actual auth/sync logic is unchanged from `0c8a8e3`).
+
+**Request:** `POST /api/scheduling/visit-facts-sync` on the branch-deploy URL, authenticated with the correct `SCHEDULING_VISIT_SYNC_INTERNAL_SECRET` header.
+
+**Result:**
+
+| Field | Value |
+|---|---|
+| HTTP status | 200 |
+| Auth | passed |
+| `available` | true |
+| Business window | `2026-09-04` → `2026-09-10` (America/Chicago) |
+| UTC window | `2026-09-04T05:00:00.000Z` → `2026-09-11T05:00:00.000Z` (exclusive) |
+| Fetched / Normalized | 212 / 212 |
+| Inserted new | 38 |
+| Inserted superseding | 7 |
+| Unchanged | 119 |
+| Skipped (unresolved identity) | 48 |
+| Skipped (no occurrence time) | 0 |
+| Errors | 0 |
+| Truncated | false |
+| Duration | 8,945 ms |
+
+Internally consistent: 38 + 7 + 119 + 48 + 0 = 212 = fetched/normalized.
+
+**ID-stability diagnostics from this run:**
+
+| Field | Value |
+|---|---|
+| `s=` (schedule-placeholder) count | 40 |
+| `v=` (visit-record) count | 124 |
+| Other ID-shape count | 0 |
+| Candidate continuity matches | 7 (up from the 6 baselined in §5 above) |
+| Suspected `s=`↔`v=` transitions | 1 (unchanged from §5) |
+
+The new candidate is a `v=`↔`v=` pair dated 2026-09-09, reported the same fingerprinting way as the original six. Per this document's own classification scale (§5) and the First-Week Observation Checklist's definitions, this remains **SUGGESTIVE only, not CONFIRMED** — one additional data point consistent with the existing pattern, not a new pattern, and not human-verified against AxisCare's own records. No identity-model action is authorized by this finding, per the checklist's explicit rule that only CONFIRMED evidence (never a diagnostic fingerprint alone, however many times it recurs) can justify that.
+
+**Not yet done:** production schedule activation. All eight Deployment Gate checklist items above remain Hud's explicit decision, not automatically satisfied by this passing test.
