@@ -3,6 +3,7 @@
 import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { AutoGrowTextarea } from "@/components/ui/AutoGrowTextarea";
 import { markInfectionReviewedAction } from "@/lib/actions/infections";
 
 const fieldClassName =
@@ -11,14 +12,18 @@ const fieldClassName =
 // Mirrors components/incidents/ReviewIncidentForm.tsx exactly — the formal
 // review step, separate from the disclosed facts above it on the detail
 // page. Never edits condition_description/treatment_description/etc.; it
-// only records leadership's follow-up decision. No default — the RPC
-// itself rejects a null follow-up decision.
+// only records leadership's follow-up decision and the "why" behind it. No
+// default — the RPC itself rejects a null follow-up decision. Review
+// Findings is frozen after this first submission; see
+// AddReviewFindingsForm for the already-reviewed legacy-backfill case
+// (Linda Kaplan's real record).
 export function ReviewInfectionForm({ infectionId }: { infectionId: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [followUp, setFollowUp] = useState<"yes" | "no" | null>(null);
   const [owner, setOwner] = useState("");
+  const [reviewFindings, setReviewFindings] = useState("");
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -38,6 +43,7 @@ export function ReviewInfectionForm({ infectionId }: { infectionId: string }) {
         infectionId,
         followUpRequired: followUp === "yes",
         owner: followUp === "yes" ? owner.trim() : null,
+        reviewFindings: reviewFindings.trim() || null,
       });
       if (res.error) {
         setError(res.error);
@@ -49,6 +55,18 @@ export function ReviewInfectionForm({ infectionId }: { infectionId: string }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <label className="block">
+        <span className="mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-subtle">
+          Review Findings / Contributing Factors
+        </span>
+        <AutoGrowTextarea
+          value={reviewFindings}
+          onChange={(e) => setReviewFindings(e.target.value)}
+          minRows={3}
+          placeholder="Why is follow-up necessary — or not necessary?"
+        />
+      </label>
+
       <div>
         <span className="mb-1 block font-sans text-label font-semibold uppercase tracking-widest text-subtle">
           Is follow-up required?

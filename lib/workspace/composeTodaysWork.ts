@@ -17,6 +17,7 @@ import {
   mapEffectivenessReviewToWorkItem,
   mapEmergencyPreparednessObligationToWorkItem,
   mapIncidentToWorkItem,
+  mapInfectionFollowUpToWorkItem,
   mapInfectionToWorkItem,
   mapOnHoldRelationshipToWorkItem,
   mapPipelineStageToWorkItem,
@@ -35,6 +36,8 @@ import type { RecruitingLead } from "../supabase/types.ts";
 import type { EmergencyPreparednessReadinessEvaluation } from "../emergencyPreparedness/emergencyPreparednessReadiness.ts";
 import { formatCentralDateTime } from "../utils/date.ts";
 import { INCIDENT_TYPE_LABELS } from "../../components/incidents/incidentLabels.ts";
+import { NEXT_FOLLOW_UP_PURPOSE_LABELS } from "../../components/infections/infectionFollowUpLabels.ts";
+import type { InfectionFollowUpPurpose } from "../supabase/types.ts";
 
 const ASSESSMENT_STAGES = new Set(["assessment_scheduled"]);
 const PROPOSAL_STAGES = new Set(["proposal_in_progress", "proposal_sent"]);
@@ -100,6 +103,22 @@ export interface EffectivenessReviewForCompose {
   subjectId: string;
   subjectLabel: string | null;
   sourceIncidentId: string | null;
+  sourceInfectionId: string | null;
+}
+
+// Infection Lifecycle & Learning Loop v0.1 — one already-fetched,
+// already-joined open infection row carrying an outstanding follow-up
+// obligation (next_follow_up_date/purpose not null). The I/O layer
+// resolves residentDisplayName and the purpose's human-readable label in
+// bulk before calling composeTodaysWorkItems, so this module stays
+// pure/no I/O, matching every other *ForCompose convention here.
+export interface InfectionFollowUpForCompose {
+  infectionId: string;
+  nextFollowUpDate: string;
+  purpose: InfectionFollowUpPurpose;
+  owner: string | null;
+  residentId: string;
+  residentDisplayName: string | null;
 }
 
 export interface ComposeTodaysWorkInput {
@@ -116,6 +135,7 @@ export interface ComposeTodaysWorkInput {
   eprpEvaluation: EmergencyPreparednessReadinessEvaluation | null;
   openCorrectiveActions: readonly CorrectiveActionForCompose[];
   pendingEffectivenessReviews: readonly EffectivenessReviewForCompose[];
+  outstandingInfectionFollowUps: readonly InfectionFollowUpForCompose[];
 }
 
 export function composeTodaysWorkItems(input: ComposeTodaysWorkInput, now: Date = new Date()): WorkItem[] {
@@ -369,6 +389,27 @@ export function composeTodaysWorkItems(input: ComposeTodaysWorkInput, now: Date 
           subjectId: review.subjectId,
           subjectLabel: review.subjectLabel,
           sourceIncidentId: review.sourceIncidentId,
+          sourceInfectionId: review.sourceInfectionId,
+        },
+        now,
+      ),
+    );
+  }
+
+  // ─── Infection Follow-Up obligations (Infection Lifecycle & Learning
+  // Loop v0.1) — composed independently of the base "infection" item
+  // above and of any corrective_action/effectiveness_review item the same
+  // infection may also carry. No Incident analog. ────────────────────
+  for (const followUp of input.outstandingInfectionFollowUps) {
+    items.push(
+      mapInfectionFollowUpToWorkItem(
+        {
+          infectionId: followUp.infectionId,
+          nextFollowUpDate: followUp.nextFollowUpDate,
+          purposeLabel: NEXT_FOLLOW_UP_PURPOSE_LABELS[followUp.purpose],
+          owner: followUp.owner,
+          residentId: followUp.residentId,
+          residentDisplayName: followUp.residentDisplayName,
         },
         now,
       ),

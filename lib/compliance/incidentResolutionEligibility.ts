@@ -8,6 +8,16 @@
 // established convention). The RPC re-asserts the same rule server-side —
 // this is what renders the Resolution card's checklist and must never be
 // the only enforcement layer.
+//
+// The per-action "is it done" / "were they all cancelled" predicates live
+// in lib/compliance/correctiveActionCompletion.ts (Infection Lifecycle &
+// Learning Loop v0.1 reuse review) — shared with
+// lib/compliance/infectionResolutionEligibility.ts's own, differently-shaped
+// top-level rule. This module's own top-level rule (review gate, "at least
+// one action must exist," early-return shape) stays Incident-specific by
+// deliberate choice — Infection's follow-up-loop-first rule is genuinely
+// different, not a copy-paste candidate.
+import { allCorrectiveActionsCancelled, isCorrectiveActionSatisfied } from "./correctiveActionCompletion.ts";
 import type { ComplianceCorrectiveAction, Incident } from "../supabase/types.ts";
 
 export type IncidentResolutionBlockerReason =
@@ -31,31 +41,6 @@ export interface IncidentResolutionBlocker {
 export interface IncidentResolutionEligibility {
   eligible: boolean;
   blockers: IncidentResolutionBlocker[];
-}
-
-// A source-linked action stops blocking when:
-//   - it was cancelled (explicit, reasoned withdrawal — never blocks), or
-//   - it requires effectiveness verification and has reached
-//     verified_effective (status resolved/dismissed alone is NOT
-//     sufficient — the generic path must never silently stand in for a
-//     completed effectiveness review), or
-//   - it does not require effectiveness verification and is
-//     implemented/verified_effective, or was closed via the generic
-//     resolved/dismissed path (the still-valid original mechanism, since
-//     there is no verification step to bypass).
-function isActionSatisfied(action: ComplianceCorrectiveAction): boolean {
-  if (action.lifecycle_stage === "cancelled") return true;
-
-  if (action.effectiveness_review_required) {
-    return action.lifecycle_stage === "verified_effective";
-  }
-
-  return (
-    action.lifecycle_stage === "implemented" ||
-    action.lifecycle_stage === "verified_effective" ||
-    action.status === "resolved" ||
-    action.status === "dismissed"
-  );
 }
 
 export function computeIncidentResolutionEligibility(
@@ -84,13 +69,13 @@ export function computeIncidentResolutionEligibility(
   // is fine (the completed one(s) satisfy the requirement) — only when
   // EVERY action was cancelled, with nothing ever actually completed, is
   // resolution blocked as if no corrective action existed at all.
-  if (sourceLinkedActions.every((action) => action.lifecycle_stage === "cancelled")) {
+  if (allCorrectiveActionsCancelled(sourceLinkedActions)) {
     blockers.push({ reason: "all_actions_cancelled" });
     return { eligible: false, blockers };
   }
 
   for (const action of sourceLinkedActions) {
-    if (!isActionSatisfied(action)) {
+    if (!isCorrectiveActionSatisfied(action)) {
       blockers.push({ reason: "corrective_action_incomplete", actionId: action.id });
     }
   }

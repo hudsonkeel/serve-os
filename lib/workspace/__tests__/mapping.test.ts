@@ -10,6 +10,7 @@ import {
   mapCompletedWellnessFollowUpToWorkItem,
   mapCorrectiveActionToWorkItem,
   mapEffectivenessReviewToWorkItem,
+  mapInfectionFollowUpToWorkItem,
   mapEmergencyPreparednessObligationToWorkItem,
   mapIncidentToWorkItem,
   mapInfectionToWorkItem,
@@ -447,6 +448,7 @@ test("36. effectiveness review: overdue due date -> needs_attention, routes to t
       subjectId: "r1",
       subjectLabel: "Ada Washington",
       sourceIncidentId: "inc1",
+      sourceInfectionId: null,
     },
     NOW,
   );
@@ -472,6 +474,7 @@ test("37. effectiveness review: due date equal to today's own calendar date -> d
       subjectId: "r1",
       subjectLabel: null,
       sourceIncidentId: "inc1",
+      sourceInfectionId: null,
     },
     NOW,
   );
@@ -489,6 +492,7 @@ test("38. effectiveness review: due in the future -> upcoming, dueAt passes thro
       subjectId: "r1",
       subjectLabel: null,
       sourceIncidentId: "inc1",
+      sourceInfectionId: null,
     },
     NOW,
   );
@@ -496,7 +500,7 @@ test("38. effectiveness review: due in the future -> upcoming, dueAt passes thro
   assert.equal(item.dueAt, "2026-08-15");
 });
 
-test("39. effectiveness review: no source incident falls back to the Audit Readiness domain page, never a broken link", () => {
+test("39. effectiveness review: no source incident/infection falls back to the Audit Readiness domain page, never a broken link", () => {
   const item = mapEffectivenessReviewToWorkItem(
     {
       id: "rev4",
@@ -507,10 +511,85 @@ test("39. effectiveness review: no source incident falls back to the Audit Readi
       subjectId: "community1",
       subjectLabel: null,
       sourceIncidentId: null,
+      sourceInfectionId: null,
     },
     NOW,
   );
   assert.equal(item.sourceRoute, "/audit-readiness");
+});
+
+// Infection Lifecycle & Learning Loop v0.1 — the OPTIONAL Serve corrective-
+// action branch can also produce an effectiveness review; it must route to
+// the source infection record exactly as the incident case does above.
+test("39b. effectiveness review: infection-sourced routes to the exact infection record", () => {
+  const item = mapEffectivenessReviewToWorkItem(
+    {
+      id: "rev5",
+      correctiveActionTitle: "Reinforce PPE protocol",
+      dueAt: "2026-08-15",
+      owner: null,
+      subjectType: "resident",
+      subjectId: "r1",
+      subjectLabel: "Ada Washington",
+      sourceIncidentId: null,
+      sourceInfectionId: "inf1",
+    },
+    NOW,
+  );
+  assert.equal(item.sourceRoute, "/qapi/infections/inf1");
+});
+
+// ─── Infection Follow-Up (Infection Lifecycle & Learning Loop v0.1) ─────
+
+test("40. infection follow-up: overdue -> needs_attention, routes to the infection record", () => {
+  const item = mapInfectionFollowUpToWorkItem(
+    {
+      infectionId: "inf1",
+      nextFollowUpDate: "2026-07-01",
+      purposeLabel: "Check client/service status",
+      owner: "Jordan Lee",
+      residentId: "r1",
+      residentDisplayName: "Ada Washington",
+    },
+    NOW,
+  );
+  assert.equal(item.status, "needs_attention");
+  assert.equal(item.sourceType, "infection_follow_up");
+  assert.equal(item.sourceRoute, "/qapi/infections/inf1");
+  assert.ok(item.explanation.includes("outstanding"));
+});
+
+test("41. infection follow-up: due today -> due_today", () => {
+  const item = mapInfectionFollowUpToWorkItem(
+    {
+      infectionId: "inf1",
+      nextFollowUpDate: "2026-07-26",
+      purposeLabel: "Infection-control follow-up",
+      owner: null,
+      residentId: "r1",
+      residentDisplayName: null,
+    },
+    NOW,
+  );
+  assert.equal(item.status, "due_today");
+  assert.equal(item.title, "Infection Follow-Up");
+});
+
+test("42. infection follow-up: due in the future -> upcoming, dueAt passes through unfabricated", () => {
+  const item = mapInfectionFollowUpToWorkItem(
+    {
+      infectionId: "inf1",
+      nextFollowUpDate: "2026-08-15",
+      purposeLabel: "Assess service impact",
+      owner: null,
+      residentId: "r1",
+      residentDisplayName: "Ada Washington",
+    },
+    NOW,
+  );
+  assert.equal(item.status, "upcoming");
+  assert.equal(item.dueAt, "2026-08-15");
+  assert.equal(item.title, "Infection Follow-Up — Ada Washington");
 });
 
 // ─── Runner ──────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import {
   composeTodaysWorkItems,
   type CorrectiveActionForCompose,
   type EffectivenessReviewForCompose,
+  type InfectionFollowUpForCompose,
 } from "../workspace/composeTodaysWork.ts";
 import type { WorkItem } from "../workspace/workItem.ts";
 import {
@@ -22,7 +23,7 @@ import {
 import { getAllOpenWellnessFollowUps, getRecentlyCompletedWellnessFollowUps } from "./wellnessFollowUps.ts";
 import { getRecruitingLeads } from "./recruitingLeads.ts";
 import { getActionableIncidents, getRecentlyResolvedIncidents } from "./incidents.ts";
-import { getActionableInfections, getRecentlyResolvedInfections } from "./infections.ts";
+import { getActionableInfections, getInfectionsWithOutstandingFollowUp, getRecentlyResolvedInfections } from "./infections.ts";
 import { getEmergencyPreparednessReadinessEvaluation } from "../emergencyPreparedness/emergencyPreparednessReadiness.ts";
 import {
   getAllOpenCorrectiveActions,
@@ -112,8 +113,30 @@ async function loadEffectivenessReviewsForCompose(): Promise<EffectivenessReview
       subjectId: action.subject_id,
       subjectLabel: action.subject_type === "resident" ? (residentNames.get(action.subject_id) ?? null) : null,
       sourceIncidentId: action.source_incident_id,
+      sourceInfectionId: action.source_infection_id,
     };
   });
+}
+
+// Infection Lifecycle & Learning Loop v0.1 — Today's Work integration for
+// an infection's own outstanding follow-up obligation. No Incident analog.
+// The pure mapper (lib/workspace/mapping.ts#mapInfectionFollowUpToWorkItem)
+// never touches the database itself.
+async function loadOutstandingInfectionFollowUpsForCompose(): Promise<InfectionFollowUpForCompose[]> {
+  const infections = await getInfectionsWithOutstandingFollowUp();
+  if (infections.length === 0) return [];
+
+  const residentIds = [...new Set(infections.map((i) => i.resident_id))];
+  const residentNames = await getResidentDisplayNamesByIds(residentIds);
+
+  return infections.map((infection) => ({
+    infectionId: infection.id,
+    nextFollowUpDate: infection.next_follow_up_date as string,
+    purpose: infection.next_follow_up_purpose as NonNullable<typeof infection.next_follow_up_purpose>,
+    owner: infection.owner,
+    residentId: infection.resident_id,
+    residentDisplayName: residentNames.get(infection.resident_id) ?? null,
+  }));
 }
 
 export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkItem[]> {
@@ -131,6 +154,7 @@ export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkIt
     eprpEvaluation,
     openCorrectiveActions,
     pendingEffectivenessReviews,
+    outstandingInfectionFollowUps,
   ] = await Promise.all([
     getAllOpenWellnessFollowUps(),
     getRecentlyCompletedWellnessFollowUps(),
@@ -145,6 +169,7 @@ export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkIt
     getEmergencyPreparednessReadinessEvaluation(),
     loadCorrectiveActionsForCompose(),
     loadEffectivenessReviewsForCompose(),
+    loadOutstandingInfectionFollowUpsForCompose(),
   ]);
 
   return composeTodaysWorkItems(
@@ -162,6 +187,7 @@ export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkIt
       eprpEvaluation,
       openCorrectiveActions,
       pendingEffectivenessReviews,
+      outstandingInfectionFollowUps,
     },
     now,
   );

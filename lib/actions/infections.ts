@@ -19,11 +19,22 @@ import {
   listInfections,
   markInfectionReviewed,
   resolveInfection,
+  scheduleInfectionFollowUp,
 } from "../data/infections.ts";
+import { recordInfectionFollowUp } from "../data/infectionFollowUps.ts";
 import { recordComplianceActivityForSource, resolveGovernanceActivitySubject } from "../data/complianceActivity.ts";
-import { syncCorrectiveAction } from "../data/complianceCorrectiveActions.ts";
+import { createInfectionCorrectiveAction } from "../data/complianceCorrectiveActions.ts";
 import type { AuthorizedProfile } from "../auth/profiles.ts";
-import type { ComplianceCorrectiveAction, ComplianceCorrectiveActionPriority, Infection } from "../supabase/types.ts";
+import type {
+  ComplianceCorrectiveAction,
+  ComplianceCorrectiveActionPriority,
+  Infection,
+  InfectionFollowUp,
+  InfectionFollowUpInformationSource,
+  InfectionFollowUpPurpose,
+  InfectionFollowUpReportedStatus,
+  InfectionFollowUpServiceImpact,
+} from "../supabase/types.ts";
 
 // Governance Connective Slice v0.1 — mirrors emitIncidentActivity in
 // lib/actions/incidents.ts exactly. Infections are always resident-linked
@@ -148,6 +159,11 @@ export async function markInfectionReviewedAction(input: {
   infectionId: string;
   followUpRequired: boolean;
   owner: string | null;
+  // Only ever actually written on the infection's first review, or as a
+  // one-time legacy backfill when it was reviewed before this field
+  // existed and still reads null (Linda Kaplan's real record) — see
+  // mark_infection_reviewed's own freeze-after-first-write discipline.
+  reviewFindings?: string | null;
 }): Promise<{ infection?: Infection; error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to review an infection record." };
@@ -159,6 +175,7 @@ export async function markInfectionReviewedAction(input: {
     infectionId: input.infectionId,
     followUpRequired: input.followUpRequired,
     owner: input.owner,
+    reviewFindings: input.reviewFindings,
     actor: actor.label,
   });
 
@@ -192,15 +209,28 @@ export async function resolveInfectionAction(input: {
   return result;
 }
 
-// Governance Connective Slice v0.1 — mirrors createIncidentCorrectiveActionAction
-// in lib/actions/incidents.ts exactly. Deliberate, human-confirmed, never
-// automatic on follow_up_required=true alone.
+// Infection Lifecycle & Learning Loop v0.1 — replaces the old single-shot
+// sync/upsert path with a plain-insert RPC, mirroring
+// createIncidentCorrectiveActionAction in lib/actions/incidents.ts
+// structurally. Deliberately NOT gated on follow_up_required — an
+// independent Serve process/infection-control/service-delivery concern can
+// be identified whether or not the client's own follow-up loop is open
+// (see the revised product direction's approved decision: no separate
+// stored "concern identified" flag; the corrective action's existence is
+// itself the signal). Still gated on the infection being open — no
+// corrective action work starts against an already-closed record.
 export interface CreateInfectionCorrectiveActionInput {
   infectionId: string;
   title: string;
-  reason: string;
+  finding: string;
+  actionPlan: string;
+  owner: string | null;
   priority: ComplianceCorrectiveActionPriority;
   dueAt: string | null;
+  effectivenessReviewRequired: boolean;
+  effectivenessReviewDueAt: string | null;
+  effectivenessReviewOwner: string | null;
+  effectivenessSuccessCriteria: string | null;
 }
 
 export async function createInfectionCorrectiveActionAction(
@@ -215,22 +245,87 @@ export async function createInfectionCorrectiveActionAction(
   const infection = await getInfectionById(input.infectionId);
   if (!infection) return { error: "Infection record not found." };
   if (infection.status !== "open") return { error: "This infection record is already resolved." };
-  if (!infection.follow_up_required) return { error: "This infection record was not marked as requiring follow-up." };
 
   const subject = resolveGovernanceActivitySubject(infection.resident_id, infection.community_id);
   if (!subject) return { error: "This infection record has no client or community context to attach a corrective action to." };
 
-  return syncCorrectiveAction({
+  return createInfectionCorrectiveAction({
+    infectionId: infection.id,
     subjectType: subject.subjectType,
     subjectId: subject.subjectId,
-    requirementId: null,
-    domain: "infections",
-    actionType: "infection_follow_up_required",
     title: input.title,
-    reason: input.reason,
+    finding: input.finding,
+    actionPlan: input.actionPlan,
+    owner: input.owner,
     priority: input.priority,
     dueAt: input.dueAt,
+    effectivenessReviewRequired: input.effectivenessReviewRequired,
+    effectivenessReviewDueAt: input.effectivenessReviewDueAt,
+    effectivenessReviewOwner: input.effectivenessReviewOwner,
+    effectivenessSuccessCriteria: input.effectivenessSuccessCriteria,
     actor: actor.label,
-    sourceInfectionId: infection.id,
+  });
+}
+
+// Infection Lifecycle & Learning Loop v0.1 — lightweight scheduling path,
+// used right after review when follow-up is needed but there is nothing
+// yet to report/observe. Same trust tier as review/resolve
+// (canReviewIncidentOrInfection) — establishing or revising a follow-up
+// obligation is review-level judgment, not a corrective action.
+export async function scheduleInfectionFollowUpAction(input: {
+  infectionId: string;
+  nextFollowUpDate: string;
+  purpose: InfectionFollowUpPurpose;
+  purposeNote: string | null;
+}): Promise<{ infection?: Infection; error?: string }> {
+  const actor = await currentActor();
+  if (!actor) return { error: "You must be signed in to schedule an infection follow-up." };
+  if (!canReviewIncidentOrInfection(actor.profile.role)) {
+    return { error: "You do not have permission to schedule an infection follow-up." };
+  }
+
+  return scheduleInfectionFollowUp({
+    infectionId: input.infectionId,
+    nextFollowUpDate: input.nextFollowUpDate,
+    purpose: input.purpose,
+    purposeNote: input.purposeNote,
+    actor: actor.label,
+  });
+}
+
+// Infection Lifecycle & Learning Loop v0.1 — the real observation entry.
+// Same trust tier as scheduling above; recording what was reported/
+// observed and deciding whether another follow-up is needed is the same
+// review-level judgment, not a corrective-action-management action.
+export async function recordInfectionFollowUpAction(input: {
+  infectionId: string;
+  reportedStatus: InfectionFollowUpReportedStatus;
+  serviceImpact: InfectionFollowUpServiceImpact;
+  serveResponse: string[];
+  narrativeNote: string | null;
+  informationSource: InfectionFollowUpInformationSource;
+  additionalFollowUpRequired: boolean;
+  nextFollowUpDate: string | null;
+  nextFollowUpPurpose: InfectionFollowUpPurpose | null;
+  nextFollowUpPurposeNote: string | null;
+}): Promise<{ followUp?: InfectionFollowUp; error?: string }> {
+  const actor = await currentActor();
+  if (!actor) return { error: "You must be signed in to record an infection follow-up." };
+  if (!canReviewIncidentOrInfection(actor.profile.role)) {
+    return { error: "You do not have permission to record an infection follow-up." };
+  }
+
+  return recordInfectionFollowUp({
+    infectionId: input.infectionId,
+    reportedStatus: input.reportedStatus,
+    serviceImpact: input.serviceImpact,
+    serveResponse: input.serveResponse,
+    narrativeNote: input.narrativeNote,
+    informationSource: input.informationSource,
+    additionalFollowUpRequired: input.additionalFollowUpRequired,
+    nextFollowUpDate: input.nextFollowUpDate,
+    nextFollowUpPurpose: input.nextFollowUpPurpose,
+    nextFollowUpPurposeNote: input.nextFollowUpPurposeNote,
+    actor: actor.label,
   });
 }

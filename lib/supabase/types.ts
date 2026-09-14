@@ -2561,6 +2561,19 @@ export interface Incident {
 // clinical/EHR interpretation of the disclosed condition. disclosed_by is
 // free text (the discloser may not be a Serve staff member); created_by is
 // always the Serve staff identity that recorded it.
+// Infection Lifecycle & Learning Loop v0.1 — next_follow_up_purpose's
+// closed vocabulary (a v0.1 starter set with an 'other' escape valve,
+// matching incident_type's own discipline). Deliberately PAS-operational
+// phrasing, not clinical/diagnostic language — Final Migration Tightening.
+// See 20260913000000_add_infection_follow_up_lifecycle.sql.
+export type InfectionFollowUpPurpose =
+  | "check_client_service_status"
+  | "hospital_er_follow_up"
+  | "confirm_updated_instructions"
+  | "assess_service_impact"
+  | "infection_control_follow_up"
+  | "other";
+
 export interface Infection {
   id: string;
   community_id: string | null;
@@ -2575,6 +2588,22 @@ export interface Infection {
   review_status: IncidentInfectionReviewStatus;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  // Infection Lifecycle & Learning Loop v0.1 — "why" follow-up is or isn't
+  // necessary, distinct from `condition_description` (the factual
+  // disclosure, never overwritten by review). Frozen after the first
+  // review, with one legacy-backfill exception — see mark_infection_reviewed
+  // and incidents.review_findings' identical precedent.
+  review_findings: string | null;
+  // The infection's current outstanding follow-up obligation — the one
+  // thing Today's Work and resolve_infection's gate read directly, with no
+  // join to infection_follow_ups required. Set/cleared exclusively by
+  // schedule_infection_follow_up and record_infection_follow_up; date and
+  // purpose are both null together or both present together
+  // (next_follow_up_purpose_note stays optional either way) — see the
+  // migration's infections_next_follow_up_fields_check.
+  next_follow_up_date: string | null;
+  next_follow_up_purpose: InfectionFollowUpPurpose | null;
+  next_follow_up_purpose_note: string | null;
   status: IncidentInfectionRecordStatus;
   resolution_note: string | null;
   resolved_by: string | null;
@@ -2583,4 +2612,59 @@ export interface Infection {
   created_at: string;
   updated_by: string | null;
   updated_at: string | null;
+}
+
+// Infection Lifecycle & Learning Loop v0.1 — the append-only longitudinal
+// follow-up timeline. No Incident analog. See
+// 20260913000000_add_infection_follow_up_lifecycle.sql for the full
+// regulatory-boundary rationale (reported/observed facts only, never a
+// clinical determination) and the narrative-optional-except-for-'other'
+// discipline.
+export type InfectionFollowUpReportedStatus =
+  | "improving"
+  | "unchanged"
+  | "worsening"
+  | "resolved_per_report"
+  | "new_symptoms_reported"
+  | "treatment_completed"
+  | "treatment_ongoing"
+  | "hospitalized"
+  | "seen_by_provider"
+  | "other";
+
+export type InfectionFollowUpServiceImpact =
+  | "no_impact"
+  | "reduced_participation"
+  | "missed_services"
+  | "schedule_adjusted"
+  | "temporary_service_pause"
+  | "increased_monitoring_requested"
+  | "other";
+
+export type InfectionFollowUpInformationSource =
+  | "client"
+  | "family_responsible_party"
+  | "caregiver_observation"
+  | "hospital_facility"
+  | "healthcare_provider"
+  | "other";
+
+export interface InfectionFollowUp {
+  id: string;
+  infection_id: string;
+  reported_status: InfectionFollowUpReportedStatus;
+  service_impact: InfectionFollowUpServiceImpact;
+  // Open label array (e.g. "PPE provided/confirmed") — same shape as
+  // incidents.parties_notified, never a fixed clinical protocol.
+  serve_response: string[];
+  // Optional — required (DB-enforced) only when reported_status or
+  // service_impact is 'other'.
+  narrative_note: string | null;
+  information_source: InfectionFollowUpInformationSource;
+  additional_follow_up_required: boolean;
+  next_follow_up_date: string | null;
+  next_follow_up_purpose: InfectionFollowUpPurpose | null;
+  next_follow_up_purpose_note: string | null;
+  created_by: string;
+  created_at: string;
 }

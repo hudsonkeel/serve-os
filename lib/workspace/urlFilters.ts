@@ -25,6 +25,7 @@ export const GOVERNANCE_SOURCE_TYPES: readonly WorkItemSourceType[] = [
   "compliance_requirement",
   "corrective_action",
   "effectiveness_review",
+  "infection_follow_up",
 ];
 
 export type WorkspaceSourceFilter = WorkItemSourceType | "governance" | "all";

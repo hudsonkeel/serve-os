@@ -35,7 +35,16 @@ export type WorkItemSourceType =
   // corrective action can produce two separate WorkItems in sequence: the
   // implementation due date first, then (once implemented) the
   // effectiveness-review due date.
-  | "effectiveness_review";
+  | "effectiveness_review"
+  // Infection Lifecycle & Learning Loop v0.1 — an infection's own
+  // outstanding follow-up obligation (infections.next_follow_up_date), no
+  // Incident analog. Composed independently of "infection" (the base
+  // needs-review/awaiting-follow-up item, unchanged) and of
+  // "corrective_action"/"effectiveness_review" (the OPTIONAL Serve
+  // corrective-action branch, which continues through the existing
+  // generic pipeline independently — see mapInfectionFollowUpToWorkItem in
+  // mapping.ts).
+  | "infection_follow_up";
 // "schedule_exception" is intentionally not included — schedule exceptions
 // are not wired into the Work Item model this phase; they stay in
 // components/scheduling/TodaysSchedulePanel.tsx's own dedicated view. See

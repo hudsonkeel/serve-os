@@ -51,6 +51,7 @@ const EMPTY_INPUT: ComposeTodaysWorkInput = {
   eprpEvaluation: null,
   openCorrectiveActions: [],
   pendingEffectivenessReviews: [],
+  outstandingInfectionFollowUps: [],
 };
 
 // ─── Acceptance A — passive Prospect removal ────────────────────────────
@@ -229,6 +230,7 @@ test("G4. an implemented action awaiting its effectiveness review no longer prod
           subjectId: "r1",
           subjectLabel: "Ada Washington",
           sourceIncidentId: "inc1",
+          sourceInfectionId: null,
         },
       ],
     },
@@ -299,6 +301,7 @@ test("H1. a pending effectiveness review is composed as its own WorkItem, indepe
           subjectId: "r1",
           subjectLabel: "Ada Washington",
           sourceIncidentId: "inc1",
+          sourceInfectionId: null,
         },
       ],
     },
@@ -342,6 +345,7 @@ test("H2. a corrective Action's implementation-due WorkItem and its effectivenes
           subjectId: "r1",
           subjectLabel: "Ada Washington",
           sourceIncidentId: "inc1",
+          sourceInfectionId: null,
         },
       ],
     },
@@ -391,6 +395,69 @@ test("no corrective Action WorkItem ever fabricates a due date it wasn't given",
 
 test("an empty input produces an empty WorkItem list (no hidden default population)", () => {
   assert.deepEqual(composeTodaysWorkItems(EMPTY_INPUT, NOW), []);
+});
+
+// ─── Infection Follow-Up (Infection Lifecycle & Learning Loop v0.1) ─────
+
+test("K1. an infection's outstanding follow-up obligation composes as its own WorkItem, independent of the base infection item", () => {
+  const items = composeTodaysWorkItems(
+    {
+      ...EMPTY_INPUT,
+      outstandingInfectionFollowUps: [
+        {
+          infectionId: "inf1",
+          nextFollowUpDate: "2026-07-20",
+          purpose: "check_client_service_status",
+          owner: "Jordan Lee",
+          residentId: "r1",
+          residentDisplayName: "Ada Washington",
+        },
+      ],
+    },
+    NOW,
+  );
+  assert.equal(items.length, 1);
+  assert.equal(items[0].sourceType, "infection_follow_up");
+  assert.equal(items[0].sourceRoute, "/qapi/infections/inf1");
+  assert.equal(items[0].status, "needs_attention");
+});
+
+test("K2. an infection follow-up and an infection-sourced corrective action's effectiveness review compose as two distinct WorkItems for the same infection", () => {
+  const items = composeTodaysWorkItems(
+    {
+      ...EMPTY_INPUT,
+      outstandingInfectionFollowUps: [
+        {
+          infectionId: "inf1",
+          nextFollowUpDate: "2026-08-01",
+          purpose: "infection_control_follow_up",
+          owner: null,
+          residentId: "r1",
+          residentDisplayName: "Ada Washington",
+        },
+      ],
+      pendingEffectivenessReviews: [
+        {
+          id: "rev1",
+          correctiveActionTitle: "Reinforce PPE protocol",
+          dueAt: "2026-08-15",
+          owner: "Jordan Lee",
+          subjectType: "resident",
+          subjectId: "r1",
+          subjectLabel: "Ada Washington",
+          sourceIncidentId: null,
+          sourceInfectionId: "inf1",
+        },
+      ],
+    },
+    NOW,
+  );
+  assert.equal(items.length, 2);
+  assert.deepEqual(
+    items.map((i) => i.sourceType).sort(),
+    ["effectiveness_review", "infection_follow_up"],
+  );
+  assert.ok(items.every((i) => i.sourceRoute === "/qapi/infections/inf1"));
 });
 
 let passed = 0;

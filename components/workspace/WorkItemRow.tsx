@@ -22,6 +22,8 @@ export const SOURCE_LABELS: Record<WorkItemSourceType, string> = {
   corrective_action: "Corrective Action",
   // Incident Corrective Action Lifecycle v0.1
   effectiveness_review: "Effectiveness Review",
+  // Infection Lifecycle & Learning Loop v0.1
+  infection_follow_up: "Infection Follow-Up",
 };
 
 const PRIORITY_TONE: Record<NonNullable<WorkItem["priority"]>, "danger" | "warning" | "neutral"> = {
