@@ -608,10 +608,17 @@ export interface EffectivenessReviewMapperInput {
   subjectId: string;
   subjectLabel: string | null;
   sourceIncidentId: string | null;
+  // Infection Lifecycle & Learning Loop v0.1 — an effectiveness review can
+  // now also belong to an infection-sourced corrective action (the
+  // OPTIONAL Serve corrective-action branch). At most one of
+  // sourceIncidentId/sourceInfectionId is ever set, mirroring
+  // correctiveActionSourceRoute's own precedence below.
+  sourceInfectionId: string | null;
 }
 
 function effectivenessReviewSourceRoute(input: EffectivenessReviewMapperInput): string {
   if (input.sourceIncidentId) return `/qapi/incidents/${input.sourceIncidentId}`;
+  if (input.sourceInfectionId) return `/qapi/infections/${input.sourceInfectionId}`;
   return "/audit-readiness";
 }
 
@@ -639,6 +646,54 @@ export function mapEffectivenessReviewToWorkItem(input: EffectivenessReviewMappe
     subjectId: input.subjectId,
     subjectLabel: input.subjectLabel ?? undefined,
     sourceRoute: effectivenessReviewSourceRoute(input),
+    explanation,
+  };
+}
+
+// ─── Infection Follow-Up (Infection Lifecycle & Learning Loop v0.1) ─────
+// No Incident analog. Source: infections.next_follow_up_date/purpose — the
+// infection's own current obligation, read directly with no join to
+// infection_follow_ups required. Composed independently of the base
+// "infection" WorkItem above (needs-review/awaiting-follow-up) and of
+// "corrective_action"/"effectiveness_review" (the OPTIONAL Serve
+// corrective-action branch, which continues through the existing generic
+// pipeline independently, unaffected by this obligation's state).
+// next_follow_up_date is always a `date` column — the same business-date
+// (never UTC-instant) handling every other date-only Today's Work source
+// uses.
+export interface InfectionFollowUpMapperInput {
+  infectionId: string;
+  nextFollowUpDate: string;
+  purposeLabel: string;
+  owner: string | null;
+  residentId: string;
+  residentDisplayName: string | null;
+}
+
+export function mapInfectionFollowUpToWorkItem(input: InfectionFollowUpMapperInput, now: Date = new Date()): WorkItem {
+  const overdue = isOverdue(input.nextFollowUpDate, now);
+  const dueToday = !overdue && isDueTodayOrEarlier(input.nextFollowUpDate, now);
+  const status = overdue ? "needs_attention" : dueToday ? "due_today" : "upcoming";
+
+  const explanation = overdue
+    ? `Infection follow-up (${input.purposeLabel}) for ${input.residentDisplayName ?? "this client"} was due ${formatDate(input.nextFollowUpDate)} and remains outstanding.`
+    : dueToday
+      ? `Infection follow-up (${input.purposeLabel}) for ${input.residentDisplayName ?? "this client"} is due today.`
+      : `Infection follow-up (${input.purposeLabel}) for ${input.residentDisplayName ?? "this client"} due ${formatDate(input.nextFollowUpDate)}.`;
+
+  return {
+    id: `infection_follow_up:${input.infectionId}`,
+    sourceType: "infection_follow_up",
+    title: input.residentDisplayName ? `Infection Follow-Up — ${input.residentDisplayName}` : "Infection Follow-Up",
+    status,
+    evidenceType: "explicit",
+    dueAt: input.nextFollowUpDate,
+    ownerId: input.owner ?? undefined,
+    ownerLabel: input.owner ?? undefined,
+    subjectType: "resident",
+    subjectId: input.residentId,
+    subjectLabel: input.residentDisplayName ?? undefined,
+    sourceRoute: `/qapi/infections/${input.infectionId}`,
     explanation,
   };
 }

@@ -458,22 +458,78 @@ export async function addCorrectiveActionUpdate(input: {
   return { update: data as CorrectiveActionUpdate };
 }
 
-export async function getOpenCorrectiveActionForInfection(infectionId: string): Promise<ComplianceCorrectiveAction | null> {
+// Infection Lifecycle & Learning Loop v0.1 — the infection detail page's
+// "how many actions, in what state" view, mirroring
+// getCorrectiveActionsForIncident exactly. Replaces
+// getOpenCorrectiveActionForInfection (removed as dead code): infection
+// corrective actions now support real multiplicity via the plain-insert
+// createInfectionCorrectiveAction below, the same
+// one-action-per-source-record ceiling incidents removed in
+// 20260910000000.
+export async function getCorrectiveActionsForInfection(infectionId: string): Promise<ComplianceCorrectiveAction[]> {
   const supabase = createServerClient();
 
   const { data, error } = await supabase
     .from("compliance_corrective_actions")
     .select("*")
     .eq("source_infection_id", infectionId)
-    .eq("status", "open")
-    .maybeSingle();
+    .order("created_at", { ascending: true });
 
   if (error) {
-    console.error("[getOpenCorrectiveActionForInfection]", { infectionId, message: error.message });
-    return null;
+    console.error("[getCorrectiveActionsForInfection]", { infectionId, message: error.message });
+    return [];
   }
 
-  return (data as ComplianceCorrectiveAction | null) ?? null;
+  return (data as ComplianceCorrectiveAction[] | null) ?? [];
+}
+
+// Plain insert (never dedupes by source) — the create path for infection
+// corrective actions going forward, replacing syncCorrectiveAction's
+// one-open-per-infection upsert for this specific caller. Exact structural
+// mirror of createIncidentCorrectiveAction above — see
+// 20260913000000_add_infection_follow_up_lifecycle.sql.
+export async function createInfectionCorrectiveAction(input: {
+  infectionId: string;
+  subjectType: ComplianceCorrectiveActionSubjectType;
+  subjectId: string;
+  title: string;
+  finding: string;
+  actionPlan: string;
+  owner: string | null;
+  priority: ComplianceCorrectiveActionPriority;
+  dueAt: string | null;
+  effectivenessReviewRequired: boolean;
+  effectivenessReviewDueAt: string | null;
+  effectivenessReviewOwner: string | null;
+  effectivenessSuccessCriteria: string | null;
+  actor: string;
+}): Promise<{ action?: ComplianceCorrectiveAction; error?: string }> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .rpc("create_infection_corrective_action", {
+      p_infection_id: input.infectionId,
+      p_subject_type: input.subjectType,
+      p_subject_id: input.subjectId,
+      p_title: input.title,
+      p_finding: input.finding,
+      p_action_plan: input.actionPlan,
+      p_owner: input.owner,
+      p_priority: input.priority,
+      p_due_at: input.dueAt,
+      p_effectiveness_review_required: input.effectivenessReviewRequired,
+      p_effectiveness_review_due_at: input.effectivenessReviewDueAt,
+      p_effectiveness_review_owner: input.effectivenessReviewOwner,
+      p_effectiveness_success_criteria: input.effectivenessSuccessCriteria,
+      p_actor: input.actor,
+    })
+    .single();
+
+  if (error || !data) {
+    return { error: `Could not create corrective action: ${error?.message}` };
+  }
+
+  return { action: data as ComplianceCorrectiveAction };
 }
 
 export async function resolveCorrectiveAction(input: {

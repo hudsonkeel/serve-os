@@ -11,13 +11,21 @@ import {
   canManageCorrectiveActions,
 } from "@/lib/compliance/permissions";
 import { getInfectionById } from "@/lib/data/infections";
+import { getFollowUpsForInfection } from "@/lib/data/infectionFollowUps";
 import { getResidentById } from "@/lib/data/residents";
-import { getOpenCorrectiveActionForInfection } from "@/lib/data/complianceCorrectiveActions";
-import { formatCentralDateTime } from "@/lib/utils/date";
+import {
+  getCorrectiveActionsForInfection,
+  getEffectivenessReviewForAction,
+  getUpdatesForCorrectiveAction,
+} from "@/lib/data/complianceCorrectiveActions";
+import { formatCentralDateTime, formatPlainDate } from "@/lib/utils/date";
 import { ReviewInfectionForm } from "@/components/infections/ReviewInfectionForm";
-import { ResolveInfectionForm } from "@/components/infections/ResolveInfectionForm";
-import { CreateSourceLinkedCorrectiveActionButton } from "@/components/compliance/CreateSourceLinkedCorrectiveActionButton";
-import { ResolveCorrectiveActionButton } from "@/components/compliance/ResolveCorrectiveActionButton";
+import { AddReviewFindingsForm } from "@/components/infections/AddReviewFindingsForm";
+import { InfectionFollowUpTimeline } from "@/components/infections/InfectionFollowUpTimeline";
+import { InfectionCorrectiveActionsSection } from "@/components/infections/InfectionCorrectiveActionsSection";
+import { InfectionResolutionCard } from "@/components/infections/InfectionResolutionCard";
+import { NEXT_FOLLOW_UP_PURPOSE_LABELS } from "@/components/infections/infectionFollowUpLabels";
+import type { CorrectiveActionEffectivenessReview, CorrectiveActionUpdate } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -54,19 +62,35 @@ export default async function InfectionDetailPage({ params }: { params: Promise<
   if (filter.mode === "none") notFound();
   if (filter.mode === "single" && infection.community_id !== filter.communityId) notFound();
 
-  const resident = await getResidentById(infection.resident_id);
+  const [resident, correctiveActions, followUps] = await Promise.all([
+    getResidentById(infection.resident_id),
+    getCorrectiveActionsForInfection(infection.id),
+    getFollowUpsForInfection(infection.id),
+  ]);
+
+  // Effectiveness reviews and follow-up updates for every corrective action
+  // linked to this infection — mirrors the Incident detail page's own
+  // Promise.all-per-related-record convention exactly.
+  const [effectivenessReviewEntries, updateEntries] = await Promise.all([
+    Promise.all(
+      correctiveActions
+        .filter((a) => a.effectiveness_review_required)
+        .map(async (a): Promise<[string, CorrectiveActionEffectivenessReview | null]> => [a.id, await getEffectivenessReviewForAction(a.id)])
+    ),
+    Promise.all(correctiveActions.map(async (a): Promise<[string, CorrectiveActionUpdate[]]> => [a.id, await getUpdatesForCorrectiveAction(a.id)])),
+  ]);
+  const effectivenessReviewsByActionId = new Map<string, CorrectiveActionEffectivenessReview>(
+    effectivenessReviewEntries.filter((entry): entry is [string, CorrectiveActionEffectivenessReview] => entry[1] !== null)
+  );
+  const updatesByActionId = new Map<string, CorrectiveActionUpdate[]>(updateEntries);
 
   const canReview = canReviewIncidentOrInfection(profile?.role ?? null);
   const canResolve = canResolveIncidentOrInfection(profile?.role ?? null);
   const canManageAction = canManageCorrectiveActions(profile?.role ?? null);
 
-  // Governance Connective Slice v0.1 — eligible to CREATE a new
-  // source-linked corrective action; see the Incident detail page for the
-  // identical rule this mirrors.
-  const correctiveActionEligible = infection.status === "open" && infection.review_status === "reviewed" && infection.follow_up_required;
-  // Today's Work Actionability slice — fetched unconditionally; see the
-  // identical reasoning on the Incident detail page.
-  const linkedCorrectiveAction = await getOpenCorrectiveActionForInfection(infection.id);
+  const isOpen = infection.status === "open";
+  const showCorrectiveActionsSection = correctiveActions.length > 0 || (canManageAction && isOpen);
+  const showFollowUpSection = infection.follow_up_required || followUps.length > 0;
 
   return (
     <PageContainer title="Infection Record">
@@ -163,26 +187,37 @@ export default async function InfectionDetailPage({ params }: { params: Promise<
           <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Review &amp; Follow-up</h2>
 
           {infection.review_status === "reviewed" ? (
-            <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-              <div>
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Reviewed By</dt>
-                <dd className="mt-0.5 font-sans text-sm text-body">{infection.reviewed_by}</dd>
-              </div>
-              <div>
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Reviewed Date</dt>
-                <dd className="mt-0.5 font-sans text-sm text-body">{fmtDateTime(infection.reviewed_at)}</dd>
-              </div>
-              <div>
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Follow-up Required</dt>
-                <dd className="mt-0.5 font-sans text-sm text-body">{infection.follow_up_required ? "Yes" : "No"}</dd>
-              </div>
-              {infection.follow_up_required && (
+            <>
+              <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
                 <div>
-                  <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Owner</dt>
-                  <dd className="mt-0.5 font-sans text-sm text-body">{infection.owner || "—"}</dd>
+                  <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Reviewed By</dt>
+                  <dd className="mt-0.5 font-sans text-sm text-body">{infection.reviewed_by}</dd>
                 </div>
+                <div>
+                  <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Reviewed Date</dt>
+                  <dd className="mt-0.5 font-sans text-sm text-body">{fmtDateTime(infection.reviewed_at)}</dd>
+                </div>
+                <div>
+                  <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Follow-up Required</dt>
+                  <dd className="mt-0.5 font-sans text-sm text-body">{infection.follow_up_required ? "Yes" : "No"}</dd>
+                </div>
+                {infection.follow_up_required && (
+                  <div>
+                    <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Owner</dt>
+                    <dd className="mt-0.5 font-sans text-sm text-body">{infection.owner || "—"}</dd>
+                  </div>
+                )}
+                {infection.review_findings && (
+                  <div className="sm:col-span-2">
+                    <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Review Findings</dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap font-sans text-sm text-body">{infection.review_findings}</dd>
+                  </div>
+                )}
+              </dl>
+              {!infection.review_findings && canReview && (
+                <AddReviewFindingsForm infectionId={infection.id} followUpRequired={infection.follow_up_required} owner={infection.owner} />
               )}
-            </dl>
+            </>
           ) : canReview ? (
             <div className="mt-3">
               <ReviewInfectionForm infectionId={infection.id} />
@@ -192,63 +227,66 @@ export default async function InfectionDetailPage({ params }: { params: Promise<
           )}
         </section>
 
-        {/* ─── Corrective Action (Governance Connective Slice v0.1) ─── */}
-        {(linkedCorrectiveAction || correctiveActionEligible) && (
-          <section className="rounded-xl border border-ivory-border bg-white p-5">
-            <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Corrective Action</h2>
-            {linkedCorrectiveAction ? (
-              <div className="mt-2 space-y-2">
-                <p className="font-sans text-sm text-body">
-                  Tracked: <span className="font-medium">{linkedCorrectiveAction.title}</span>
-                  {linkedCorrectiveAction.due_at ? ` — due ${fmtDateTime(linkedCorrectiveAction.due_at)}` : ""}
-                </p>
-                {canManageAction ? (
-                  <ResolveCorrectiveActionButton actionId={linkedCorrectiveAction.id} actionTitle={linkedCorrectiveAction.title} />
-                ) : (
-                  <p className="font-sans text-xs text-muted">Your role does not include corrective-action resolution.</p>
-                )}
-              </div>
-            ) : canManageAction ? (
-              <div className="mt-3">
-                <CreateSourceLinkedCorrectiveActionButton
-                  recordId={infection.id}
-                  defaultTitle={`Infection follow-up — disclosed ${fmtDisclosedDate(infection.disclosed_at)}`}
-                  defaultReason={infection.condition_description}
-                />
-              </div>
-            ) : (
-              <p className="mt-2 font-sans text-sm text-muted">Follow-up required — no corrective action tracked yet.</p>
+        {/* ─── D. Infection Follow-Up Timeline (Infection Lifecycle &
+            Learning Loop v0.1) — no Incident analog. Only rendered once
+            follow-up is required or at least one entry already exists. ─── */}
+        {showFollowUpSection && (
+          <section id="infection-follow-up" className="rounded-xl border border-ivory-border bg-white p-5">
+            <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Infection Follow-Up</h2>
+
+            {infection.next_follow_up_date && infection.next_follow_up_purpose && (
+              <p className="mt-2 font-sans text-sm text-body">
+                Next follow-up scheduled {formatPlainDate(infection.next_follow_up_date) ?? infection.next_follow_up_date} —{" "}
+                {NEXT_FOLLOW_UP_PURPOSE_LABELS[infection.next_follow_up_purpose]}
+                {infection.next_follow_up_purpose_note ? `: ${infection.next_follow_up_purpose_note}` : ""}
+              </p>
             )}
+
+            <div className="mt-3">
+              <InfectionFollowUpTimeline
+                infectionId={infection.id}
+                followUps={followUps}
+                followUpRequired={infection.follow_up_required}
+                nextFollowUpDate={infection.next_follow_up_date}
+                nextFollowUpPurpose={infection.next_follow_up_purpose}
+                nextFollowUpPurposeNote={infection.next_follow_up_purpose_note}
+                canAdd={canReview && isOpen}
+              />
+            </div>
           </section>
         )}
 
-        {/* ─── D. Resolution ─── */}
+        {/* ─── E. Corrective Action (optional Serve process/infection-control
+            branch) — never gated on follow_up_required. ─── */}
+        {showCorrectiveActionsSection && (
+          <section className="rounded-xl border border-ivory-border bg-white p-5">
+            <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Corrective Action</h2>
+            <div className="mt-3">
+              <InfectionCorrectiveActionsSection
+                infectionId={infection.id}
+                actions={correctiveActions}
+                effectivenessReviewsByActionId={effectivenessReviewsByActionId}
+                updatesByActionId={updatesByActionId}
+                canManage={canManageAction}
+                canCreate={canManageAction && isOpen}
+              />
+            </div>
+          </section>
+        )}
+
+        {/* ─── F. Resolution ─── */}
         <section className="rounded-xl border border-ivory-border bg-white p-5">
           <h2 className="font-sans text-sm font-semibold uppercase tracking-wide text-muted">Resolution</h2>
-
-          {infection.status === "resolved" ? (
-            <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-              <div>
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Resolved By</dt>
-                <dd className="mt-0.5 font-sans text-sm text-body">{infection.resolved_by}</dd>
-              </div>
-              <div>
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Resolved Date</dt>
-                <dd className="mt-0.5 font-sans text-sm text-body">{fmtDateTime(infection.resolved_at)}</dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="font-sans text-xs font-semibold uppercase tracking-wide text-subtle">Resolution Note</dt>
-                <dd className="mt-0.5 whitespace-pre-wrap font-sans text-sm text-body">{infection.resolution_note}</dd>
-              </div>
-            </dl>
-          ) : infection.review_status !== "reviewed" ? (
+          {infection.status !== "resolved" && infection.review_status !== "reviewed" ? (
             <p className="mt-2 font-sans text-sm text-muted">Available once this infection record has been reviewed.</p>
-          ) : canResolve ? (
-            <div className="mt-3">
-              <ResolveInfectionForm infectionId={infection.id} />
-            </div>
           ) : (
-            <p className="mt-2 font-sans text-sm text-muted">Reviewed — awaiting resolution.</p>
+            <InfectionResolutionCard
+              infection={infection}
+              followUps={followUps}
+              sourceLinkedActions={correctiveActions}
+              effectivenessReviewsByActionId={effectivenessReviewsByActionId}
+              canResolve={canResolve}
+            />
           )}
         </section>
       </div>

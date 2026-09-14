@@ -1,9 +1,12 @@
-// Pure-function tests for ../incidentReviewFindings.ts — no database,
-// matching lib/compliance/__tests__/incidentResolutionEligibility.test.ts's
-// established convention. Run with:
-//   node --experimental-strip-types --conditions=react-server lib/compliance/__tests__/incidentReviewFindings.test.ts
+// Pure-function tests for ../qapiReviewFindings.ts — relocated from
+// incidentReviewFindings.test.ts (Infection Lifecycle & Learning Loop v0.1
+// reuse review): this logic now backs both mark_incident_reviewed and
+// mark_infection_reviewed's identical review_findings write decision, so
+// its test cases stand in for both SQL functions' correctness, not just
+// Incident's. Run with:
+//   node --experimental-strip-types --conditions=react-server lib/compliance/__tests__/qapiReviewFindings.test.ts
 import assert from "node:assert/strict";
-import { resolveReviewFindingsOnReaffirm } from "../incidentReviewFindings.ts";
+import { resolveReviewFindingsOnReaffirm } from "../qapiReviewFindings.ts";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -11,25 +14,27 @@ function test(name: string, fn: Test["fn"]) {
   tests.push({ name, fn });
 }
 
-// The canonical acceptance case: the medication incident was reviewed
-// before review_findings existed, so it currently reads null and — before
-// this fix — could never receive findings without recreating the record.
-test("legacy reviewed incident (review_findings null) — a non-blank value is accepted", () => {
+// The canonical Incident acceptance case: the medication incident was
+// reviewed before review_findings existed, so it currently reads null and
+// — before this fix — could never receive findings without recreating the
+// record. Linda Kaplan's real infection record is in the identical
+// state today (reviewed before this column existed on infections either).
+test("legacy reviewed record (review_findings null) — a non-blank value is accepted", () => {
   const result = resolveReviewFindingsOnReaffirm(null, "Medication administered without required second-signature verification.");
   assert.equal(result, "Medication administered without required second-signature verification.");
 });
 
-test("legacy reviewed incident — the proposed value is trimmed", () => {
+test("legacy reviewed record — the proposed value is trimmed", () => {
   const result = resolveReviewFindingsOnReaffirm(null, "  Contributing factor: rushed shift handoff.  ");
   assert.equal(result, "Contributing factor: rushed shift handoff.");
 });
 
-test("legacy reviewed incident — a blank/whitespace-only proposal leaves it null, no error", () => {
+test("legacy reviewed record — a blank/whitespace-only proposal leaves it null, no error", () => {
   assert.equal(resolveReviewFindingsOnReaffirm(null, "   "), null);
   assert.equal(resolveReviewFindingsOnReaffirm(null, ""), null);
 });
 
-test("legacy reviewed incident — an undefined proposal (re-affirm call that never collected findings) leaves it null", () => {
+test("legacy reviewed record — an undefined proposal (re-affirm call that never collected findings) leaves it null", () => {
   assert.equal(resolveReviewFindingsOnReaffirm(null, undefined), null);
 });
 

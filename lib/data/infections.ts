@@ -7,7 +7,7 @@
 import { createServerClient } from "../supabase/server.ts";
 import { getResidentsByIds } from "./residents.ts";
 import type { CommunityQueryFilter } from "../auth/communityScope.ts";
-import type { Infection } from "../supabase/types.ts";
+import type { Infection, InfectionFollowUpPurpose } from "../supabase/types.ts";
 
 export async function listInfections(filter: CommunityQueryFilter): Promise<Infection[]> {
   if (filter.mode === "none") return [];
@@ -83,6 +83,13 @@ export interface MarkInfectionReviewedInput {
   infectionId: string;
   followUpRequired: boolean;
   owner: string | null;
+  // Infection Lifecycle & Learning Loop v0.1 — only ever actually written
+  // on the infection's first review, or as a one-time legacy backfill when
+  // it was reviewed before this field existed and still reads null (Linda
+  // Kaplan's real record is in exactly this state) — see
+  // mark_infection_reviewed's own freeze-after-first-write discipline.
+  // Safe to pass on every call; the RPC decides whether it's actually used.
+  reviewFindings?: string | null;
   actor: string;
 }
 
@@ -94,12 +101,46 @@ export async function markInfectionReviewed(input: MarkInfectionReviewedInput): 
       p_infection_id: input.infectionId,
       p_follow_up_required: input.followUpRequired,
       p_owner: input.owner,
+      p_review_findings: input.reviewFindings ?? null,
       p_actor: input.actor,
     })
     .single();
 
   if (error || !data) {
     return { error: `Could not mark infection record reviewed: ${error?.message}` };
+  }
+
+  return { infection: data as Infection };
+}
+
+// Infection Lifecycle & Learning Loop v0.1 — lightweight: sets only the
+// infection's current follow-up obligation (no timeline row). See
+// record_infection_follow_up in lib/data/infectionFollowUps.ts for the
+// real observation entry, which sets/clears these same columns as a side
+// effect of recording what happened.
+export interface ScheduleInfectionFollowUpInput {
+  infectionId: string;
+  nextFollowUpDate: string;
+  purpose: InfectionFollowUpPurpose;
+  purposeNote: string | null;
+  actor: string;
+}
+
+export async function scheduleInfectionFollowUp(input: ScheduleInfectionFollowUpInput): Promise<{ infection?: Infection; error?: string }> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .rpc("schedule_infection_follow_up", {
+      p_infection_id: input.infectionId,
+      p_next_follow_up_date: input.nextFollowUpDate,
+      p_purpose: input.purpose,
+      p_purpose_note: input.purposeNote,
+      p_actor: input.actor,
+    })
+    .single();
+
+  if (error || !data) {
+    return { error: `Could not schedule infection follow-up: ${error?.message}` };
   }
 
   return { infection: data as Infection };
@@ -179,6 +220,29 @@ export async function getRecentlyResolvedInfections(withinDays = 7): Promise<Inf
   }
 
   return withResidentNames((data as Infection[] | null) ?? []);
+}
+
+// Infection Lifecycle & Learning Loop v0.1 — Today's Work's source for the
+// "infection_follow_up" WorkItem: every open infection currently carrying
+// an outstanding follow-up obligation. Read directly off infections, no
+// join to infection_follow_ups required — see the migration header for why
+// these two columns are the single canonical "is there outstanding
+// follow-up work" signal.
+export async function getInfectionsWithOutstandingFollowUp(): Promise<Infection[]> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .from("infections")
+    .select("*")
+    .eq("status", "open")
+    .not("next_follow_up_date", "is", null);
+
+  if (error) {
+    console.error("[infections:getInfectionsWithOutstandingFollowUp:error]", { message: error.message });
+    return [];
+  }
+
+  return (data as Infection[] | null) ?? [];
 }
 
 // Plain counts for the QAPI factual aggregate — no filtering, no
