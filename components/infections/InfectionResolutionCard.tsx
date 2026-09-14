@@ -123,9 +123,6 @@ export function InfectionResolutionCard({
               <span className="font-medium text-body">Next step:</span> record a follow-up now, or schedule when the next
               follow-up should occur.
             </p>
-            <a href="#infection-follow-up" className="mt-2 inline-block font-sans text-sm text-navy hover:text-navy-light">
-              Go to Infection Follow-Up →
-            </a>
           </>
         )}
 
@@ -143,9 +140,6 @@ export function InfectionResolutionCard({
             <p className="mt-2 font-sans text-sm text-muted">
               Resolution remains pending until the scheduled follow-up is completed and no additional follow-up is required.
             </p>
-            <a href="#infection-follow-up" className="mt-2 inline-block font-sans text-sm text-navy hover:text-navy-light">
-              View Infection Follow-Up →
-            </a>
           </>
         )}
 
