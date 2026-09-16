@@ -7,12 +7,14 @@ import {
   SlidersHorizontal,
   UserCircle,
   Users,
+  Wrench,
 } from "lucide-react";
 import { PageContainer } from "@/components/PageContainer";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { buildCurrentUserDisplay } from "@/lib/auth/display";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { AssessmentProcessingDispatchTrigger } from "@/components/settings/AssessmentProcessingDispatchTrigger";
 import {
   buildIntegrationDefinitions,
   INTEGRATION_STATUS_LABELS,
@@ -261,6 +263,14 @@ export default async function SettingsPage() {
                   </div>
                 ))}
               </div>
+            </SettingsSection>
+
+            <SettingsSection
+              icon={Wrench}
+              title="Assessment Processing (Diagnostic)"
+              description="Admin/manager tooling only, not the normal assessor workflow. Manually runs the same background dispatcher that automatically picks up queued assessments in production — useful on branch/preview deploys, where Netlify does not run the scheduled dispatcher on its own."
+            >
+              <AssessmentProcessingDispatchTrigger />
             </SettingsSection>
 
             <SettingsSection

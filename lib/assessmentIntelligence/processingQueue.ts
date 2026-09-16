@@ -103,3 +103,53 @@ export function sanitizeFailureReason(err: unknown, maxLength = 2000): string {
   const message = err instanceof Error ? err.message : String(err);
   return message.slice(0, maxLength);
 }
+
+// ─── Admin-only manual dispatch trigger (lib/actions/assessmentProcessingAdmin.ts) ───────────
+// Netlify Scheduled Functions are correctly registered on branch/preview deploys but do not
+// execute automatically there (only on the production deploy) — this is what lets an
+// authorized operator cause the real dispatcher to run right now instead, without any code
+// path here ever touching the extraction provider or the database itself.
+
+export interface DispatchTriggerOutcome {
+  readonly dispatched: boolean;
+}
+
+export interface DispatchTriggerResult {
+  readonly error?: string;
+  readonly considered?: number;
+  readonly dispatched?: number;
+  readonly failedToDispatch?: number;
+}
+
+/** Pure decision core for the manual trigger — separated from the action file so it's testable
+ * without a real Next.js request context (getCurrentAuthorizedUser() needs next/headers'
+ * cookies(), which a plain test runner can't provide) or a live database, and so a
+ * function-typed parameter never has to live in a "use server" file (Next.js requires every
+ * export from one to be a directly client-callable action with serializable arguments).
+ * Deliberately takes an already-resolved `isAuthorized` boolean, not a role — keeps this module
+ * free of any dependency on AuthRole/lib/auth/permissions.ts; the action file owns that
+ * decision and passes the result in. Never duplicates queue-discovery, worker-invocation, or
+ * extraction logic itself — it only decides whether to call the dispatch function it's given
+ * (in production, dispatchEligibleAssessmentProcessing() — the exact same function the real
+ * scheduled dispatcher calls) and shapes a safe result, never leaking whatever it throws. */
+export async function runDispatchTrigger(
+  isAuthorized: boolean,
+  dispatch: () => Promise<readonly DispatchTriggerOutcome[]>
+): Promise<DispatchTriggerResult> {
+  if (!isAuthorized) {
+    return { error: "You do not have permission to trigger assessment processing." };
+  }
+  try {
+    const results = await dispatch();
+    const dispatchedCount = results.filter((r) => r.dispatched).length;
+    return {
+      considered: results.length,
+      dispatched: dispatchedCount,
+      failedToDispatch: results.length - dispatchedCount,
+    };
+  } catch {
+    // Never surface a raw internal/provider error to the operator — same discipline as
+    // SAFE_PROCESSING_FAILURE_MESSAGE above.
+    return { error: "Could not run the processing dispatcher. Check server logs for detail." };
+  }
+}

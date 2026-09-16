@@ -9,10 +9,12 @@ import {
   decideStaleRecovery,
   decideRetryEligibility,
   sanitizeFailureReason,
+  runDispatchTrigger,
   type QueueableSession,
+  type DispatchTriggerOutcome,
 } from "../processingQueue.ts";
 
-type Test = { name: string; fn: () => void };
+type Test = { name: string; fn: () => void | Promise<void> };
 const tests: Test[] = [];
 function test(name: string, fn: Test["fn"]) {
   tests.push({ name, fn });
@@ -150,10 +152,71 @@ test("sanitizeFailureReason: truncates a runaway message to a bounded length", (
   assert.equal(result.length, 2000);
 });
 
+// ─── runDispatchTrigger — the admin-only manual dispatch trigger's pure core ───────────────
+
+function countingDispatch(outcomes: readonly DispatchTriggerOutcome[]): {
+  dispatch: () => Promise<readonly DispatchTriggerOutcome[]>;
+  callCount: () => number;
+} {
+  let calls = 0;
+  return {
+    dispatch: async () => {
+      calls++;
+      return outcomes;
+    },
+    callCount: () => calls,
+  };
+}
+
+test("runDispatchTrigger: unauthorized caller gets an error, and the dispatch function is never called", async () => {
+  const { dispatch, callCount } = countingDispatch([{ dispatched: true }]);
+  const result = await runDispatchTrigger(false, dispatch);
+  assert.equal(typeof result.error, "string");
+  assert.equal(result.considered, undefined);
+  assert.equal(callCount(), 0, "an unauthorized caller must never reach the dispatch function at all");
+});
+
+test("runDispatchTrigger: authorized caller invokes the given dispatch function exactly once and reports its results", async () => {
+  const { dispatch, callCount } = countingDispatch([{ dispatched: true }, { dispatched: true }, { dispatched: false }]);
+  const result = await runDispatchTrigger(true, dispatch);
+  assert.deepEqual(result, { considered: 3, dispatched: 2, failedToDispatch: 1 });
+  assert.equal(callCount(), 1, "must call the real dispatch logic exactly once, never loop or retry internally");
+});
+
+test("runDispatchTrigger: no eligible sessions is safe and idempotent — zero counts, no error", async () => {
+  const { dispatch } = countingDispatch([]);
+  const result = await runDispatchTrigger(true, dispatch);
+  // Checked before deepEqual below -- Node's assert.deepEqual has an `asserts actual is T`
+  // TypeScript signature that narrows `result`'s type to the expected literal afterward,
+  // which would make a later `result.error` a type error.
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result, { considered: 0, dispatched: 0, failedToDispatch: 0 });
+});
+
+test("runDispatchTrigger: performs no extraction itself — the only work done is calling the injected dispatch function", async () => {
+  // dispatchEligibleAssessmentProcessing() (the real function used in production) only ever
+  // invokes the background worker over HTTP — it never calls an extraction provider directly.
+  // This trigger's own code has no import of, or call path to, anything extraction-related; the
+  // strongest thing a runtime test can prove is that its entire effect is exactly one call to
+  // whatever dispatch function it's given, which is what the call-count assertions above do.
+  const { dispatch, callCount } = countingDispatch([{ dispatched: true }]);
+  await runDispatchTrigger(true, dispatch);
+  assert.equal(callCount(), 1);
+});
+
+test("runDispatchTrigger: a thrown error from the dispatch function never leaks raw/internal text to the caller", async () => {
+  const dispatch = async (): Promise<readonly DispatchTriggerOutcome[]> => {
+    throw new Error("OpenAI request failed: invalid_api_key sk-live-abcdEXAMPLE1234");
+  };
+  const result = await runDispatchTrigger(true, dispatch);
+  assert.equal(result.error, "Could not run the processing dispatcher. Check server logs for detail.");
+  assert.doesNotMatch(result.error ?? "", /sk-live|invalid_api_key|OpenAI/);
+});
+
 let passed = 0;
 for (const t of tests) {
   try {
-    t.fn();
+    await t.fn();
     passed++;
     console.log(`ok - ${t.name}`);
   } catch (err) {
