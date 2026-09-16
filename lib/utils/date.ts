@@ -85,6 +85,29 @@ export function formatCentralDateTime(iso: string): string | null {
   return `${datePart} at ${timePart}`;
 }
 
+// "Sep 16, 2026, 7:53:32 AM CDT" — Central time, with seconds and an explicit CST/CDT
+// abbreviation (via Intl's timeZoneName: "short", which resolves the correct one for the given
+// instant rather than a hardcoded "CT" — see formatCentralDateTime() above for the
+// seconds-free, no-abbreviation sibling this deliberately doesn't replace or alter, to avoid
+// changing any of its existing call sites' display). Storage stays UTC everywhere (Serve OS
+// never converts on write, only on display) -- this is for contexts precise enough to need
+// second-level resolution and an unambiguous zone marker, e.g. a diagnostic/audit timestamp
+// column where "which of two nearly-simultaneous events happened first" matters.
+export function formatCentralTimestamp(iso: string): string | null {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: CENTRAL_TIME_ZONE,
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  }).format(date);
+}
+
 // ─── Business calendar dates (SQL `date` columns — no time-of-day) ────────
 //
 // A `date` column (compliance_corrective_actions.due_at,

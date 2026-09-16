@@ -109,8 +109,10 @@ export default async function SettingsPage() {
   const integrations = buildIntegrationDefinitions({ resendConnected });
 
   // Admin/diagnostic-only — only fetched for roles that can see the Assessment Processing
-  // section at all (same gate as the manual dispatch trigger below).
+  // section at all (same gate as the manual dispatch trigger below). processingDiagnosticsFetchedAt
+  // seeds the table's own "Last updated" display before its first client-side Refresh click.
   const processingDiagnostics = canViewManagement ? await getSessionsWithProcessingDiagnostics(25) : [];
+  const processingDiagnosticsFetchedAt = new Date().toISOString();
 
   return (
     <PageContainer title="Settings">
@@ -281,7 +283,10 @@ export default async function SettingsPage() {
                 <p className="mb-3 font-sans text-sm font-medium text-body">
                   In-flight sessions
                 </p>
-                <AssessmentProcessingDiagnostics rows={processingDiagnostics} />
+                <AssessmentProcessingDiagnostics
+                  initialRows={processingDiagnostics}
+                  initialFetchedAt={processingDiagnosticsFetchedAt}
+                />
               </div>
             </SettingsSection>
 

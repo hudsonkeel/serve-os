@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   formatCentralDateTime,
+  formatCentralTimestamp,
   formatPlainDate,
   isBusinessDateDueTodayOrEarlier,
   isBusinessDateOnly,
@@ -28,6 +29,18 @@ test("handles midnight/noon boundaries correctly", () => {
   assert.equal(formatCentralDateTime("2026-08-15T05:00:00.000Z"), "Aug 15, 2026 at 12:00 AM");
   // Noon Central = 17:00Z
   assert.equal(formatCentralDateTime("2026-08-15T17:00:00.000Z"), "Aug 15, 2026 at 12:00 PM");
+});
+
+test("formatCentralTimestamp: 'Mon D, YYYY, H:MM:SS AM/PM ZZZ' in Central time, with seconds and the correct DST abbreviation (CDT in summer)", () => {
+  assert.equal(formatCentralTimestamp("2026-09-16T12:53:32.000Z"), "Sep 16, 2026, 7:53:32 AM CDT");
+});
+
+test("formatCentralTimestamp: resolves CST (not CDT) outside daylight saving time", () => {
+  assert.equal(formatCentralTimestamp("2026-01-16T12:53:32.000Z"), "Jan 16, 2026, 6:53:32 AM CST");
+});
+
+test("formatCentralTimestamp: returns null for an unparseable input rather than throwing or showing 'Invalid Date'", () => {
+  assert.equal(formatCentralTimestamp("not-a-date"), null);
 });
 
 // ─── Business calendar dates (Incident Corrective Action Lifecycle v0.1) ──

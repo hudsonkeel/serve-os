@@ -113,17 +113,27 @@ export function sanitizeFailureReason(err: unknown, maxLength = 2000): string {
 
 // ─── Processing diagnostics (2026-09-16 observability slice) ──────────────────────────────────
 // A compact, additive breadcrumb of the furthest stage the most recent dispatch/claim attempt
-// reached (supabase/migrations/20260916010000_add_assessment_processing_diagnostics.sql) --
-// overwritten each attempt, not an append-only event log. Deliberately NOT a full 9-stage model:
-// claim success, extraction success, and failure are already fully derivable from existing
-// columns (status='processing' AND processing_claimed_at IS NOT NULL; status IN ('draft',
+// reached (supabase/migrations/20260916010000_add_assessment_processing_diagnostics.sql,
+// extended by 20260917000000_add_worker_wrapper_started_diagnostic_stage.sql) -- overwritten
+// each attempt, not an append-only event log. Deliberately NOT a full 9-stage model: claim
+// success, extraction success, and failure are already fully derivable from existing columns
+// (status='processing' AND processing_claimed_at IS NOT NULL; status IN ('draft',
 // 'needs_review'); status='failed' + failure_reason/failed_at), so only the otherwise-invisible
 // stages get their own marker -- see recordProcessingDiagnosticStage() in
-// lib/data/assessmentIntelligence.ts for where each one is written.
+// lib/data/assessmentIntelligence.ts for where most of these are written.
+//
+// "worker_wrapper_started" is the one exception: written directly by
+// netlify/functions/assessment-processing-stage-worker-background.mts via a raw PostgREST PATCH
+// (not through recordProcessingDiagnosticStage(), which that file cannot import without
+// reintroducing the server-only crash -- see that file's own header comment). It exists purely
+// to prove the standalone wrapper's handler body actually started executing after Netlify's 202
+// acknowledgment, independent of whether its outbound fetch to the worker Route Handler
+// succeeds.
 
 export const PROCESSING_DIAGNOSTIC_STAGES = [
   "dispatched",
   "invocation_accepted",
+  "worker_wrapper_started",
   "worker_received",
   "extraction_started",
 ] as const;

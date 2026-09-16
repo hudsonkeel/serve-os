@@ -224,6 +224,7 @@ test("isRecordableDiagnosticStage: true for every declared stage, in order", () 
   assert.deepEqual(PROCESSING_DIAGNOSTIC_STAGES, [
     "dispatched",
     "invocation_accepted",
+    "worker_wrapper_started",
     "worker_received",
     "extraction_started",
   ]);

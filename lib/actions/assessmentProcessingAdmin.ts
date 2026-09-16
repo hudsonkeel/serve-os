@@ -19,6 +19,7 @@ import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canEditResidentProfile } from "@/lib/auth/permissions";
 import { dispatchEligibleAssessmentProcessing } from "@/lib/assessmentIntelligence/pipeline";
 import { runDispatchTrigger, type DispatchTriggerResult } from "@/lib/assessmentIntelligence/processingQueue";
+import { getSessionsWithProcessingDiagnostics, type ProcessingDiagnosticRow } from "@/lib/data/assessmentIntelligence";
 
 export type TriggerAssessmentProcessingResult = DispatchTriggerResult;
 
@@ -27,4 +28,22 @@ export async function triggerAssessmentProcessingDispatch(): Promise<TriggerAsse
   if (!profile) return { error: "You must be signed in." };
 
   return runDispatchTrigger(canEditResidentProfile(profile.role), dispatchEligibleAssessmentProcessing);
+}
+
+const DIAGNOSTICS_LIMIT = 25;
+
+export type AssessmentProcessingDiagnosticsResult = { rows: ProcessingDiagnosticRow[] } | { error: string };
+
+/** Refreshes just the "In-flight sessions" diagnostics table (components/settings/
+ * AssessmentProcessingDiagnostics.tsx) without reloading the rest of Settings. Same
+ * management-tier gate as app/settings/page.tsx's canViewManagement (which controls whether the
+ * table is rendered at all) -- role !== "operations" -- not canEditResidentProfile above, since
+ * viewing this table is a read, not a resident-profile edit. */
+export async function getAssessmentProcessingDiagnostics(): Promise<AssessmentProcessingDiagnosticsResult> {
+  const profile = await getCurrentAuthorizedUser();
+  if (!profile || profile.role === "operations") {
+    return { error: "You do not have permission to view this." };
+  }
+
+  return { rows: await getSessionsWithProcessingDiagnostics(DIAGNOSTICS_LIMIT) };
 }
