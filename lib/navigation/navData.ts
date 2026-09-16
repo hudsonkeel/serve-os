@@ -31,24 +31,33 @@ export interface NavDestinationSection {
 }
 
 // Every role that existed before office_staff, which is excluded from
-// Audit Readiness, Quality (QAPI), How We're Doing, Community Outlook,
-// and Ask Serve. Matches lib/navigation/permissions.ts's
-// GENERAL_STAFF_ROLES and lib/compliance/permissions.ts's
-// canViewAuditReadiness exactly — kept as its own literal here (not
-// imported) because this file is nav display data, not a permission
-// predicate; the actual authorization for each of these routes lives in
-// their own page-level check, not in this list.
+// Quality (QAPI), How We're Doing, Community Outlook, and Ask Serve.
+// Matches lib/navigation/permissions.ts's GENERAL_STAFF_ROLES and
+// lib/compliance/permissions.ts's canViewAuditReadiness exactly — kept as
+// its own literal here (not imported) because this file is nav display
+// data, not a permission predicate; the actual authorization for each of
+// these routes lives in their own page-level check, not in this list.
 //
-// The People We Serve is deliberately NOT restricted by this list —
-// Office Staff Visibility v0.1 initially hid it from office_staff too,
-// but that was revised: office_staff routinely fields calls/updates
-// about residents/clients and needs to capture that information
-// directly in Serve OS. Visible to every role; the mutation actions
-// reachable from it are what stay narrowly scoped — see
-// lib/auth/permissions.ts's canCaptureResidentAssessment and this
-// page's existing canEditResidentProfile/canAccessResidentEvidence/
-// canPerformReconciliationActions checks, none of which include
-// office_staff.
+// The People We Serve and Audit Readiness are deliberately NOT
+// restricted by this list, for the same reason: each initially hid
+// office_staff too, and each was revised once a legitimate,
+// narrowly-scoped need was identified.
+//   - The People We Serve: office_staff routinely fields calls/updates
+//     about residents/clients and needs to capture that directly in
+//     Serve OS — see lib/auth/permissions.ts's
+//     canCaptureResidentAssessment and the existing
+//     canEditResidentProfile/canAccessResidentEvidence/
+//     canPerformReconciliationActions checks, none of which include
+//     office_staff.
+//   - Audit Readiness: office_staff needs to see the operational
+//     consequence of the personnel documents they manage. Visiting
+//     /audit-readiness as office_staff does NOT reach the full
+//     Governance dashboard — app/audit-readiness/page.tsx branches to a
+//     workforce-only scoped view before canViewAuditReadiness is even
+//     checked, via lib/compliance/permissions.ts's
+//     canViewWorkforceReadiness. canViewAuditReadiness itself still
+//     excludes office_staff, unchanged — see
+//     components/compliance/WorkforceReadinessView.tsx.
 const PRE_OFFICE_STAFF_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "operations"];
 
 export const NAV_SECTIONS_DATA: NavDestinationSection[] = [
@@ -83,7 +92,7 @@ export const NAV_SECTIONS_DATA: NavDestinationSection[] = [
       // entry, so adding these here does not put them in the
       // phone-width drawer. See the Audit Readiness Phase 1 report for
       // why this stays desktop-only.
-      { label: "Audit Readiness", href: "/audit-readiness", roles: PRE_OFFICE_STAFF_ROLES },
+      { label: "Audit Readiness", href: "/audit-readiness" },
       { label: "Quality (QAPI)", href: "/qapi", roles: PRE_OFFICE_STAFF_ROLES },
     ],
   },

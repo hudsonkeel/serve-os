@@ -3,9 +3,11 @@ import { LinkButton } from "@/components/ui/Button";
 import { AllClearAttentionCard, AttentionCard, AwaitingFirstSubjectAttentionCard, ComingSoonAttentionCard } from "@/components/compliance/AttentionCard";
 import { DomainReadinessCard } from "@/components/compliance/DomainReadinessCard";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
-import { canViewAuditReadiness } from "@/lib/compliance/permissions";
+import { canViewAuditReadiness, canViewWorkforceReadiness } from "@/lib/compliance/permissions";
+import { WorkforceReadinessView } from "@/components/compliance/WorkforceReadinessView";
 import {
   getAuditReadinessDashboardData,
+  getWorkforceDomainRollup,
   groupIssuesBySubject,
   rankIssues,
   type AuditReadinessDomainId,
@@ -43,6 +45,31 @@ function statusHref(domain: AuditReadinessDomainId | "all", status: AuditReadine
 
 export default async function AuditReadinessPage() {
   const profile = await getCurrentAuthorizedUser();
+
+  // Scoped Workforce Audit Readiness for office_staff — this branch must
+  // run BEFORE any other check or fetch on this page. It calls exactly
+  // one function, getWorkforceDomainRollup(), and returns — no
+  // resolveCurrentCommunityQueryFilter, no getAuditEligibleActiveClientResidents,
+  // no getAuditReadinessDashboardData (which would internally fetch
+  // Client Readiness, Emergency Preparedness, corrective actions, and
+  // recent documents even if unrendered). office_staff never reaches
+  // canViewAuditReadiness's check below, and canViewAuditReadiness itself
+  // is not widened to include office_staff — see
+  // lib/compliance/permissions.ts's canViewWorkforceReadiness.
+  if (canViewWorkforceReadiness(profile?.role ?? null)) {
+    const workforceDomain = await getWorkforceDomainRollup();
+    return (
+      <PageContainer title="Audit Readiness">
+        <div className="mb-6">
+          <h1 className="font-serif text-3xl font-light text-body">Audit Readiness</h1>
+          <p className="mt-1 font-sans text-sm text-muted">
+            Workforce Readiness — how the personnel documents you manage affect caregiver audit readiness.
+          </p>
+        </div>
+        <WorkforceReadinessView domain={workforceDomain} />
+      </PageContainer>
+    );
+  }
 
   if (!canViewAuditReadiness(profile?.role ?? null)) {
     return (

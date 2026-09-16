@@ -118,6 +118,18 @@ test("awaiting_verification maps to needs_review", () => {
   assert.equal(result.requirements[0].status, "needs_review");
 });
 
+test("REGRESSION (Scoped Workforce Audit Readiness for office_staff): uploaded-but-unverified evidence never maps to a Ready outcome — uploading alone does not satisfy a requirement", () => {
+  const req = requirementEvaluation({ status: "awaiting_verification" });
+  const result = deriveAuditReadinessStatus(setEvaluation({ status: "awaiting_verification", requirements: [req] }));
+  // "Ready" in the office_staff-facing vocabulary corresponds to the
+  // engine's "satisfied" outcome, i.e. compliant/satisfied_by_event/
+  // exception — none of which this ever produces for awaiting_verification.
+  assert.notEqual(result.status, "compliant");
+  assert.notEqual(result.status, "satisfied_by_event");
+  assert.notEqual(result.status, "exception");
+  assert.notEqual(result.requirements[0].status, "compliant");
+});
+
 test("requires_review maps to needs_review", () => {
   const req = requirementEvaluation({ status: "requires_review" });
   const result = deriveAuditReadinessStatus(setEvaluation({ status: "requires_review", requirements: [req] }));

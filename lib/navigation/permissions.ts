@@ -52,13 +52,21 @@ export function canViewAskServe(role: string | null | undefined): boolean {
   return Boolean(role && (GENERAL_STAFF_ROLES as readonly string[]).includes(role));
 }
 
-// Audit Readiness / Quality (QAPI) are deliberately NOT redefined here —
-// both already gate on lib/compliance/permissions.ts's
-// canViewAuditReadiness (admin/manager/executive/operations), which
-// already excludes office_staff today. Office Staff Visibility v0.1
-// reuses that existing predicate as-is for nav visibility rather than
-// duplicating its role list here, so the two can never drift apart.
-// Explicitly not widened — see DECISION_LOG / this slice's own report.
+// Quality (QAPI) is deliberately NOT redefined here — it gates on
+// lib/compliance/permissions.ts's canViewAuditReadiness
+// (admin/manager/executive/operations), which already excludes
+// office_staff today. Office Staff Visibility v0.1 reuses that existing
+// predicate as-is for nav visibility rather than duplicating its role
+// list here, so the two can never drift apart. Explicitly not widened —
+// see DECISION_LOG / this slice's own report.
+//
+// Audit Readiness is NOT gated here either, but for a different reason
+// as of Scoped Workforce Audit Readiness for office_staff: it's visible
+// to every role, including office_staff — visiting it as office_staff
+// renders a workforce-only scoped view rather than the full Governance
+// dashboard (see app/audit-readiness/page.tsx and
+// lib/compliance/permissions.ts's canViewWorkforceReadiness).
+// canViewAuditReadiness itself remains unwidened.
 
 export function canViewManagementSettings(role: string | null | undefined): boolean {
   return Boolean(role && (MANAGEMENT_TIER_ROLES as readonly string[]).includes(role));

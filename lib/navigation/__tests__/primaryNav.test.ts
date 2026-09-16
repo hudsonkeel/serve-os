@@ -22,9 +22,11 @@ function visibleLabels(role: AuthRole | null): string[] {
   ];
 }
 
-// Office Staff Visibility v0.1 — the exact approved destination set per
-// role. Every role except office_staff must see the full, unchanged nav;
-// office_staff sees exactly Today's Work, Workforce, and Settings.
+// Office Staff Visibility v0.1 / Scoped Workforce Audit Readiness — the
+// exact approved destination set per role. Every role except office_staff
+// must see the full, unchanged nav; office_staff sees Today's Work, The
+// People We Serve, Workforce, Audit Readiness (a scoped workforce-only
+// view at the same URL — see app/audit-readiness/page.tsx), and Settings.
 const EXPECTED: Record<(typeof AUTH_ROLES)[number], string[]> = {
   admin: [
     "Today's Work",
@@ -70,7 +72,7 @@ const EXPECTED: Record<(typeof AUTH_ROLES)[number], string[]> = {
     "Ask Serve",
     "Settings",
   ],
-  office_staff: ["Today's Work", "The People We Serve", "Workforce", "Settings"],
+  office_staff: ["Today's Work", "The People We Serve", "Workforce", "Audit Readiness", "Settings"],
 };
 
 for (const role of AUTH_ROLES) {
@@ -86,14 +88,25 @@ test("office_staff's Serve section keeps both The People We Serve and Workforce 
   assert.deepEqual(serve!.items.map((i) => i.label), ["The People We Serve", "Workforce"]);
 });
 
-test("office_staff's Governance and Understand sections are dropped entirely (zero visible items)", () => {
+test("office_staff's Governance section keeps only Audit Readiness (Quality/QAPI dropped) — Understand is dropped entirely", () => {
   const sections = getVisibleNavSectionsData("office_staff");
-  assert.equal(sections.some((s) => s.heading === "Governance"), false);
+  const governance = sections.find((s) => s.heading === "Governance");
+  assert.ok(governance, "Governance section should still render (Audit Readiness is visible)");
+  assert.deepEqual(governance!.items.map((i) => i.label), ["Audit Readiness"]);
   assert.equal(sections.some((s) => s.heading === "Understand"), false);
 });
 
-test("a null role sees nothing role-restricted, but does see The People We Serve/Workforce/Settings (unrestricted items have no role check to fail)", () => {
-  assert.deepEqual(visibleLabels(null), ["Today's Work", "The People We Serve", "Workforce", "Settings"]);
+test("REGRESSION: office_staff nav contains Audit Readiness but not Quality (QAPI), How We're Doing, Community Outlook, or Ask Serve", () => {
+  const labels = visibleLabels("office_staff");
+  assert.ok(labels.includes("Audit Readiness"));
+  assert.ok(!labels.includes("Quality (QAPI)"));
+  assert.ok(!labels.includes("How We're Doing"));
+  assert.ok(!labels.includes("Community Outlook"));
+  assert.ok(!labels.includes("Ask Serve"));
+});
+
+test("a null role sees nothing role-restricted, but does see The People We Serve/Workforce/Audit Readiness/Settings (unrestricted items have no role check to fail)", () => {
+  assert.deepEqual(visibleLabels(null), ["Today's Work", "The People We Serve", "Workforce", "Audit Readiness", "Settings"]);
 });
 
 async function run() {

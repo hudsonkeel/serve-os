@@ -33,7 +33,13 @@ export function DomainReadinessCard({
   subjectCount: number;
   requirementSatisfiedCount: number;
   requirementApplicableCount: number;
-  requirementDetailHref: string;
+  // Optional (Scoped Workforce Audit Readiness for office_staff) — when
+  // omitted, the "View by requirement" link is not rendered at all. Every
+  // existing caller (the full Governance dashboard) always passes this,
+  // so their rendering is unchanged; the office_staff-scoped view is the
+  // one place that omits it, since /audit-readiness/requirements is
+  // outside its scope (canViewAuditReadiness-gated).
+  requirementDetailHref?: string;
   // Explains this domain's own two metrics — lives inside the card it
   // describes, not spanning beneath all three (each domain's metrics mean
   // something slightly different, so the explanation belongs with its own
@@ -94,11 +100,13 @@ export function DomainReadinessCard({
           {requirementsNeedingAttention === 1 ? "" : "s"} need{requirementsNeedingAttention === 1 ? "s" : ""} attention
         </p>
 
-        <div className="mt-4 border-t border-ivory-border pt-3">
-          <LinkButton href={requirementDetailHref} size="small">
-            View by requirement →
-          </LinkButton>
-        </div>
+        {requirementDetailHref && (
+          <div className="mt-4 border-t border-ivory-border pt-3">
+            <LinkButton href={requirementDetailHref} size="small">
+              View by requirement →
+            </LinkButton>
+          </div>
+        )}
 
         {explanation && <p className="mt-4 font-sans text-xs text-subtle">{explanation}</p>}
       </div>
@@ -127,9 +135,11 @@ export function DomainReadinessCard({
         <p className="mt-0.5 font-sans text-sm text-muted">
           {requirementSatisfiedCount} of {requirementApplicableCount} requirements satisfied
         </p>
-        <LinkButton href={requirementDetailHref} size="small" className="mt-2">
-          View by requirement →
-        </LinkButton>
+        {requirementDetailHref && (
+          <LinkButton href={requirementDetailHref} size="small" className="mt-2">
+            View by requirement →
+          </LinkButton>
+        )}
       </div>
 
       {explanation && <p className="mt-4 font-sans text-xs text-subtle">{explanation}</p>}

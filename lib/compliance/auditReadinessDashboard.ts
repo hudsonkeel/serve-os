@@ -145,7 +145,14 @@ function awaitingFirstSubjectDomain(domainId: AuditReadinessDomainId, label: str
 // counts entirely, matching how Workforce's own dashboard already treats
 // them — never shown here as a fabricated "not_applicable" per
 // requirement.
-async function getWorkforceDomainRollup(): Promise<DomainReadinessRollup> {
+// Exported (Scoped Workforce Audit Readiness for office_staff) so
+// app/audit-readiness/page.tsx's office_staff branch can call exactly this
+// function and nothing else — no Client Readiness, Emergency Preparedness,
+// corrective-action, or drill data is ever fetched for that branch. No
+// logic change from the version getAuditReadinessDashboardData() below has
+// always called; this is the same rollup the full dashboard shows for the
+// Workforce card today.
+export async function getWorkforceDomainRollup(): Promise<DomainReadinessRollup> {
   const roster = await getWorkforceRoster();
   const eligible = roster.filter((entry) => isEligibleForComplianceFilters(entry.lifecycle.status));
 
