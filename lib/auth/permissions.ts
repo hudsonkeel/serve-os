@@ -34,6 +34,40 @@ export function canAccessResidentEvidence(role: AuthRole | null | undefined): bo
   return Boolean(role && RESIDENT_EVIDENCE_ROLES.includes(role));
 }
 
+// Office Staff Client Readiness v0.1 — splits the resident evidence tier
+// above along the exact same "ordinary document work" vs. "compliance
+// decision authority" line already established for Workforce
+// (lib/workforce/permissions.ts's canManageWorkforceDocuments vs.
+// canVerifyWorkforceEvidence). canAccessResidentEvidence above is
+// UNCHANGED and keeps gating everything that stays admin/manager/
+// executive-only: "Verify From Source" attestations (medication list,
+// care documentation, guardian-none), triage classification, and any
+// other compliance determination — office_staff is not added to it.
+//
+//   canManageResidentDocuments — view/open/upload/supersede an ordinary
+//     client document (Assessment, ISP, Service Agreement, Billing,
+//     Supervisory Visit, Significant Events, Discharge Summary). Adds
+//     office_staff. An office_staff upload creates UNVERIFIED evidence
+//     (Awaiting Verification) — see lib/clientReadiness/evidence.ts;
+//     this predicate governs who may attempt the upload/view, not
+//     whether the result is immediately verified.
+//
+//   canVerifyResidentEvidence — verify or reject evidence that's
+//     reached Awaiting Verification. Same admin/manager/executive tier
+//     as canAccessResidentEvidence today, kept as its own named
+//     predicate (not an alias) so the two can diverge later without a
+//     call-site rename — mirrors canVerifyWorkforceEvidence's own
+//     precedent exactly. office_staff excluded.
+const RESIDENT_DOCUMENT_MANAGEMENT_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "office_staff"];
+
+export function canManageResidentDocuments(role: AuthRole | null | undefined): boolean {
+  return Boolean(role && RESIDENT_DOCUMENT_MANAGEMENT_ROLES.includes(role));
+}
+
+export function canVerifyResidentEvidence(role: AuthRole | null | undefined): boolean {
+  return Boolean(role && RESIDENT_EVIDENCE_ROLES.includes(role));
+}
+
 // Office Staff Visibility v0.1 (resident-access revision) — starting a
 // live audio-capture Assessment session is care-plan territory, not
 // ordinary resident-note/operational-update administration. Unlike the

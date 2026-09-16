@@ -18,19 +18,22 @@ export function canViewAuditReadiness(role: string | null | undefined): boolean 
   return Boolean(role && (AUDIT_READINESS_VIEW_ROLES as readonly string[]).includes(role));
 }
 
-// Scoped Workforce Audit Readiness for office_staff — deliberately NOT an
-// addition to AUDIT_READINESS_VIEW_ROLES/canViewAuditReadiness, which
-// would also grant Client Readiness, Emergency Preparedness, corrective
-// actions, and audit drills — everything this role must not get. Narrow
-// single-role predicate (matches this file's existing canSupersedeRequirement/
-// canVoidEffectivenessReviewOutcome precedent for admin-only) governs
-// exactly one thing: whether /audit-readiness renders the workforce-only
-// scoped view (app/audit-readiness/page.tsx's early branch, before the
-// full-dashboard data fetch) instead of the full Governance dashboard.
-// office_staff's underlying document capabilities (view/upload/replace,
-// never verify/reject) are unchanged by this — see
-// lib/workforce/permissions.ts.
-export function canViewWorkforceReadiness(role: string | null | undefined): boolean {
+// Scoped People Readiness (Client + Workforce) for office_staff —
+// deliberately NOT an addition to AUDIT_READINESS_VIEW_ROLES/
+// canViewAuditReadiness, which would also grant Emergency Preparedness,
+// corrective-action management, and audit drills — everything this role
+// must not get. Narrow single-role predicate (matches this file's existing
+// canSupersedeRequirement/canVoidEffectivenessReviewOutcome precedent for
+// admin-only) governs exactly one thing: whether /audit-readiness renders
+// the People Readiness scoped view (app/audit-readiness/page.tsx's early
+// branch, before the full-dashboard data fetch) instead of the full
+// Governance dashboard. Originally workforce-only (canViewWorkforceReadiness);
+// renamed when Client Readiness joined the same scoped view — the role
+// logic itself (office_staff only) is unchanged. office_staff's underlying
+// document capabilities (view/upload/replace, never verify/reject) are
+// unchanged by this — see lib/workforce/permissions.ts and
+// lib/auth/permissions.ts's canManageResidentDocuments/canVerifyResidentEvidence.
+export function canViewPeopleReadiness(role: string | null | undefined): boolean {
   return role === "office_staff";
 }
 

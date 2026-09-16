@@ -1,10 +1,10 @@
 "use server";
 
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
-import { canAccessResidentEvidence } from "@/lib/auth/permissions";
+import { canAccessResidentEvidence, canManageResidentDocuments, canVerifyResidentEvidence } from "@/lib/auth/permissions";
 import type { AuthRole } from "@/lib/auth/constants";
 import { getRequirementByCode } from "@/lib/data/personRequirements";
-import { getPersonEvidenceForSubject } from "@/lib/data/personEvidence";
+import { getPersonEvidenceForSubject, verifyPersonEvidence, rejectPersonEvidence } from "@/lib/data/personEvidence";
 import type { PersonEvidence } from "@/lib/supabase/types";
 import { createPersonDocument } from "@/lib/data/personDocuments";
 import { linkEvidenceToRequirement } from "@/lib/data/requirementEvidenceLinks";
@@ -16,6 +16,9 @@ import {
   recordMedicationListAttestation,
   syncCurrentTriageClassificationEvidence,
 } from "@/lib/clientReadiness/evidence";
+import { getResidentServeRelationshipDetail } from "@/lib/data/residentServeRelationships";
+import { getClientReadinessEvaluation } from "@/lib/clientReadiness/clientReadinessReadiness";
+import { syncClientReadinessComplianceActionsForResident } from "@/lib/clientReadiness/complianceActionSync";
 import {
   CR_ASSESSMENT_CURRENT,
   CR_BILLING_AGREEMENT_ON_FILE,
@@ -62,6 +65,57 @@ async function requirePermission(): Promise<{ actor: { label: string; role: Auth
   return { actor };
 }
 
+// Office Staff Client Readiness v0.1 — the narrower gate for ordinary
+// document work (upload/supersede an Assessment/ISP/Service Agreement/
+// Billing/Supervisory Visit/Significant Event/Discharge Summary
+// document), which now includes office_staff. Every other action in
+// this file (attestations, triage classification) keeps using
+// requirePermission()/canAccessResidentEvidence above, unchanged.
+async function requireDocumentPermission(): Promise<{ actor: { label: string; role: AuthRole | null } } | { error: string }> {
+  const actor = await currentActor();
+  if (!actor) return { error: "You must be signed in to do this." };
+  if (!canManageResidentDocuments(actor.role)) {
+    return { error: "You do not have permission to manage this client's documents." };
+  }
+  return { actor };
+}
+
+// Re-evaluates one resident's full Client Readiness registry and
+// reconciles open compliance_corrective_actions against it — mirrors
+// lib/actions/workforce.ts's syncComplianceActionsFor() exactly: called
+// after every evidence-affecting mutation in this file (upload,
+// attestation, triage, verify, reject) so the verifier work queue can
+// never drift from what Client Readiness itself actually shows. Never
+// throws — a failed sync must never fail the mutation that triggered
+// it, which has already succeeded and is already durable.
+//
+// { mode: "all" } deliberately bypasses the current viewer's own
+// community scope — this resolves ONE specific, already-known resident
+// by id, not a list a viewer should only see part of (the same pattern
+// app/dashboard/page.tsx already uses for its own all-communities
+// aggregate reads). isStandbyInactiveClient/currentTriageClassification
+// are left at their safe defaults (undefined/false) — this is a
+// background reconciliation, not the atomic post-save render that
+// resolves those precisely; see getClientReadinessEvaluation()'s own
+// comment on why that's a correct, supported default for a caller that
+// hasn't resolved them.
+async function syncComplianceActionsForResident(residentId: string, actor: string): Promise<void> {
+  try {
+    const detail = await getResidentServeRelationshipDetail(residentId, { mode: "all" });
+    if (!detail) return;
+    const evaluation = await getClientReadinessEvaluation(residentId, detail.projection.relationship);
+    if (!evaluation) return;
+    const subjectLabel =
+      evaluation.resident.display_name ||
+      evaluation.resident.full_name ||
+      [evaluation.resident.first_name, evaluation.resident.last_name].filter(Boolean).join(" ") ||
+      "Unknown Client";
+    await syncClientReadinessComplianceActionsForResident(residentId, subjectLabel, evaluation.requirements, actor);
+  } catch (err) {
+    console.error("[syncComplianceActionsForResident]", { residentId, err });
+  }
+}
+
 async function findMostRecentActiveEvidenceId(residentId: string, requirementId: string): Promise<string | null> {
   const existing = await getPersonEvidenceForSubject("resident", residentId);
   const prior = existing
@@ -76,9 +130,12 @@ async function findMostRecentActiveEvidenceId(residentId: string, requirementId:
 export async function recordClientReadinessDocumentEvidenceAction(
   formData: FormData
 ): Promise<{ evidence?: PersonEvidence; error?: string; warning?: string }> {
-  const permission = await requirePermission();
+  const permission = await requireDocumentPermission();
   if ("error" in permission) return permission;
   const { actor } = permission;
+  // office_staff uploads land unverified (Awaiting Verification);
+  // admin/manager/executive keep today's exact self-verifying behavior.
+  const verifyImmediately = canVerifyResidentEvidence(actor.role);
 
   const residentId = String(formData.get("residentId") ?? "");
   const requirementCode = String(formData.get("requirementCode") ?? "");
@@ -149,6 +206,7 @@ export async function recordClientReadinessDocumentEvidenceAction(
     expirationDate,
     supersedesEvidenceId,
     actor: actor.label,
+    verifyImmediately,
     notes,
   });
   if (primaryResult.error || !primaryResult.evidence) return primaryResult;
@@ -177,14 +235,17 @@ export async function recordClientReadinessDocumentEvidenceAction(
         expirationDate: addDays(new Date(effectiveDate), ISP_VALIDITY_DAYS),
         supersedesEvidenceId: priorIspEvidenceId,
         actor: actor.label,
+        verifyImmediately,
         notes: null,
       });
       if (ispResult.error) {
+        await syncComplianceActionsForResident(residentId, actor.label);
         return { evidence: primaryResult.evidence, warning: `Assessment / Care Plan recorded, but ISP could not be composed from it: ${ispResult.error}` };
       }
     }
   }
 
+  await syncComplianceActionsForResident(residentId, actor.label);
   return { evidence: primaryResult.evidence };
 }
 
@@ -198,9 +259,10 @@ export async function recordClientReadinessDocumentEvidenceAction(
 // records the relationship for audit clarity, it is not what makes Billing
 // evaluate as satisfied.
 export async function recordServiceAgreementEvidenceAction(formData: FormData) {
-  const permission = await requirePermission();
+  const permission = await requireDocumentPermission();
   if ("error" in permission) return permission;
   const { actor } = permission;
+  const verifyImmediately = canVerifyResidentEvidence(actor.role);
 
   const residentId = String(formData.get("residentId") ?? "");
   const effectiveDate = (formData.get("effectiveDate") as string | null) || new Date().toISOString().slice(0, 10);
@@ -254,6 +316,7 @@ export async function recordServiceAgreementEvidenceAction(formData: FormData) {
     expirationDate: null,
     supersedesEvidenceId: priorServiceAgreementEvidenceId,
     actor: actor.label,
+    verifyImmediately,
     notes,
   });
   if (serviceAgreementResult.error || !serviceAgreementResult.evidence) {
@@ -261,11 +324,13 @@ export async function recordServiceAgreementEvidenceAction(formData: FormData) {
   }
 
   if (!alsoSatisfiesBilling) {
+    await syncComplianceActionsForResident(residentId, actor.label);
     return { evidence: serviceAgreementResult.evidence };
   }
 
   const billingRequirement = await getRequirementByCode(CR_BILLING_AGREEMENT_ON_FILE);
   if (!billingRequirement) {
+    await syncComplianceActionsForResident(residentId, actor.label);
     return { evidence: serviceAgreementResult.evidence, warning: "Service Agreement recorded; Billing requirement not found to link." };
   }
 
@@ -278,9 +343,11 @@ export async function recordServiceAgreementEvidenceAction(formData: FormData) {
     expirationDate: null,
     supersedesEvidenceId: priorBillingEvidenceId,
     actor: actor.label,
+    verifyImmediately,
     notes: notes ?? "Billing terms included in the Service Agreement.",
   });
   if (billingResult.error || !billingResult.evidence) {
+    await syncComplianceActionsForResident(residentId, actor.label);
     return {
       evidence: serviceAgreementResult.evidence,
       warning: `Service Agreement recorded, but Billing could not be linked: ${billingResult.error}`,
@@ -294,6 +361,7 @@ export async function recordServiceAgreementEvidenceAction(formData: FormData) {
     linkedBy: actor.label,
   });
 
+  await syncComplianceActionsForResident(residentId, actor.label);
   return { evidence: serviceAgreementResult.evidence };
 }
 
@@ -401,4 +469,62 @@ export async function recordGuardianNoneAttestationAction(input: { residentId: s
     actor: actor.label,
     notes: input.notes,
   });
+}
+
+// ─── Verify / Reject — Office Staff Client Readiness v0.1 ────────────────
+// The resolution path for evidence an office_staff upload left Awaiting
+// Verification. Genuinely new: no resident-domain equivalent existed
+// before this (every prior write path self-verified — see evidence.ts's
+// header comment). Reuses the exact same subject-type-generic
+// verifyPersonEvidence/rejectPersonEvidence lib/data/personEvidence.ts
+// already provides for Workforce — no duplicated verification logic.
+// Gated by canVerifyResidentEvidence (admin/manager/executive), not
+// canManageResidentDocuments — office_staff can upload but never reaches
+// either of these two actions.
+export async function verifyResidentEvidenceAction(input: {
+  evidenceId: string;
+  residentId: string;
+  notes: string | null;
+}): Promise<{ error?: string }> {
+  const actor = await currentActor();
+  if (!actor) return { error: "You must be signed in to verify evidence." };
+  if (!canVerifyResidentEvidence(actor.role)) {
+    return { error: "You do not have permission to verify resident evidence." };
+  }
+
+  const result = await verifyPersonEvidence({
+    evidenceId: input.evidenceId,
+    verifiedBy: actor.label,
+    result: null,
+    notes: input.notes,
+  });
+  if (result.error) return { error: result.error };
+
+  await syncComplianceActionsForResident(input.residentId, actor.label);
+  return {};
+}
+
+export async function rejectResidentEvidenceAction(input: {
+  evidenceId: string;
+  residentId: string;
+  notes: string;
+}): Promise<{ error?: string }> {
+  const actor = await currentActor();
+  if (!actor) return { error: "You must be signed in to reject evidence." };
+  if (!canVerifyResidentEvidence(actor.role)) {
+    return { error: "You do not have permission to reject resident evidence." };
+  }
+  if (!input.notes || !input.notes.trim()) {
+    return { error: "A reason is required to reject evidence." };
+  }
+
+  const result = await rejectPersonEvidence({
+    evidenceId: input.evidenceId,
+    rejectedBy: actor.label,
+    notes: input.notes,
+  });
+  if (result.error) return { error: result.error };
+
+  await syncComplianceActionsForResident(input.residentId, actor.label);
+  return {};
 }

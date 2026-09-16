@@ -65,7 +65,7 @@ export function canViewAskServe(role: string | null | undefined): boolean {
 // to every role, including office_staff — visiting it as office_staff
 // renders a workforce-only scoped view rather than the full Governance
 // dashboard (see app/audit-readiness/page.tsx and
-// lib/compliance/permissions.ts's canViewWorkforceReadiness).
+// lib/compliance/permissions.ts's canViewPeopleReadiness).
 // canViewAuditReadiness itself remains unwidened.
 
 export function canViewManagementSettings(role: string | null | undefined): boolean {

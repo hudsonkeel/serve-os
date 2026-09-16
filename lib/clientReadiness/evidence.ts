@@ -18,6 +18,18 @@ function addDays(date: Date, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Office Staff Client Readiness v0.1 — verifiedBy is now `string | null`.
+// Every pre-existing caller (assessment/ISP composition, AxisCare/Serve
+// triage sync, the three "Verify From Source" attestations) is
+// unaffected — they all pass a non-null actor and keep self-verifying
+// exactly as before. Only recordDocumentEvidence() (ordinary document
+// upload) can now pass null, and only when the actor lacks
+// canVerifyResidentEvidence — see that function's own comment. Passing
+// null skips the immediate verifyPersonEvidence() call entirely, so the
+// created row stays genuinely unverified (Missing -> Awaiting
+// Verification, never Ready) until a separate, later verify/reject
+// action resolves it — see verifyResidentEvidenceAction/
+// rejectResidentEvidenceAction in lib/actions/clientReadiness.ts.
 async function createVerifiedResidentEvidence(input: {
   residentId: string;
   requirementId: string;
@@ -27,7 +39,7 @@ async function createVerifiedResidentEvidence(input: {
   satisfactionContext: ClientReadinessSatisfactionContext | null;
   supersedesEvidenceId?: string | null;
   enteredBy: string;
-  verifiedBy: string;
+  verifiedBy: string | null;
   authoritativeSourceSystem?: AuthoritativeSourceSystem | null;
   collectionMethod?: "human_attestation" | "structured_import" | "document_upload" | null;
   verificationMethod?: "direct_source_review" | "document_review" | "imported_authoritative_status" | null;
@@ -67,6 +79,18 @@ async function createVerifiedResidentEvidence(input: {
     externalReference: input.externalReference ?? null,
   });
   if (created.error || !created.evidence) return { error: created.error };
+
+  // verifiedBy is null only for an office_staff-initiated ordinary
+  // document upload (see recordDocumentEvidence below) — leave the row
+  // exactly as created (verification_status defaults to 'unverified',
+  // verified_by/verified_at stay null, matching the same DB-enforced
+  // bidirectional invariant person_evidence already relies on elsewhere
+  // in this codebase). This is the entire mechanism behind Missing ->
+  // Awaiting Verification -> Ready: office_staff's upload simply never
+  // reaches this verify call.
+  if (!input.verifiedBy) {
+    return { evidence: created.evidence };
+  }
 
   const verified = await verifyPersonEvidence({
     evidenceId: created.evidence.id,
@@ -213,6 +237,12 @@ export async function recordAssessmentIspEvidenceFromDocument(input: {
   expirationDate: string | null;
   supersedesEvidenceId: string | null;
   actor: string;
+  // Office Staff Client Readiness v0.1 — must mirror whatever the
+  // Assessment upload this composes from used. An office_staff-uploaded
+  // Assessment document is unverified; the ISP evidence composed from
+  // the same document must stay unverified too, or ISP would reach
+  // Ready while Assessment itself is still Awaiting Verification.
+  verifyImmediately: boolean;
   notes: string | null;
 }): Promise<{ evidence?: PersonEvidence; error?: string }> {
   const result = await createVerifiedResidentEvidence({
@@ -224,7 +254,7 @@ export async function recordAssessmentIspEvidenceFromDocument(input: {
     satisfactionContext: "isp_satisfied_by_assessment",
     supersedesEvidenceId: input.supersedesEvidenceId,
     enteredBy: input.actor,
-    verifiedBy: input.actor,
+    verifiedBy: input.verifyImmediately ? input.actor : null,
     collectionMethod: "document_upload",
     verificationMethod: "document_review",
     notes: input.notes ?? "ISP satisfied by the same Assessment/Care Plan document.",
@@ -446,6 +476,14 @@ export async function recordCareDocumentationAttestation(input: {
 
 // ─── Generic document-backed requirements (ISP, Service Agreement,
 // Supervisory Visit, Significant Events, Discharge) ────────────────────────
+// Office Staff Client Readiness v0.1 — verifyImmediately is required
+// (never defaulted) so every call site must explicitly decide it, the
+// same discipline this codebase already uses for other security-
+// relevant booleans. The caller (lib/actions/clientReadiness.ts) passes
+// canVerifyResidentEvidence(actor.role): true for admin/manager/
+// executive (self-verify, byte-for-byte the same behavior as before
+// this change), false for office_staff (the upload lands unverified —
+// Awaiting Verification, never immediately Ready).
 export async function recordDocumentEvidence(input: {
   residentId: string;
   requirementId: string;
@@ -454,6 +492,7 @@ export async function recordDocumentEvidence(input: {
   expirationDate: string | null;
   supersedesEvidenceId?: string | null;
   actor: string;
+  verifyImmediately: boolean;
   notes: string | null;
 }): Promise<{ evidence?: PersonEvidence; error?: string }> {
   return createVerifiedResidentEvidence({
@@ -465,7 +504,7 @@ export async function recordDocumentEvidence(input: {
     satisfactionContext: null,
     supersedesEvidenceId: input.supersedesEvidenceId,
     enteredBy: input.actor,
-    verifiedBy: input.actor,
+    verifiedBy: input.verifyImmediately ? input.actor : null,
     collectionMethod: "document_upload",
     verificationMethod: "document_review",
     notes: input.notes,

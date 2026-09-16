@@ -3,7 +3,9 @@ import {
   canAccessResidentEvidence,
   canCaptureResidentAssessment,
   canEditResidentProfile,
+  canManageResidentDocuments,
   canPerformReconciliationActions,
+  canVerifyResidentEvidence,
 } from "../permissions.ts";
 
 type Test = { name: string; fn: () => void };
@@ -117,6 +119,59 @@ test("office_staff CANNOT capture a resident assessment", () => {
 
 test("null role cannot capture a resident assessment", () => {
   assert.equal(canCaptureResidentAssessment(null), false);
+});
+
+// Office Staff Client Readiness v0.1 — canManageResidentDocuments (ordinary
+// client document view/upload/supersede) vs. canVerifyResidentEvidence
+// (verify/reject once Awaiting Verification). office_staff gains the
+// former, never the latter — the same document-work-vs-compliance-decision
+// split already proven for Workforce.
+for (const role of ["admin", "manager", "executive", "office_staff"] as const) {
+  test(`${role} can manage resident documents`, () => {
+    assert.equal(canManageResidentDocuments(role), true);
+  });
+}
+
+test("operations cannot manage resident documents", () => {
+  assert.equal(canManageResidentDocuments("operations"), false);
+});
+
+test("null role cannot manage resident documents", () => {
+  assert.equal(canManageResidentDocuments(null), false);
+});
+
+for (const role of ["admin", "manager", "executive"] as const) {
+  test(`${role} can verify resident evidence`, () => {
+    assert.equal(canVerifyResidentEvidence(role), true);
+  });
+}
+
+test("REGRESSION: office_staff CANNOT verify resident evidence (upload authority does not imply verification authority)", () => {
+  assert.equal(canVerifyResidentEvidence("office_staff"), false);
+});
+
+test("operations cannot verify resident evidence", () => {
+  assert.equal(canVerifyResidentEvidence("operations"), false);
+});
+
+test("null role cannot verify resident evidence", () => {
+  assert.equal(canVerifyResidentEvidence(null), false);
+});
+
+// REGRESSION: office_staff's newly-widened document capability must never
+// leak into the attestation/triage/canonical-edit/reconciliation
+// predicates that stayed admin/manager/executive-only in this same slice.
+test("REGRESSION: office_staff CANNOT access resident evidence attestations (source attestations/triage) even though it can now manage resident documents", () => {
+  assert.equal(canManageResidentDocuments("office_staff"), true);
+  assert.equal(canAccessResidentEvidence("office_staff"), false);
+});
+
+test("REGRESSION: office_staff CANNOT edit resident profiles (canonical identity/PII) after Client Readiness v0.1", () => {
+  assert.equal(canEditResidentProfile("office_staff"), false);
+});
+
+test("REGRESSION: office_staff CANNOT perform reconciliation actions after Client Readiness v0.1", () => {
+  assert.equal(canPerformReconciliationActions("office_staff"), false);
 });
 
 let passed = 0;

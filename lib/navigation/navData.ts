@@ -55,9 +55,9 @@ export interface NavDestinationSection {
 //     Governance dashboard — app/audit-readiness/page.tsx branches to a
 //     workforce-only scoped view before canViewAuditReadiness is even
 //     checked, via lib/compliance/permissions.ts's
-//     canViewWorkforceReadiness. canViewAuditReadiness itself still
+//     canViewPeopleReadiness. canViewAuditReadiness itself still
 //     excludes office_staff, unchanged — see
-//     components/compliance/WorkforceReadinessView.tsx.
+//     components/compliance/PeopleReadinessView.tsx.
 const PRE_OFFICE_STAFF_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "operations"];
 
 export const NAV_SECTIONS_DATA: NavDestinationSection[] = [

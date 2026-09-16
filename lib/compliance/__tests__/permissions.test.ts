@@ -1,7 +1,7 @@
 // node --experimental-strip-types --conditions=react-server lib/compliance/__tests__/permissions.test.ts
 import assert from "node:assert/strict";
 import { AUTH_ROLES } from "../../auth/constants.ts";
-import { canViewAuditReadiness, canViewWorkforceReadiness } from "../permissions.ts";
+import { canViewAuditReadiness, canViewPeopleReadiness } from "../permissions.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
 const tests: Test[] = [];
@@ -28,7 +28,7 @@ function assertRoleTable(fn: (role: string | null | undefined) => boolean, fnNam
 // Readiness for office_staff. This table exists specifically to prove
 // that: office_staff must stay false here even though it now sees an
 // "Audit Readiness" nav entry and a workforce-scoped page at the same
-// URL — see canViewWorkforceReadiness below for the actual mechanism.
+// URL — see canViewPeopleReadiness below for the actual mechanism.
 assertRoleTable(canViewAuditReadiness, "canViewAuditReadiness", {
   admin: true,
   manager: true,
@@ -37,10 +37,10 @@ assertRoleTable(canViewAuditReadiness, "canViewAuditReadiness", {
   office_staff: false,
 });
 
-// ─── canViewWorkforceReadiness — the new, narrow predicate. Only
+// ─── canViewPeopleReadiness — the new, narrow predicate. Only
 // office_staff — every other role already has the full dashboard via
 // canViewAuditReadiness and has no use for the scoped view.
-assertRoleTable(canViewWorkforceReadiness, "canViewWorkforceReadiness", {
+assertRoleTable(canViewPeopleReadiness, "canViewPeopleReadiness", {
   admin: false,
   manager: false,
   executive: false,
@@ -49,8 +49,8 @@ assertRoleTable(canViewWorkforceReadiness, "canViewWorkforceReadiness", {
 });
 
 // ─── Explicit regressions named in the approved v0.1 direction ───────────
-test("REGRESSION: canViewWorkforceReadiness('office_staff') === true", () => {
-  assert.equal(canViewWorkforceReadiness("office_staff"), true);
+test("REGRESSION: canViewPeopleReadiness('office_staff') === true", () => {
+  assert.equal(canViewPeopleReadiness("office_staff"), true);
 });
 
 test("REGRESSION: canViewAuditReadiness('office_staff') === false", () => {
@@ -59,15 +59,15 @@ test("REGRESSION: canViewAuditReadiness('office_staff') === false", () => {
 
 test("REGRESSION: no role passes both predicates at once — the scoped view and the full dashboard are mutually exclusive by construction", () => {
   for (const role of AUTH_ROLES) {
-    const both = canViewAuditReadiness(role) && canViewWorkforceReadiness(role);
-    assert.equal(both, false, `${role} should never satisfy both canViewAuditReadiness and canViewWorkforceReadiness`);
+    const both = canViewAuditReadiness(role) && canViewPeopleReadiness(role);
+    assert.equal(both, false, `${role} should never satisfy both canViewAuditReadiness and canViewPeopleReadiness`);
   }
 });
 
 test("REGRESSION: every pre-existing role (admin/manager/executive/operations) still passes canViewAuditReadiness — full dashboard access is unchanged", () => {
   for (const role of ["admin", "manager", "executive", "operations"] as const) {
     assert.equal(canViewAuditReadiness(role), true, role);
-    assert.equal(canViewWorkforceReadiness(role), false, role);
+    assert.equal(canViewPeopleReadiness(role), false, role);
   }
 });
 

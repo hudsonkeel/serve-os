@@ -22,7 +22,7 @@
 // resident-facing requirement exists, this same code path starts
 // producing real evidence — no redesign required.
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
-import { canAccessResidentEvidence } from "@/lib/auth/permissions";
+import { canManageResidentDocuments } from "@/lib/auth/permissions";
 import {
   buildDocumentStoragePath,
   getSignedDocumentUrl,
@@ -47,7 +47,7 @@ async function currentActor(): Promise<{ label: string; role: AuthRole | null } 
 export async function uploadResidentDocument(formData: FormData): Promise<{ error?: string; documentId?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to upload a document." };
-  if (!canAccessResidentEvidence(actor.role)) {
+  if (!canManageResidentDocuments(actor.role)) {
     return { error: "You do not have permission to upload resident documents." };
   }
 
@@ -131,7 +131,7 @@ export async function uploadResidentDocument(formData: FormData): Promise<{ erro
 export async function supersedeResidentDocument(formData: FormData): Promise<{ error?: string; documentId?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to replace a document." };
-  if (!canAccessResidentEvidence(actor.role)) {
+  if (!canManageResidentDocuments(actor.role)) {
     return { error: "You do not have permission to replace resident documents." };
   }
 
@@ -201,7 +201,7 @@ export async function getResidentDocumentDownloadUrl(input: {
 }): Promise<{ url?: string; error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to open a document." };
-  if (!canAccessResidentEvidence(actor.role)) {
+  if (!canManageResidentDocuments(actor.role)) {
     return { error: "You do not have permission to view resident documents." };
   }
 
