@@ -3,7 +3,7 @@ import { PageContainer } from "@/components/PageContainer";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { getWorkforceRoster } from "@/lib/workforce/roster";
 import { getIdentityReviewQueue } from "@/lib/data/personVendorIdentityLinks";
-import { canAccessWorkforceDocuments, canTriggerAxisCareSync } from "@/lib/workforce/permissions";
+import { canBulkImportWorkforceRoster, canTriggerAxisCareSync } from "@/lib/workforce/permissions";
 import { getLatestSuccessfulSyncRun } from "@/lib/workforce/axiscareCaregiverSync";
 import { formatCentralDateTime } from "@/lib/utils/date";
 import { SUBJECT_TYPE_WORKFORCE_MEMBER } from "@/lib/supabase/types";
@@ -52,7 +52,7 @@ export default async function WorkforcePage({
           <span className="font-sans text-sm text-muted">
             {roster.length} {roster.length === 1 ? "caregiver" : "caregivers"} · {ready} ready
           </span>
-          {canAccessWorkforceDocuments(profile?.role ?? null) && (
+          {canBulkImportWorkforceRoster(profile?.role ?? null) && (
             <Link
               href="/workforce/import"
               className="rounded-lg border border-ivory-border px-4 py-2 font-sans text-sm font-medium text-muted hover:border-navy/20 hover:text-body"

@@ -20,7 +20,8 @@ export function canViewAuditReadiness(role: string | null | undefined): boolean 
 
 // Creating/resolving/dismissing a corrective action — consequential
 // operational work, narrower than viewing. Mirrors
-// canAccessWorkforceDocuments's admin+manager tier.
+// lib/workforce/permissions.ts's admin+manager tier (e.g.
+// canVerifyWorkforceEvidence).
 const CORRECTIVE_ACTION_MANAGE_ROLES: readonly AuthRole[] = ["admin", "manager"];
 
 export function canManageCorrectiveActions(role: string | null | undefined): boolean {

@@ -117,17 +117,31 @@ function HistoryList({
   );
 }
 
+// Which evidence action is ordinary document maintenance (view/upload/
+// replace/renew/edit-in-place-while-unverified — none of it changes
+// verification_status) vs. a compliance judgment or correction (reassign
+// across caregivers, hard delete, mark entered in error) restricted to
+// admin/manager. See lib/workforce/permissions.ts's canManageWorkforceDocuments
+// vs. canVerifyWorkforceEvidence/canReassignWorkforceEvidence/canDeleteWorkforceDocuments,
+// which enforce the real (server-side) gate this only mirrors for display.
+const ORDINARY_DOCUMENT_ACTIONS: readonly EvidenceAction[] = ["edit_details", "replace", "correct", "upload_renewal", "view_history"];
+
 export function RegistryEvidenceCard({
   evaluation,
   workforceMemberId,
-  canManage,
+  canManageDocuments,
+  canManageComplianceEvidence,
   history,
   rosterOptions,
   lifecycleStatus,
 }: {
   evaluation: RequirementEvaluation;
   workforceMemberId: string;
-  canManage: boolean;
+  // Ordinary document work (view/upload/replace) vs. compliance judgment
+  // (verify/reject/reassign/delete/mark-entered-in-error) — see
+  // lib/workforce/permissions.ts.
+  canManageDocuments: boolean;
+  canManageComplianceEvidence: boolean;
   history: PersonEvidence[];
   lifecycleStatus: WorkforceLifecycleStatus;
   rosterOptions: Array<{ workforceMemberId: string; displayName: string }>;
@@ -163,7 +177,9 @@ export function RegistryEvidenceCard({
   // Entered-in-error form state
   const [errorReason, setErrorReason] = useState("");
 
-  const availableActions = getAvailableEvidenceActions(latestEvidence);
+  const availableActions = getAvailableEvidenceActions(latestEvidence).filter((action) =>
+    ORDINARY_DOCUMENT_ACTIONS.includes(action) ? canManageDocuments : canManageComplianceEvidence
+  );
   const expired = latestEvidence ? isEffectivelyExpired(latestEvidence) : false;
 
   function resetAndRefresh() {
@@ -370,7 +386,7 @@ export function RegistryEvidenceCard({
               <dd className="inline">{latestEvidence.notes}</dd>
             </div>
           )}
-          {latestEvidence.document_id && canManage && (
+          {latestEvidence.document_id && canManageDocuments && (
             <div className="pt-1">
               <DocumentLink documentId={latestEvidence.document_id} isPending={isPending} onView={viewDocument} />
             </div>
@@ -385,7 +401,7 @@ export function RegistryEvidenceCard({
       {error && <p className="mt-2 font-sans text-xs text-red-600">{error}</p>}
 
       {/* Verify/reject — still-unreviewed evidence */}
-      {canManage && latestEvidence && latestEvidence.verification_status === "unverified" && (
+      {canManageComplianceEvidence && latestEvidence && latestEvidence.verification_status === "unverified" && (
         <div className="mt-4 space-y-2 border-t border-ivory-border pt-4">
           <div className="flex flex-wrap items-center gap-2">
             <select
@@ -438,7 +454,7 @@ export function RegistryEvidenceCard({
       )}
 
       {/* First upload */}
-      {canManage && !latestEvidence && (
+      {canManageDocuments && !latestEvidence && (
         <form action={handleUpload} className="mt-4 flex flex-wrap items-center gap-2 border-t border-ivory-border pt-4">
           <FileUploadField name="file" accept="application/pdf" required />
           <input
@@ -456,8 +472,9 @@ export function RegistryEvidenceCard({
         </form>
       )}
 
-      {/* State-dependent actions menu */}
-      {canManage && latestEvidence && availableActions.length > 0 && (
+      {/* State-dependent actions menu — availableActions is already
+          filtered to what this viewer's tier permits. */}
+      {(canManageDocuments || canManageComplianceEvidence) && latestEvidence && availableActions.length > 0 && (
         <div className="mt-4 border-t border-ivory-border pt-4">
           <div className="flex flex-wrap gap-2">
             {availableActions.map((action) => (
@@ -622,7 +639,7 @@ export function RegistryEvidenceCard({
       )}
 
       {/* History always available when there is any, even without an action button showing it */}
-      {canManage && history.length > 0 && !availableActions.includes("view_history") && (
+      {canManageDocuments && history.length > 0 && !availableActions.includes("view_history") && (
         <div className="mt-4 border-t border-ivory-border pt-4">
           <Button type="button" size="small" onClick={() => setMode(mode === "view_history" ? "view" : "view_history")}>
             {mode === "view_history" ? "Hide history" : `View history (${history.length})`}
@@ -635,7 +652,7 @@ export function RegistryEvidenceCard({
         </div>
       )}
 
-      {!canManage && expired && <p className="mt-3 font-sans text-xs text-muted">Contact an admin or manager to renew this evidence.</p>}
+      {!canManageDocuments && expired && <p className="mt-3 font-sans text-xs text-muted">Contact an admin or manager to renew this evidence.</p>}
     </div>
   );
 }

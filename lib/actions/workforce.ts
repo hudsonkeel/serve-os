@@ -2,12 +2,17 @@
 
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import {
-  canAccessWorkforceDocuments,
+  canBulkImportWorkforceRoster,
   canCorrectWorkforceIdentityLinks,
+  canDeleteWorkforceDocuments,
   canEditWorkforceCanonicalProfile,
   canEditWorkforceLegalIdentity,
   canManageWorkforceCommunityMemberships,
+  canManageWorkforceComplianceActions,
+  canManageWorkforceDocuments,
+  canReassignWorkforceEvidence,
   canTriggerAxisCareSync,
+  canVerifyWorkforceEvidence,
 } from "@/lib/workforce/permissions";
 import { syncAxisCareCaregivers } from "@/lib/workforce/axiscareCaregiverSync";
 import {
@@ -468,7 +473,7 @@ export async function getWorkforceIdentityRejectionWarning(linkId: string) {
 export async function uploadWorkforceDocument(formData: FormData): Promise<{ error?: string; documentId?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to upload a document." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canManageWorkforceDocuments(actor.role)) {
     return { error: "You do not have permission to upload workforce documents." };
   }
 
@@ -570,7 +575,7 @@ export async function verifyWorkforceEvidence(input: {
 }): Promise<{ error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to verify evidence." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canVerifyWorkforceEvidence(actor.role)) {
     return { error: "You do not have permission to verify workforce evidence." };
   }
 
@@ -605,7 +610,7 @@ export async function rejectWorkforceEvidence(input: {
 }): Promise<{ error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to reject evidence." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canVerifyWorkforceEvidence(actor.role)) {
     return { error: "You do not have permission to reject workforce evidence." };
   }
   if (!input.notes || input.notes.trim().length === 0) {
@@ -669,7 +674,7 @@ export async function rejectWorkforceEvidence(input: {
 export async function submitHumanAttestation(formData: FormData): Promise<{ error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to record a verification." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canVerifyWorkforceEvidence(actor.role)) {
     return { error: "You do not have permission to record workforce verifications." };
   }
 
@@ -806,7 +811,7 @@ export async function supersedeWorkforceEvidence(
 ): Promise<{ error?: string; evidenceId?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to replace evidence." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canManageWorkforceDocuments(actor.role)) {
     return { error: "You do not have permission to replace workforce evidence." };
   }
 
@@ -947,7 +952,7 @@ export async function markWorkforceEvidenceEnteredInError(input: {
 }): Promise<{ error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to mark evidence entered in error." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canVerifyWorkforceEvidence(actor.role)) {
     return { error: "You do not have permission to mark workforce evidence entered in error." };
   }
   if (!input.reason || input.reason.trim().length === 0) {
@@ -999,7 +1004,7 @@ export async function updateUnverifiedWorkforceEvidenceDetails(input: {
 }): Promise<{ error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to edit evidence." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canManageWorkforceDocuments(actor.role)) {
     return { error: "You do not have permission to edit workforce evidence." };
   }
 
@@ -1072,7 +1077,7 @@ export async function reassignWorkforceEvidence(input: {
 }): Promise<{ error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to reassign evidence." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canReassignWorkforceEvidence(actor.role)) {
     return { error: "You do not have permission to reassign workforce evidence." };
   }
   if (!input.rationale || input.rationale.trim().length === 0) {
@@ -1120,7 +1125,7 @@ export async function reassignWorkforceEvidence(input: {
 export async function deleteAccidentalWorkforceUpload(evidenceId: string): Promise<{ error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to delete an accidental upload." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canDeleteWorkforceDocuments(actor.role)) {
     return { error: "You do not have permission to delete workforce documents." };
   }
 
@@ -1162,7 +1167,7 @@ export async function deleteAccidentalWorkforceUpload(evidenceId: string): Promi
 export async function getWorkforceDocumentSignedUrl(documentId: string): Promise<{ url?: string; error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to view this document." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canManageWorkforceDocuments(actor.role)) {
     return { error: "You do not have permission to view workforce documents." };
   }
 
@@ -1411,7 +1416,7 @@ export async function resolveWorkforceComplianceActionAction(input: {
 }): Promise<{ error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to resolve a compliance action." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canManageWorkforceComplianceActions(actor.role)) {
     return { error: "You do not have permission to resolve workforce compliance actions." };
   }
   if (!input.resolutionNote || input.resolutionNote.trim().length === 0) {
@@ -1446,7 +1451,7 @@ export async function setWorkforceComplianceActionOwnerDueDate(input: {
 }): Promise<{ error?: string }> {
   const actor = await currentActor();
   if (!actor) return { error: "You must be signed in to update a compliance action." };
-  if (!canAccessWorkforceDocuments(actor.role)) {
+  if (!canManageWorkforceComplianceActions(actor.role)) {
     return { error: "You do not have permission to update workforce compliance actions." };
   }
 
