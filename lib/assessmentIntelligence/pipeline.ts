@@ -304,10 +304,17 @@ async function invokeStageWorker(assessmentSessionId: string): Promise<DispatchO
     // itself finishes running — this fetch resolves as soon as the invocation is accepted, not
     // after extraction (which may run for minutes) completes. Awaiting it here is therefore safe
     // within the scheduled dispatcher's own short execution budget.
+    // siteBaseUrl travels in the body, not just the URL this fetch itself targets, so the
+    // standalone worker .mts wrapper (which cannot import resolveSiteBaseUrl() or
+    // GENERATED_DEPLOY_CONTEXT without reintroducing the server-only crash) can reuse this exact
+    // same build-time-captured, per-deploy-correct value for ITS OWN follow-up fetch to
+    // app/api/assessment-processing/worker, instead of guessing from its own incoming request's
+    // origin -- see that file's header comment for why that guess was the leading suspect in the
+    // 2026-09-17 investigation of sessions stuck at 'worker_wrapper_started'.
     const response = await fetch(`${baseUrl}${STAGE_WORKER_BACKGROUND_PATH}`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-assessment-worker-secret": secret },
-      body: JSON.stringify({ assessmentSessionId }),
+      body: JSON.stringify({ assessmentSessionId, siteBaseUrl: baseUrl }),
     });
     if (!response.ok) {
       return { assessmentSessionId, dispatched: false, error: `Background worker invocation responded ${response.status}.` };

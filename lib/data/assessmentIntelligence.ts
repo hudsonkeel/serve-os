@@ -44,6 +44,13 @@ export interface AssessmentSessionRecord {
   // normal assessor-facing UI.
   processing_diagnostic_stage: string | null;
   processing_diagnostic_stage_at: string | null;
+  // The exact HTTP status code the worker wrapper's outbound fetch to the worker Route Handler
+  // received, when it received one at all (supabase/migrations/20260917010000_add_worker_
+  // wrapper_fetch_outcome_diagnostic_stages.sql). NULL means either no fetch outcome has been
+  // recorded yet, or the fetch never got a response (network/DNS/timeout) -- paired with
+  // processing_diagnostic_stage='worker_wrapper_fetch_failed' to distinguish those two cases.
+  // Written directly by the .mts wrapper via raw PostgREST, not through this data layer.
+  processing_diagnostic_wrapper_fetch_status: number | null;
 }
 
 function toQueueableSession(session: AssessmentSessionRecord): QueueableSession {
@@ -258,6 +265,7 @@ export async function requeueSessionForRetry(
       failed_at: null,
       processing_diagnostic_stage: null,
       processing_diagnostic_stage_at: null,
+      processing_diagnostic_wrapper_fetch_status: null,
     })
     .eq("id", assessmentSessionId)
     .eq("status", "failed")
@@ -321,6 +329,7 @@ export async function recoverStaleProcessingSessions(staleAfterMs: number, maxAt
         processing_claimed_at: null,
         processing_diagnostic_stage: null,
         processing_diagnostic_stage_at: null,
+        processing_diagnostic_wrapper_fetch_status: null,
       })
       .eq("id", session.id)
       .eq("status", "processing")
@@ -356,6 +365,10 @@ export interface ProcessingDiagnosticRow {
   readonly processingClaimedAt: string | null;
   readonly processingDiagnosticStage: string | null;
   readonly processingDiagnosticStageAt: string | null;
+  // Paired with processingDiagnosticStage==='worker_wrapper_fetch_failed' -- see
+  // AssessmentSessionRecord's own field comment. A bounded HTTP status integer only, never a
+  // message/body/URL.
+  readonly wrapperFetchStatus: number | null;
   // Admin/diagnostic-only detail -- never the operator-facing message (SAFE_PROCESSING_FAILURE_
   // MESSAGE), see markSessionFailed()'s comment.
   readonly failureReason: string | null;
@@ -398,6 +411,7 @@ export async function getSessionsWithProcessingDiagnostics(limit: number): Promi
     processingClaimedAt: row.processing_claimed_at,
     processingDiagnosticStage: row.processing_diagnostic_stage,
     processingDiagnosticStageAt: row.processing_diagnostic_stage_at,
+    wrapperFetchStatus: row.processing_diagnostic_wrapper_fetch_status,
     failureReason: row.failure_reason,
     startedAt: row.started_at,
   }));

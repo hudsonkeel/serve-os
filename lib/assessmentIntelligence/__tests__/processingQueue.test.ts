@@ -12,6 +12,7 @@ import {
   runDispatchTrigger,
   isRecordableDiagnosticStage,
   PROCESSING_DIAGNOSTIC_STAGES,
+  isPlausibleHttpStatus,
   type QueueableSession,
   type DispatchTriggerOutcome,
 } from "../processingQueue.ts";
@@ -225,6 +226,7 @@ test("isRecordableDiagnosticStage: true for every declared stage, in order", () 
     "dispatched",
     "invocation_accepted",
     "worker_wrapper_started",
+    "worker_wrapper_fetch_failed",
     "worker_received",
     "extraction_started",
   ]);
@@ -234,6 +236,25 @@ test("isRecordableDiagnosticStage: false for values the DB CHECK constraint woul
   for (const notAStage of ["", "queued", "processing", "failed", "claimed", "DISPATCHED", " dispatched"]) {
     assert.equal(isRecordableDiagnosticStage(notAStage), false, `"${notAStage}" must not be recordable`);
   }
+});
+
+// ─── isPlausibleHttpStatus ───────────────────────────────────────────────
+
+test("isPlausibleHttpStatus: true for real HTTP status codes across every class (1xx-5xx)", () => {
+  for (const status of [100, 200, 301, 401, 404, 500, 503, 599]) {
+    assert.equal(isPlausibleHttpStatus(status), true, `${status} should be plausible`);
+  }
+});
+
+test("isPlausibleHttpStatus: false outside the valid HTTP status range", () => {
+  for (const status of [0, 99, 600, 1000, -1]) {
+    assert.equal(isPlausibleHttpStatus(status), false, `${status} should not be plausible`);
+  }
+});
+
+test("isPlausibleHttpStatus: false for a non-integer", () => {
+  assert.equal(isPlausibleHttpStatus(404.5), false);
+  assert.equal(isPlausibleHttpStatus(NaN), false);
 });
 
 let passed = 0;

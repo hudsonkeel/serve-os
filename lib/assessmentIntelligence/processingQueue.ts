@@ -122,23 +122,44 @@ export function sanitizeFailureReason(err: unknown, maxLength = 2000): string {
 // stages get their own marker -- see recordProcessingDiagnosticStage() in
 // lib/data/assessmentIntelligence.ts for where most of these are written.
 //
-// "worker_wrapper_started" is the one exception: written directly by
-// netlify/functions/assessment-processing-stage-worker-background.mts via a raw PostgREST PATCH
-// (not through recordProcessingDiagnosticStage(), which that file cannot import without
-// reintroducing the server-only crash -- see that file's own header comment). It exists purely
-// to prove the standalone wrapper's handler body actually started executing after Netlify's 202
-// acknowledgment, independent of whether its outbound fetch to the worker Route Handler
-// succeeds.
+// "worker_wrapper_started" and "worker_wrapper_fetch_failed" are the exceptions: written
+// directly by netlify/functions/assessment-processing-stage-worker-background.mts via a raw
+// PostgREST PATCH (not through recordProcessingDiagnosticStage(), which that file cannot import
+// without reintroducing the server-only crash -- see that file's own header comment). Added
+// 2026-09-17 after a live test showed all 11 dispatched sessions reaching 'worker_wrapper_started'
+// and none reaching 'worker_received', with no way to tell whether the wrapper's own outbound
+// fetch to the Next.js worker Route Handler ever completed, was rejected (a real HTTP response,
+// just not a 2xx), or never got a response at all (thrown/timed out).
+//
+// 'worker_wrapper_fetch_failed' covers both "no response" and "non-2xx response" -- which of the
+// two, and the exact status code for the latter, lives in the paired
+// processing_diagnostic_wrapper_fetch_status column (WrapperFetchStatus below): NULL means no
+// HTTP response was ever received; a value is the exact status code that came back. Kept as a
+// separate bounded-integer column rather than more stage-enum values so a future status code
+// never needs its own migration -- only ever a number, never a response body, exception message,
+// URL, header, or provider error. "Route Handler accepted" needs no new stage at all, since
+// 'worker_received' appearing already proves it.
 
 export const PROCESSING_DIAGNOSTIC_STAGES = [
   "dispatched",
   "invocation_accepted",
   "worker_wrapper_started",
+  "worker_wrapper_fetch_failed",
   "worker_received",
   "extraction_started",
 ] as const;
 
 export type ProcessingDiagnosticStage = (typeof PROCESSING_DIAGNOSTIC_STAGES)[number];
+
+/** Bounds for processing_diagnostic_wrapper_fetch_status (supabase/migrations/
+ * 20260917010000_add_worker_wrapper_fetch_outcome_diagnostic_stages.sql) -- the exact HTTP
+ * status code the worker wrapper's outbound fetch received, when it received one at all. Kept
+ * here, pure and testable, for the same reason isRecordableDiagnosticStage() is: the DB CHECK
+ * constraint is the real enforcement boundary, but a caller-side guard catches a bad value
+ * before it ever reaches a write attempt. */
+export function isPlausibleHttpStatus(status: number): boolean {
+  return Number.isInteger(status) && status >= 100 && status < 600;
+}
 
 /** Guards the one write path (recordProcessingDiagnosticStage) against ever persisting a stage
  * value outside the set the DB CHECK constraint allows -- kept here, pure and testable, rather

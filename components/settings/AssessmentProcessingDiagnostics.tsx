@@ -27,6 +27,7 @@ const STAGE_LABELS: Record<string, string> = {
   dispatched: "Dispatcher submitted",
   invocation_accepted: "Netlify accepted invocation",
   worker_wrapper_started: "Background wrapper started",
+  worker_wrapper_fetch_failed: "Wrapper → worker route failed",
   worker_received: "Worker started (authenticated)",
   extraction_started: "Extraction started",
 };
@@ -54,6 +55,13 @@ function shortSessionId(id: string): string {
 function describeStage(row: ProcessingDiagnosticRow): string {
   if (row.status === "processing" && row.processingClaimedAt) {
     return "Claimed — processing";
+  }
+  if (row.processingDiagnosticStage === "worker_wrapper_fetch_failed") {
+    // wrapperFetchStatus distinguishes "a real HTTP response came back, just not 2xx" (the
+    // exact status code) from "no response was ever received" (network/DNS/timeout, null).
+    return row.wrapperFetchStatus === null
+      ? "Wrapper → worker route: no response (network/timeout)"
+      : `Wrapper → worker route: rejected (HTTP ${row.wrapperFetchStatus})`;
   }
   if (row.processingDiagnosticStage) {
     return STAGE_LABELS[row.processingDiagnosticStage] ?? row.processingDiagnosticStage;
