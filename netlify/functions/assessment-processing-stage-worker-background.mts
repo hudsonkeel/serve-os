@@ -1,70 +1,56 @@
-import { advanceQueuedAssessmentProcessing } from "../../lib/assessmentIntelligence/pipeline.ts";
-
-// Background Function = bounded extraction worker (2026-09-16 async extraction queue). Invoked
-// exclusively by assessment-processing-dispatcher.mts (the scheduled dispatcher) — never
-// directly by a browser, and never by anything without the shared secret below.
+// Background Function = thin forwarding shim only (rewritten 2026-09-16 — see below for why).
+// This file must import nothing from lib/ or any other application module. Netlify's function
+// bundler (generic esbuild, no framework awareness) never sets the "react-server" export
+// condition Next.js relies on for server-only-guarded code to resolve to its no-op stub --
+// importing lib/assessmentIntelligence/pipeline.ts (or anything under lib/data/*) here throws at
+// MODULE LOAD TIME, before the handler function is ever created. That crash is invisible to this
+// function's own caller: a Background Function's ~202 acknowledgment goes out before the
+// container tries to load the crashing code, so the dispatcher genuinely cannot tell the
+// difference between "the worker is running" and "the worker crashed on import" from the HTTP
+// response alone.
 //
-// Declared as a background function via `config.background = true` — the HTTP request that
-// invokes this gets an immediate ~202 acknowledgment while this handler keeps running for up to
-// 15 minutes, long enough for one real extraction call plus draft-fact/conflict-detection
-// writes. advanceQueuedAssessmentProcessing() performs exactly one session's worth of work and
-// returns; it never loops or polls.
+// PROVEN LIVE: the previous version of this file (which imported advanceQueuedAssessmentProcessing
+// from pipeline.ts directly) was root-caused this way after the first live branch-deploy dispatch
+// test showed all 11 eligible sessions reaching processing_diagnostic_stage='invocation_accepted'
+// (proving this endpoint DID receive and accept every invocation) and never any further -- zero
+// reached 'worker_received', zero were claimed, processing_attempt_count stayed 0 for all of
+// them. Confirmed via direct reproduction: dynamically importing lib/assessmentIntelligence/
+// pipeline.ts outside the "react-server" condition throws exactly this package's error
+// ("This module cannot be imported from a Client Component module...") at import time.
 //
-// Whatever this handler returns is NOT delivered back to its caller — Netlify has already closed
-// that connection with the 202 by the time this finishes. The response body exists only for
-// Netlify's own function logs; the session's real, durable outcome is only ever visible via its
-// own DB row (and from there, the UI).
+// All real work -- claim the session, run the existing extraction pipeline -- lives entirely in
+// app/api/assessment-processing/worker/route.ts (advanceQueuedAssessmentProcessing() in
+// lib/assessmentIntelligence/pipeline.ts). This file only forwards the incoming request one more
+// HTTP hop, unchanged (secret header and JSON body verbatim) -- it does not read, validate, or
+// duplicate the shared-secret check itself; that stays the Route Handler's sole responsibility so
+// there is exactly one place authorization is decided. Mirrors netlify/functions/
+// axiscare-scheduled-sync.mts's already-proven-in-production pattern.
 //
-// SECURITY: netlify/functions/*.mts endpoints are reachable over plain HTTP at
-// /.netlify/functions/<name> — nothing about being a "background" function makes that URL
-// private. This function is the one place in the queue that spends real provider-call money, so
-// it refuses any request that doesn't present the same shared secret the dispatcher was
-// configured with (ASSESSMENT_PROCESSING_WORKER_SECRET) — mirrors the existing
-// app/api/intake/transcribe/route.ts webhook secret pattern.
-//
-// Modeled on feature/assessment-aws-transcription-pipeline's equivalent stage worker (a general
-// Netlify-Functions lesson, not anything AWS-specific) — this version has no processing_stage or
-// job-id handling because extraction is one bounded step, not a resumable multi-tick job.
-
+// Still declared `config.background = true` -- identical 202/fire-and-forget/15-minute semantics
+// as before; only what runs inside changed.
 const handler = async (req: Request): Promise<Response> => {
-  const providedSecret = req.headers.get("x-assessment-worker-secret");
-  const expectedSecret = process.env.ASSESSMENT_PROCESSING_WORKER_SECRET;
-  if (!expectedSecret || !providedSecret || providedSecret !== expectedSecret) {
-    return new Response(JSON.stringify({ ok: false, error: "Unauthorized." }), {
-      status: 401,
-      headers: { "content-type": "application/json" },
-    });
-  }
+  // Resolved from the incoming request's own origin, not an env var. Unlike the scheduled
+  // dispatcher (which only ever fires in production), this endpoint is invoked from whichever
+  // deploy context dispatched it -- production eventually via the real scheduled dispatcher, but
+  // also a branch/preview deploy via the admin manual trigger, which already resolves the correct
+  // per-deploy base URL (lib/assessmentIntelligence/pipeline.ts's resolveSiteBaseUrl()) before
+  // invoking this function. Reusing whatever host this request itself arrived on guarantees the
+  // follow-up fetch stays on that same deploy, without this file needing to re-derive deploy
+  // context itself -- which it structurally cannot do without importing lib/ code (see above).
+  const baseUrl = new URL(req.url).origin;
+  const incomingSecret = req.headers.get("x-assessment-worker-secret") ?? "";
+  const rawBody = await req.text();
 
-  let body: { assessmentSessionId?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ ok: false, error: "Malformed JSON body." }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
-  }
+  const response = await fetch(`${baseUrl}/api/assessment-processing/worker`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-assessment-worker-secret": incomingSecret },
+    body: rawBody,
+  });
 
-  const assessmentSessionId = body.assessmentSessionId;
-  if (!assessmentSessionId || typeof assessmentSessionId !== "string") {
-    return new Response(JSON.stringify({ ok: false, error: "Missing assessmentSessionId." }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
-  }
+  const responseBody = await response.text();
+  console.log(`[assessment-processing-stage-worker] ${response.status} ${responseBody}`);
 
-  try {
-    const result = await advanceQueuedAssessmentProcessing(assessmentSessionId);
-    console.log(`[assessment-processing-stage-worker] ${assessmentSessionId}: ${result.outcome}${result.error ? ` — ${result.error}` : ""}`);
-    return new Response(JSON.stringify({ ok: true, result }), { status: 200, headers: { "content-type": "application/json" } });
-  } catch (err) {
-    console.error(`[assessment-processing-stage-worker] ${assessmentSessionId} threw an unhandled error`, err);
-    return new Response(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : "Unknown error" }), {
-      status: 500,
-      headers: { "content-type": "application/json" },
-    });
-  }
+  return new Response(responseBody, { status: response.status, headers: { "content-type": "application/json" } });
 };
 
 export default handler;
