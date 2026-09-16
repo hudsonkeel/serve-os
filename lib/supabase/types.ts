@@ -1497,6 +1497,11 @@ export type RelationshipType =
   | "resident_prospect"
   | "external_prospect"
   | "active_client"
+  // Enrolled Serve Client, no activation evidence yet (signed Service
+  // Agreement on file, no service requested) -- see
+  // convert_resident_prospect_to_inactive_client() and
+  // lib/residents/serveRelationshipProjection.ts.
+  | "inactive_client"
   | "former_client"
   | "referral_source"
   | "community_partner"

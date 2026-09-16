@@ -30,8 +30,10 @@ import {
   SUPERVISORY_VISIT_VALIDITY_DAYS,
 } from "@/lib/clientReadiness/constants";
 import { isTriageLevelCode } from "@/lib/clientReadiness/triageClassification";
+import { combineWarnings } from "@/lib/clientReadiness/warnings";
 import { recordResidentTriageClassification } from "@/lib/data/residentTriageClassifications";
 import { buildDocumentStoragePath, uploadDocumentBytes, validateDocumentFile } from "@/lib/workforce/storage";
+import { enrollResidentAsInactiveClient } from "@/lib/actions/clientEnrollment";
 
 // Requirements whose evidence is genuinely event-triggered/non-expiring
 // (satisfied by continued existence, invalidated only by a real
@@ -260,13 +262,34 @@ export async function recordServiceAgreementEvidenceAction(formData: FormData) {
     return { error: serviceAgreementResult.error ?? "Could not record Service Agreement evidence." };
   }
 
+  // Client enrollment (Slice 1: Service Agreement -> Enrolled Inactive
+  // Client, 2026-09-15) — the signed Service Agreement IS the enrollment
+  // event; no separate "Enroll" action. A failure here is surfaced
+  // honestly as a warning, never masked as a false success — the
+  // evidence itself is already safely recorded either way, and this can
+  // be retried by recording the evidence again (enrollment is
+  // idempotent — see lib/relationships/enrollment.ts). Warnings
+  // accumulate rather than overwrite: a later billing-link failure must
+  // not hide an earlier enrollment failure, or vice versa.
+  const warnings: string[] = [];
+  const enrollmentResult = await enrollResidentAsInactiveClient({
+    residentId,
+    actor: actor.label,
+    effectiveDate,
+    conversionNote: "Enrolled as a Serve Client — signed Service Agreement recorded.",
+  });
+  if (enrollmentResult.error) {
+    warnings.push(`Service Agreement recorded, but client enrollment could not be completed: ${enrollmentResult.error}`);
+  }
+
   if (!alsoSatisfiesBilling) {
-    return { evidence: serviceAgreementResult.evidence };
+    return { evidence: serviceAgreementResult.evidence, warning: combineWarnings(warnings) };
   }
 
   const billingRequirement = await getRequirementByCode(CR_BILLING_AGREEMENT_ON_FILE);
   if (!billingRequirement) {
-    return { evidence: serviceAgreementResult.evidence, warning: "Service Agreement recorded; Billing requirement not found to link." };
+    warnings.push("Service Agreement recorded; Billing requirement not found to link.");
+    return { evidence: serviceAgreementResult.evidence, warning: combineWarnings(warnings) };
   }
 
   const priorBillingEvidenceId = await findMostRecentActiveEvidenceId(residentId, billingRequirement.id);
@@ -281,10 +304,8 @@ export async function recordServiceAgreementEvidenceAction(formData: FormData) {
     notes: notes ?? "Billing terms included in the Service Agreement.",
   });
   if (billingResult.error || !billingResult.evidence) {
-    return {
-      evidence: serviceAgreementResult.evidence,
-      warning: `Service Agreement recorded, but Billing could not be linked: ${billingResult.error}`,
-    };
+    warnings.push(`Service Agreement recorded, but Billing could not be linked: ${billingResult.error}`);
+    return { evidence: serviceAgreementResult.evidence, warning: combineWarnings(warnings) };
   }
 
   await linkEvidenceToRequirement({
@@ -294,7 +315,7 @@ export async function recordServiceAgreementEvidenceAction(formData: FormData) {
     linkedBy: actor.label,
   });
 
-  return { evidence: serviceAgreementResult.evidence };
+  return { evidence: serviceAgreementResult.evidence, warning: combineWarnings(warnings) };
 }
 
 export async function recordMedicationListAttestationAction(input: {

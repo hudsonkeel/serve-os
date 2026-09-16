@@ -102,6 +102,18 @@ function hasActiveClientRelationship(relationships: readonly RelevantRelationshi
   return relationships.some((r) => r.relationshipType === "active_client");
 }
 
+// A resident enrolled via a signed Service Agreement (Slice 1: Service
+// Agreement -> Enrolled Inactive Client, 2026-09-15) but not yet
+// explicitly activated for service -- a real, current, ongoing Serve
+// Client relationship, not a correction and not a prospect. Produced by
+// convert_resident_prospect_to_inactive_client() (supabase/migrations/
+// 20260915000000_add_service_agreement_client_enrollment.sql), called
+// from lib/actions/clientEnrollment.ts the moment Service Agreement
+// evidence is recorded -- never from assessment approval itself.
+function hasInactiveClientRelationship(relationships: readonly RelevantRelationship[]): boolean {
+  return relationships.some((r) => r.relationshipType === "inactive_client");
+}
+
 function hasProspectRelationship(relationships: readonly RelevantRelationship[]): boolean {
   return relationships.some((r) => r.relationshipType === "resident_prospect" || r.relationshipType === "external_prospect");
 }
@@ -141,6 +153,14 @@ export function projectServeRelationship(input: ServeRelationshipProjectionInput
     // A real Serve-native active engagement with no AxisCare match yet
     // (e.g. service delivered before/outside the AxisCare integration).
     relationship = "active_client";
+    relationshipSource = "crm_relationship";
+  } else if (hasInactiveClientRelationship(input.activeRelationships)) {
+    // A real, established Serve Client relationship (signed Service
+    // Agreement) with no activation evidence yet -- deterministic from
+    // the relationship_type itself, no human correction required. Same
+    // relationshipSource as an active CRM client; only the operational
+    // bucket differs.
+    relationship = "inactive_client";
     relationshipSource = "crm_relationship";
   } else if (hasProspectRelationship(input.activeRelationships)) {
     relationship = "prospect";

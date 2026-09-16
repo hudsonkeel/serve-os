@@ -8,8 +8,18 @@ import {
   generateCinchProjection,
   type ApprovedFactInput,
 } from "@/lib/actions/assessmentIntelligence";
-import { makeActiveClientFromAssessment } from "@/lib/actions/assessmentClientOperationalization";
 import type { DraftFactForReview, ReviewException } from "@/lib/assessmentIntelligence/reviewExceptions";
+
+// Client operationalization deliberately does NOT live here (Slice 1:
+// Service Agreement -> Enrolled Inactive Client, 2026-09-15). Assessment
+// approval must never be able to activate a client, or establish any
+// relationship at all — it only produces knowledge (draft/approved
+// facts, pricing, previews). A signed Service Agreement is what
+// establishes the enrolled (Inactive) Client relationship — see
+// lib/actions/clientEnrollment.ts, called from
+// recordServiceAgreementEvidenceAction(). Activating an enrolled client
+// (inactive_client -> active_client) is a separate, later, explicit
+// action, not part of this slice.
 
 interface AssessmentReviewPanelProps {
   residentId: string;
@@ -44,7 +54,6 @@ export function AssessmentReviewPanel({
   const [pricingStatus, setPricingStatus] = useState<string | null>(null);
   const [axiscareReadiness, setAxiscareReadiness] = useState<string | null>(null);
   const [cinchGenerated, setCinchGenerated] = useState(false);
-  const [conversionResult, setConversionResult] = useState<string | null>(null);
 
   const conflictingExceptions = exceptions.filter((e) => e.kind === "conflicting");
   const uncertainExceptions = exceptions.filter((e) => e.kind === "uncertain");
@@ -125,23 +134,6 @@ export function AssessmentReviewPanel({
         return;
       }
       setCinchGenerated(true);
-    });
-  }
-
-  function handleMakeActiveClient() {
-    setError(null);
-    startTransition(async () => {
-      const result = await makeActiveClientFromAssessment({
-        assessmentSessionId,
-        residentId,
-        residentDisplayName: residentName,
-        effectiveStartDate: new Date().toISOString().slice(0, 10),
-      });
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setConversionResult(`Converted to Active Client (relationship ${result.relationshipId?.slice(0, 8)}…).`);
     });
   }
 
@@ -252,20 +244,15 @@ export function AssessmentReviewPanel({
             >
               Generate Cinch Projection
             </button>
-            <button
-              type="button"
-              onClick={handleMakeActiveClient}
-              disabled={isPending}
-              className="inline-flex h-10 items-center rounded-lg bg-navy px-5 font-sans text-sm font-semibold text-white hover:bg-navy-light disabled:opacity-50"
-            >
-              Make Active Client
-            </button>
           </div>
           {axiscareReadiness && (
             <p className="mt-3 font-sans text-sm text-body">AxisCare readiness: {axiscareReadiness.replace(/_/g, " ")}</p>
           )}
           {cinchGenerated && <p className="mt-3 font-sans text-sm text-success-text">Cinch projection generated (draft — not sent).</p>}
-          {conversionResult && <p className="mt-3 font-sans text-sm text-success-text">{conversionResult}</p>}
+          <p className="mt-3 font-sans text-xs text-muted">
+            Client enrollment happens when a signed Service Agreement is recorded on{" "}
+            {residentName}&rsquo;s profile — not from this screen.
+          </p>
         </div>
       )}
 
