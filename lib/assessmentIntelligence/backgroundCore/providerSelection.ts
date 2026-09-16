@@ -1,5 +1,4 @@
-import "server-only";
-import type { AssessmentExtractionProvider } from "./extractionProvider.ts";
+import type { AssessmentExtractionProvider } from "../extractionProvider.ts";
 import { openAiExtractionProvider } from "./extraction.ts";
 import { bedrockClaudeExtractionProvider } from "./providers/bedrockClaudeProvider.ts";
 
@@ -8,7 +7,12 @@ import { bedrockClaudeExtractionProvider } from "./providers/bedrockClaudeProvid
 // Unset -> the known-working default (openai). Set to an unrecognized value -> throws, rather
 // than guessing which provider was meant. A provider that fails during actual extraction is
 // never caught here and rerouted to a different provider — see extractionProvider.ts's
-// AssessmentExtractionProvider contract and pipeline.ts, which lets a thrown error propagate.
+// AssessmentExtractionProvider contract and processingCore.ts, which lets a thrown error
+// propagate.
+//
+// Moved here 2026-09-17 (background-safe processing core split) — no `import "server-only"` and
+// no React/Next dependency, so this is safely importable from a standalone Netlify Background
+// Function. See dataAccess.ts's header comment for the full rationale.
 
 const PROVIDERS: Record<string, AssessmentExtractionProvider> = {
   openai: openAiExtractionProvider,

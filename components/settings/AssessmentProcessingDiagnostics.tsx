@@ -23,11 +23,17 @@ const STATUS_TONE: Record<string, BadgeTone> = {
   failed: "danger",
 };
 
+// worker_wrapper_started / worker_wrapper_fetch_failed (and the paired wrapperFetchStatus field
+// below) are retired as of the 2026-09-17 background-safe core split -- the same-site HTTP
+// callback they diagnosed no longer exists (the background worker now calls the processing core
+// directly, in-process), so no code path writes these anymore. Deliberately NOT in this map: a
+// still-labeled entry would misleadingly suggest they're still meaningful going forward. A
+// historical row from before this change still displays fine via the raw-string fallback below --
+// harmless schema residue, not worth a migration to clean up (see supabase/migrations/
+// 20260917010000_add_worker_wrapper_fetch_outcome_diagnostic_stages.sql's own comment).
 const STAGE_LABELS: Record<string, string> = {
   dispatched: "Dispatcher submitted",
   invocation_accepted: "Netlify accepted invocation",
-  worker_wrapper_started: "Background wrapper started",
-  worker_wrapper_fetch_failed: "Wrapper → worker route failed",
   worker_received: "Worker started (authenticated)",
   extraction_started: "Extraction started",
 };
@@ -56,14 +62,9 @@ function describeStage(row: ProcessingDiagnosticRow): string {
   if (row.status === "processing" && row.processingClaimedAt) {
     return "Claimed — processing";
   }
-  if (row.processingDiagnosticStage === "worker_wrapper_fetch_failed") {
-    // wrapperFetchStatus distinguishes "a real HTTP response came back, just not 2xx" (the
-    // exact status code) from "no response was ever received" (network/DNS/timeout, null).
-    return row.wrapperFetchStatus === null
-      ? "Wrapper → worker route: no response (network/timeout)"
-      : `Wrapper → worker route: rejected (HTTP ${row.wrapperFetchStatus})`;
-  }
   if (row.processingDiagnosticStage) {
+    // Falls back to the raw stage string for a retired value (worker_wrapper_started /
+    // worker_wrapper_fetch_failed) on a historical row -- see STAGE_LABELS' own comment.
     return STAGE_LABELS[row.processingDiagnosticStage] ?? row.processingDiagnosticStage;
   }
   return row.status === "queued" ? "Not yet submitted" : "—";

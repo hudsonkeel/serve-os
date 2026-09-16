@@ -16,8 +16,16 @@ import { dispatchEligibleAssessmentProcessing } from "@/lib/assessmentIntelligen
 // already went out before the container tries to load the crashing code. (Root-caused 2026-09-16:
 // all 11 sessions dispatched during the first live branch-deploy test reached
 // "invocation_accepted" and got no further -- see processing_diagnostic_stage on
-// intake_assessment_sessions, and this route's sibling app/api/assessment-processing/worker/
-// route.ts for the background-worker half of the same fix.)
+// intake_assessment_sessions.)
+//
+// The background worker itself (netlify/functions/assessment-processing-stage-worker-
+// background.mts) does NOT have an equivalent Route Handler anymore: after three separate live
+// tests showed a same-site HTTP callback from that Background Function back into this app's own
+// routes never reliably resolved, it was rewritten (2026-09-17) to import
+// lib/assessmentIntelligence/backgroundCore/ directly instead -- see that file's own header
+// comment for the full history. This dispatch route's own situation is different and unaffected:
+// the HTTP hop here runs in the OTHER direction (Next runtime -> Netlify Function endpoint),
+// which every live test has shown to be reliable throughout.
 //
 // This route runs inside Next's own server runtime, where the "react-server" condition is set
 // correctly, so calling the real logic here (over one HTTP hop from the .mts file) is what
