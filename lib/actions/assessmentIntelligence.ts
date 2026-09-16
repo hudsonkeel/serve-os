@@ -17,8 +17,9 @@ import {
   getAssessmentSession,
   getAxisCareIdentityLinkState,
 } from "@/lib/data/assessmentIntelligence";
-import { computeReviewExceptions, type DraftFactForReview } from "@/lib/assessmentIntelligence/reviewExceptions";
-import { computeAssessmentCoverage, type AssessmentCoverageSummary } from "@/lib/assessmentIntelligence/coverage";
+import { computeReviewExceptions, type ApprovedFactInput, type DraftFactForReview } from "@/lib/assessmentIntelligence/reviewExceptions";
+import { computeAssessmentCoverage, buildCanonicalCoverageFacts, type CanonicalResidentProfileFacts, type AssessmentCoverageSummary } from "@/lib/assessmentIntelligence/coverage";
+import { buildCanonicalProfileEffectiveFacts, type EffectiveFact } from "@/lib/assessmentIntelligence/assessmentProjection";
 import { decideRetryEligibility, MAX_PROCESSING_ATTEMPTS } from "@/lib/assessmentIntelligence/processingQueue";
 import { recommendPricing, PRICING_RULES_VERSION, type FactForPricing } from "@/lib/assessmentIntelligence/pricingEngine";
 import { PRICING_CATALOG_VERSION } from "@/lib/assessmentIntelligence/pricingCatalog";
@@ -218,6 +219,39 @@ export interface ReviewData {
   draftFacts: Awaited<ReturnType<typeof getDraftFactsForSession>>;
   reviewSummary: ReturnType<typeof computeReviewExceptions>;
   coverage: AssessmentCoverageSummary;
+  /** Reliable canonical resident/profile facts (DOB, phone, physician, family contact, address —
+   * already established before this conversation), turned into displayable EffectiveFacts
+   * (source "profile") for the Assessment tab's "From Serve profile" indicator. The SAME
+   * underlying resident fields also feed `coverage` above (via buildCanonicalCoverageFacts()),
+   * so a topic satisfied here is exactly why it's not showing as missing there — one resident
+   * read, two consistent views over it, never two independently-derived answers. */
+  canonicalProfileFacts: EffectiveFact[];
+}
+
+function residentToCanonicalProfileFacts(resident: {
+  date_of_birth: string | null;
+  phone: string | null;
+  community_id: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  physician_name: string | null;
+  physician_phone: string | null;
+  family_contact_name: string | null;
+}): CanonicalResidentProfileFacts {
+  return {
+    dateOfBirth: resident.date_of_birth,
+    phone: resident.phone,
+    communityId: resident.community_id,
+    addressLine1: resident.address,
+    city: resident.city,
+    state: resident.state,
+    postalCode: resident.zip_code,
+    physicianName: resident.physician_name,
+    physicianPhone: resident.physician_phone,
+    primaryContactName: resident.family_contact_name,
+  };
 }
 
 export async function getAssessmentReviewData(assessmentSessionId: string): Promise<ReviewData | null> {
@@ -226,6 +260,7 @@ export async function getAssessmentReviewData(assessmentSessionId: string): Prom
 
   const draftFactRows = await getDraftFactsForSession(assessmentSessionId);
   const conflicts = await getConflictsForSession(assessmentSessionId);
+  const resident = await getResidentById(session.resident_id);
 
   const draftFactsForReview: DraftFactForReview[] = draftFactRows.map((f) => ({
     id: f.id,
@@ -250,11 +285,16 @@ export async function getAssessmentReviewData(assessmentSessionId: string): Prom
     }))
   );
 
+  const canonicalResidentFacts = resident ? residentToCanonicalProfileFacts(resident) : null;
+
   const coverage = computeAssessmentCoverage(
-    draftFactsForReview.map((f) => ({ fieldPath: f.fieldPath, assertionState: f.assertionState }))
+    draftFactsForReview.map((f) => ({ fieldPath: f.fieldPath, assertionState: f.assertionState })),
+    canonicalResidentFacts ? buildCanonicalCoverageFacts(canonicalResidentFacts) : []
   );
 
-  return { session, draftFacts: draftFactRows, reviewSummary, coverage };
+  const canonicalProfileFacts = canonicalResidentFacts ? buildCanonicalProfileEffectiveFacts(canonicalResidentFacts) : [];
+
+  return { session, draftFacts: draftFactRows, reviewSummary, coverage, canonicalProfileFacts };
 }
 
 /** Durably resolves every open conflict row for one field_path in this session to a specific
@@ -288,17 +328,7 @@ export async function resolveAssessmentConflict(input: {
   return {};
 }
 
-export interface ApprovedFactInput {
-  field_path: string;
-  value: unknown;
-  assertion_state: string;
-  collection_method: string | null;
-  reporter: string | null;
-  evidence: string | null;
-  confidence: string;
-  source_draft_fact_id: string | null;
-  supersedes_fact_id: string | null;
-}
+export type { ApprovedFactInput };
 
 /** The governed approval action — human review checkpoint. Runs the deterministic pricing
  * engine over the just-approved facts as part of the same action (pricing is a decision about

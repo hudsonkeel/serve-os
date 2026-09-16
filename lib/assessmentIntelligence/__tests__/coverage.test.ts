@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { computeAssessmentCoverage, CORE_TOPICS, CONDITIONAL_TOPICS, type CoverageFact } from "../coverage.ts";
+import {
+  computeAssessmentCoverage,
+  buildCanonicalCoverageFacts,
+  CORE_TOPICS,
+  CONDITIONAL_TOPICS,
+  type CoverageFact,
+  type CanonicalResidentProfileFacts,
+} from "../coverage.ts";
 import type { AssertionState } from "../factTypes.ts";
 
 type Test = { name: string; fn: () => void };
@@ -203,6 +210,103 @@ test(">5 missing topics: 'including' phrasing with the total count, capped list,
     coverage.summary ?? "",
     new RegExp(`^Based on the assessment conversation, ${coverage.missingTopics.length} important topics still need clarification, including .+, and more\\.$`)
   );
+});
+
+// ─── Canonical resident/profile knowledge (2026-09-17) ─────────────────
+// The Maggie finding: a known Watermere at McKinney resident whose DOB and phone were entered
+// at resident creation was incorrectly flagged as still needing them, and her recognized
+// partner-community address was incorrectly treated as an incomplete street address just
+// because the transcript never re-stated the community by name.
+
+const NO_CANONICAL_PROFILE: CanonicalResidentProfileFacts = {
+  dateOfBirth: null,
+  phone: null,
+  communityId: null,
+  addressLine1: null,
+  city: null,
+  state: null,
+  postalCode: null,
+  physicianName: null,
+  physicianPhone: null,
+  primaryContactName: null,
+};
+
+const MAGGIE_CANONICAL_PROFILE: CanonicalResidentProfileFacts = {
+  ...NO_CANONICAL_PROFILE,
+  dateOfBirth: "1938-04-12",
+  phone: "9725551234",
+  communityId: "watermere-mckinney-community-id",
+};
+
+test("canonical DOB satisfies DOB coverage even though this conversation never discussed it", () => {
+  const coverage = computeAssessmentCoverage([], buildCanonicalCoverageFacts(MAGGIE_CANONICAL_PROFILE));
+  assert.ok(!coverage.missingTopics.some((t) => t.id === "dob"));
+});
+
+test("canonical phone satisfies phone coverage even though this conversation never discussed it", () => {
+  const coverage = computeAssessmentCoverage([], buildCanonicalCoverageFacts(MAGGIE_CANONICAL_PROFILE));
+  assert.ok(!coverage.missingTopics.some((t) => t.id === "basic_contact"));
+});
+
+test("MAGGIE CASE: a recognized Watermere/community resident does not get asked for a full institutional street address merely because the transcript omitted the community name", () => {
+  const coverage = computeAssessmentCoverage([], buildCanonicalCoverageFacts(MAGGIE_CANONICAL_PROFILE));
+  assert.ok(
+    !coverage.missingTopics.some((t) => t.id === "full_address"),
+    "full_address must not even be evaluated once community_id is canonically known -- the trigger must not fire"
+  );
+});
+
+test("without canonical community_id, an unrecognized-community resident's full address is still correctly asked for (the fix narrows the trigger, it doesn't disable it)", () => {
+  const coverage = computeAssessmentCoverage([], buildCanonicalCoverageFacts(NO_CANONICAL_PROFILE));
+  assert.ok(coverage.missingTopics.some((t) => t.id === "full_address"));
+});
+
+test("assessment-derived confirmed_no still counts as established alongside canonical knowledge -- the two sources combine, neither shadows the other", () => {
+  const coverage = computeAssessmentCoverage(
+    [f("health.recent_hospitalization", "confirmed_no")],
+    buildCanonicalCoverageFacts(MAGGIE_CANONICAL_PROFILE)
+  );
+  assert.ok(!coverage.missingTopics.some((t) => t.id === "recent_hospitalization"));
+  assert.ok(!coverage.missingTopics.some((t) => t.id === "dob"), "canonical DOB must still also be established in the same call");
+});
+
+test("canonical knowledge never fabricates a No -- CanonicalCoverageFact is structurally presence-only, it cannot carry an assertion state or value at all", () => {
+  const facts = buildCanonicalCoverageFacts(MAGGIE_CANONICAL_PROFILE);
+  assert.ok(facts.length > 0, "sanity check: the fixture actually produced some canonical facts");
+  for (const fact of facts) {
+    assert.deepEqual(Object.keys(fact), ["fieldPath"], `${fact.fieldPath} must carry nothing but its field path`);
+  }
+});
+
+test("a blank/null canonical field contributes nothing -- never a fabricated presence", () => {
+  const facts = buildCanonicalCoverageFacts(NO_CANONICAL_PROFILE);
+  assert.deepEqual(facts, []);
+});
+
+test("physician contact (all-of): canonical name AND phone together establish the topic, matching the same all-of rule as assessment facts", () => {
+  const coverage = computeAssessmentCoverage(
+    [],
+    buildCanonicalCoverageFacts({ ...NO_CANONICAL_PROFILE, physicianName: "Dr. Lee", physicianPhone: "9725559876" })
+  );
+  assert.ok(!coverage.missingTopics.some((t) => t.id === "physician_contact"));
+});
+
+test("physician contact (all-of): canonical name alone is still not enough -- the all-of rule applies identically to canonical sources", () => {
+  const coverage = computeAssessmentCoverage([], buildCanonicalCoverageFacts({ ...NO_CANONICAL_PROFILE, physicianName: "Dr. Lee" }));
+  assert.ok(coverage.missingTopics.some((t) => t.id === "physician_contact"));
+});
+
+test("existing family/primary contact data satisfies the primary_contact topic when semantically equivalent", () => {
+  const coverage = computeAssessmentCoverage([], buildCanonicalCoverageFacts({ ...NO_CANONICAL_PROFILE, primaryContactName: "Susan Carter" }));
+  assert.ok(!coverage.missingTopics.some((t) => t.id === "primary_contact"));
+});
+
+test("full address (all-of): canonical address components combine exactly like assessment facts -- partial canonical address alone is still incomplete", () => {
+  const coverage = computeAssessmentCoverage(
+    [],
+    buildCanonicalCoverageFacts({ ...NO_CANONICAL_PROFILE, addressLine1: "123 Main St", city: "Frisco" })
+  );
+  assert.ok(coverage.missingTopics.some((t) => t.id === "full_address"), "state and postal_code are still missing");
 });
 
 let passed = 0;

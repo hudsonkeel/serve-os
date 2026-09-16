@@ -156,3 +156,87 @@ export function isConflictResolutionComplete(
     return typeof resolution === "string" && resolution.startsWith("fact:");
   });
 }
+
+export interface ApprovedFactInput {
+  field_path: string;
+  value: unknown;
+  assertion_state: string;
+  collection_method: string | null;
+  reporter: string | null;
+  evidence: string | null;
+  confidence: string;
+  source_draft_fact_id: string | null;
+  supersedes_fact_id: string | null;
+}
+
+/** The single source of truth for "what does this review's current state actually approve" --
+ * used both to build the real approval payload (handleApprove(), unchanged behavior) and to
+ * drive the Assessment tab's live preview (assessmentProjection.ts), so the two can never drift
+ * into showing/submitting different things. Every clear fact approves as-is; every conflicting
+ * or uncertain exception approves only if the reviewer has actually picked a value -- "leave
+ * uncertain"/"neither, needs follow-up" (or never having chosen anything) contributes nothing,
+ * exactly like a topic never raised at all. */
+export function buildApprovedFactsForReview(
+  clearFacts: readonly DraftFactForReview[],
+  exceptions: readonly ReviewException[],
+  resolutions: Readonly<Record<string, string | undefined>>
+): ApprovedFactInput[] {
+  const approvedFacts: ApprovedFactInput[] = [];
+
+  for (const fact of clearFacts) {
+    approvedFacts.push({
+      field_path: fact.fieldPath,
+      value: fact.value,
+      assertion_state: fact.assertionState,
+      collection_method: fact.collectionMethod,
+      reporter: fact.reporter,
+      evidence: fact.evidence,
+      confidence: fact.confidence,
+      source_draft_fact_id: fact.id,
+      supersedes_fact_id: null,
+    });
+  }
+
+  const conflictingExceptions = exceptions.filter((e) => e.kind === "conflicting");
+  const uncertainExceptions = exceptions.filter((e) => e.kind === "uncertain");
+
+  for (const exception of [...uncertainExceptions, ...conflictingExceptions]) {
+    const resolution = resolutions[exception.fieldPath];
+    if (!resolution || resolution === "leave_uncertain") continue; // stays unknown, not silently approved
+
+    if (resolution.startsWith("fact:")) {
+      // Non-boolean conflict, resolved by picking which of the actual conflicting facts was
+      // correct — approve that fact's own real value/evidence/reporter, never a fabricated one.
+      const selectedFactId = resolution.slice("fact:".length);
+      const selectedFact = exception.facts.find((f) => f.id === selectedFactId);
+      if (!selectedFact) continue;
+      approvedFacts.push({
+        field_path: exception.fieldPath,
+        value: selectedFact.value,
+        assertion_state: selectedFact.assertionState,
+        collection_method: selectedFact.collectionMethod,
+        reporter: selectedFact.reporter,
+        evidence: selectedFact.evidence,
+        confidence: selectedFact.confidence,
+        source_draft_fact_id: selectedFact.id,
+        supersedes_fact_id: null,
+      });
+      continue;
+    }
+
+    const sourceFact = exception.facts[0];
+    approvedFacts.push({
+      field_path: exception.fieldPath,
+      value: resolution === "confirmed_yes",
+      assertion_state: resolution,
+      collection_method: sourceFact?.collectionMethod ?? null,
+      reporter: "reviewer",
+      evidence: `Reviewer resolution during assessment approval.`,
+      confidence: "high",
+      source_draft_fact_id: sourceFact?.id ?? null,
+      supersedes_fact_id: null,
+    });
+  }
+
+  return approvedFacts;
+}

@@ -3,6 +3,7 @@ import {
   computeReviewExceptions,
   distinctFactValues,
   isConflictResolutionComplete,
+  buildApprovedFactsForReview,
   type DraftFactForReview,
   type FactConflictForReview,
   type ReviewException,
@@ -200,6 +201,88 @@ test("isConflictResolutionComplete: true when durably resolved (exception.resolv
 
 test("isConflictResolutionComplete: vacuously true with no conflicting exceptions at all", () => {
   assert.equal(isConflictResolutionComplete([], {}), true);
+});
+
+// ─── buildApprovedFactsForReview — the shared preview/approval source of truth (2026-09-17) ───
+
+test("buildApprovedFactsForReview: every clear fact approves as-is, with its own source_draft_fact_id", () => {
+  const clearFacts = [draftFact({ id: "1", fieldPath: "daily_life.bathing", value: true })];
+  const approved = buildApprovedFactsForReview(clearFacts, [], {});
+  assert.equal(approved.length, 1);
+  assert.equal(approved[0].field_path, "daily_life.bathing");
+  assert.equal(approved[0].source_draft_fact_id, "1");
+});
+
+test("buildApprovedFactsForReview: an uncertain exception with no resolution picked contributes nothing — stays unknown, not silently approved", () => {
+  const exception: ReviewException = {
+    kind: "uncertain",
+    fieldPath: "cognition.short_term_memory_change",
+    label: "Short-term memory change",
+    facts: [draftFact({ id: "1", fieldPath: "cognition.short_term_memory_change", assertionState: "uncertain" })],
+    resolvedFactId: null,
+  };
+  const approved = buildApprovedFactsForReview([], [exception], {});
+  assert.equal(approved.length, 0);
+});
+
+test("buildApprovedFactsForReview: an uncertain exception resolved to confirmed_yes approves as a reviewer-attributed boolean true", () => {
+  const exception: ReviewException = {
+    kind: "uncertain",
+    fieldPath: "cognition.short_term_memory_change",
+    label: "Short-term memory change",
+    facts: [draftFact({ id: "1", fieldPath: "cognition.short_term_memory_change", assertionState: "uncertain" })],
+    resolvedFactId: null,
+  };
+  const approved = buildApprovedFactsForReview([], [exception], { "cognition.short_term_memory_change": "confirmed_yes" });
+  assert.equal(approved.length, 1);
+  assert.equal(approved[0].value, true);
+  assert.equal(approved[0].assertion_state, "confirmed_yes");
+  assert.equal(approved[0].reporter, "reviewer");
+});
+
+test("buildApprovedFactsForReview: 'leave_uncertain' contributes nothing, exactly like never having picked anything", () => {
+  const exception: ReviewException = {
+    kind: "uncertain",
+    fieldPath: "cognition.short_term_memory_change",
+    label: "Short-term memory change",
+    facts: [draftFact({ id: "1", fieldPath: "cognition.short_term_memory_change", assertionState: "uncertain" })],
+    resolvedFactId: null,
+  };
+  const approved = buildApprovedFactsForReview([], [exception], { "cognition.short_term_memory_change": "leave_uncertain" });
+  assert.equal(approved.length, 0);
+});
+
+test("buildApprovedFactsForReview: a conflicting exception resolved via 'fact:<id>' approves that exact fact's real value/evidence/reporter, never a fabricated one", () => {
+  const exception: ReviewException = {
+    kind: "conflicting",
+    fieldPath: "important_people.physician_name",
+    label: "Physician name",
+    facts: [
+      draftFact({ id: "1", fieldPath: "important_people.physician_name", value: "Dr. Smith", reporter: "resident" }),
+      draftFact({ id: "2", fieldPath: "important_people.physician_name", value: "Dr. Jones", reporter: "daughter" }),
+    ],
+    resolvedFactId: null,
+  };
+  const approved = buildApprovedFactsForReview([], [exception], { "important_people.physician_name": "fact:2" });
+  assert.equal(approved.length, 1);
+  assert.equal(approved[0].value, "Dr. Jones");
+  assert.equal(approved[0].reporter, "daughter");
+  assert.equal(approved[0].source_draft_fact_id, "2");
+});
+
+test("buildApprovedFactsForReview: an unresolved conflicting exception contributes nothing", () => {
+  const exception: ReviewException = {
+    kind: "conflicting",
+    fieldPath: "important_people.physician_name",
+    label: "Physician name",
+    facts: [
+      draftFact({ id: "1", fieldPath: "important_people.physician_name", value: "Dr. Smith" }),
+      draftFact({ id: "2", fieldPath: "important_people.physician_name", value: "Dr. Jones" }),
+    ],
+    resolvedFactId: null,
+  };
+  const approved = buildApprovedFactsForReview([], [exception], {});
+  assert.equal(approved.length, 0);
 });
 
 let passed = 0;

@@ -48,6 +48,7 @@ export default async function AssessmentReviewPage({
         clearFacts={reviewData.reviewSummary.clearFacts}
         readyForApproval={reviewData.reviewSummary.readyForApproval}
         coverage={reviewData.coverage}
+        canonicalProfileFacts={reviewData.canonicalProfileFacts}
       />
     </PageContainer>
   );

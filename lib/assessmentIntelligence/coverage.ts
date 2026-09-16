@@ -20,6 +20,17 @@ export interface CoverageFact {
   readonly assertionState: AssertionState;
 }
 
+// A topic Serve already reliably knows from the resident's own canonical profile (entered at
+// resident creation, synced from AxisCare, etc.) -- NOT something this assessment conversation
+// established. Deliberately carries no assertionState and no value: structurally incapable of
+// representing a Yes/No/claim, only "this topic is already answered, from elsewhere." A profile
+// fact satisfying coverage must never be treated as though the resident said it during this
+// conversation -- see buildCanonicalCoverageFacts() below and assessmentProjection.ts, which is
+// the one place actual profile VALUES are surfaced (tagged by source) for display.
+export interface CanonicalCoverageFact {
+  readonly fieldPath: string;
+}
+
 export interface CoverageTopic {
   readonly id: string;
   readonly label: string;
@@ -34,7 +45,11 @@ export interface CoverageTopic {
 }
 
 export interface ConditionalCoverageTopic extends CoverageTopic {
-  readonly trigger: (facts: readonly CoverageFact[]) => boolean;
+  /** canonicalFacts is accepted but ignored by every existing trigger except
+   * notRecognizedPartnerCommunity below -- none of today's Conditional triggers concern a topic
+   * canonical profile data could ever speak to (they're all about what THIS conversation just
+   * revealed), so adding the parameter here, once, is enough for any trigger that does need it. */
+  readonly trigger: (facts: readonly CoverageFact[], canonicalFacts: readonly CanonicalCoverageFact[]) => boolean;
 }
 
 function hasAssertionState(
@@ -73,8 +88,20 @@ function poaMentioned(facts: readonly CoverageFact[]): boolean {
   );
 }
 
-function notRecognizedPartnerCommunity(facts: readonly CoverageFact[]): boolean {
-  return !hasAssertionState(facts, "residence.community", ["confirmed_yes"]);
+// A resident's community affiliation is structural -- resolved at assessment-session start from
+// the resident's own community_id (see lib/assessmentIntelligence/communityResolution.ts),
+// independent of whether the transcript happens to re-state it. Checking canonical presence
+// here, not just an assessment fact, is the fix for the 2026-09-16 finding: a known Watermere at
+// McKinney resident whose transcript never re-mentions the community by name was incorrectly
+// asked for a full institutional street address anyway. Still also satisfied by the assessment
+// itself explicitly confirming a community (any assertion state, not just confirmed_yes --
+// consistent with every other topic-establishment check in this file, which is presence-only;
+// the prior confirmed_yes-only check was narrower than everywhere else in this module for no
+// stated reason).
+function notRecognizedPartnerCommunity(facts: readonly CoverageFact[], canonicalFacts: readonly CanonicalCoverageFact[]): boolean {
+  const established =
+    facts.some((f) => f.fieldPath === "residence.community") || canonicalFacts.some((f) => f.fieldPath === "residence.community");
+  return !established;
 }
 
 export const CORE_TOPICS: readonly CoverageTopic[] = [
@@ -183,8 +210,17 @@ export const CONDITIONAL_TOPICS: readonly ConditionalCoverageTopic[] = [
   },
 ];
 
-function isTopicEstablished(topic: CoverageTopic, facts: readonly CoverageFact[]): boolean {
-  const established = (fieldPath: string) => facts.some((f) => f.fieldPath === fieldPath);
+// A topic counts as established if EITHER source has it -- this assessment's own facts, or
+// reliable canonical profile data already on file. Presence-only, exactly as before: coverage
+// has never cared about a topic's VALUE, only whether it was addressed at all (a confirmed_no is
+// just as "established" as a confirmed_yes -- silence is the only thing that means unknown).
+function isTopicEstablished(
+  topic: CoverageTopic,
+  facts: readonly CoverageFact[],
+  canonicalFacts: readonly CanonicalCoverageFact[]
+): boolean {
+  const established = (fieldPath: string) =>
+    facts.some((f) => f.fieldPath === fieldPath) || canonicalFacts.some((f) => f.fieldPath === fieldPath);
   return topic.requireAll ? topic.fieldPaths.every(established) : topic.fieldPaths.some(established);
 }
 
@@ -219,10 +255,61 @@ function buildCoverageSummary(missingTopics: readonly MissingCoverageTopic[]): s
 
 /** Pure, read-time-only: never writes a fact, never blocks approval or any downstream action.
  * A Conditional topic whose trigger hasn't fired is simply absent from the output -- not
- * "missing," invisible. */
-export function computeAssessmentCoverage(facts: readonly CoverageFact[]): AssessmentCoverageSummary {
-  const missingCore = CORE_TOPICS.filter((topic) => !isTopicEstablished(topic, facts));
-  const missingConditional = CONDITIONAL_TOPICS.filter((topic) => topic.trigger(facts) && !isTopicEstablished(topic, facts));
+ * "missing," invisible.
+ *
+ * canonicalFacts (optional, defaults to none -- every existing single-argument call site keeps
+ * working unchanged) lets a caller combine reliable canonical resident/profile knowledge
+ * (already on file before this conversation -- DOB, phone, community, address, physician
+ * contact) with what this assessment itself established, per the 2026-09-16 finding: a known
+ * Watermere at McKinney resident whose DOB/phone were entered at resident creation was
+ * incorrectly flagged as still needing them. See buildCanonicalCoverageFacts() below for the one
+ * place a Resident row gets turned into this shape. */
+export function computeAssessmentCoverage(
+  facts: readonly CoverageFact[],
+  canonicalFacts: readonly CanonicalCoverageFact[] = []
+): AssessmentCoverageSummary {
+  const missingCore = CORE_TOPICS.filter((topic) => !isTopicEstablished(topic, facts, canonicalFacts));
+  const missingConditional = CONDITIONAL_TOPICS.filter(
+    (topic) => topic.trigger(facts, canonicalFacts) && !isTopicEstablished(topic, facts, canonicalFacts)
+  );
   const missingTopics = [...missingCore, ...missingConditional].map((topic) => ({ id: topic.id, label: topic.label }));
   return { missingTopics, summary: buildCoverageSummary(missingTopics) };
+}
+
+// The minimal resident-shape this module needs -- deliberately not the full Resident type from
+// lib/supabase/types.ts, keeping this module free of any dependency beyond the handful of
+// fields it actually reads. The caller (lib/actions/assessmentIntelligence.ts) maps a real
+// fetched Resident row into this shape; this function does no I/O itself.
+export interface CanonicalResidentProfileFacts {
+  readonly dateOfBirth: string | null;
+  readonly phone: string | null;
+  readonly communityId: string | null;
+  readonly addressLine1: string | null;
+  readonly city: string | null;
+  readonly state: string | null;
+  readonly postalCode: string | null;
+  readonly physicianName: string | null;
+  readonly physicianPhone: string | null;
+  readonly primaryContactName: string | null;
+}
+
+/** Turns a resident's own canonical profile into the presence-only shape computeAssessmentCoverage()
+ * accepts -- one entry per non-null field, nothing more. Never fabricates: a null/blank canonical
+ * field simply contributes nothing, exactly like a topic never raised in conversation. */
+export function buildCanonicalCoverageFacts(resident: CanonicalResidentProfileFacts): CanonicalCoverageFact[] {
+  const facts: CanonicalCoverageFact[] = [];
+  const addIfPresent = (fieldPath: string, value: string | null) => {
+    if (value && value.trim()) facts.push({ fieldPath });
+  };
+  addIfPresent("identity.date_of_birth", resident.dateOfBirth);
+  addIfPresent("identity.phone", resident.phone);
+  addIfPresent("residence.community", resident.communityId);
+  addIfPresent("residence.address_line1", resident.addressLine1);
+  addIfPresent("residence.city", resident.city);
+  addIfPresent("residence.state", resident.state);
+  addIfPresent("residence.postal_code", resident.postalCode);
+  addIfPresent("important_people.physician_name", resident.physicianName);
+  addIfPresent("important_people.physician_phone", resident.physicianPhone);
+  addIfPresent("important_people.primary_contact_name", resident.primaryContactName);
+  return facts;
 }
