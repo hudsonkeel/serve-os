@@ -7,7 +7,8 @@ import {
   createPastedTranscriptSource,
   updateAssessmentSessionStatus,
   getDraftFactsForSession,
-  getOpenConflictsForSession,
+  getConflictsForSession,
+  resolveFactConflict,
   getApprovedFactsForResident,
   approveAssessmentSession,
   writeAssessmentDecision,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/data/assessmentIntelligence";
 import { runExtractionPipelineForSession } from "@/lib/assessmentIntelligence/pipeline";
 import { computeReviewExceptions, type DraftFactForReview } from "@/lib/assessmentIntelligence/reviewExceptions";
+import { computeAssessmentCoverage, type AssessmentCoverageSummary } from "@/lib/assessmentIntelligence/coverage";
 import { recommendPricing, PRICING_RULES_VERSION, type FactForPricing } from "@/lib/assessmentIntelligence/pricingEngine";
 import { PRICING_CATALOG_VERSION } from "@/lib/assessmentIntelligence/pricingCatalog";
 import { computeAxisCareReadiness, buildAxisCarePayloadPreview } from "@/lib/assessmentIntelligence/axiscareReadiness";
@@ -180,6 +182,7 @@ export interface ReviewData {
   session: Awaited<ReturnType<typeof getAssessmentSession>>;
   draftFacts: Awaited<ReturnType<typeof getDraftFactsForSession>>;
   reviewSummary: ReturnType<typeof computeReviewExceptions>;
+  coverage: AssessmentCoverageSummary;
 }
 
 export async function getAssessmentReviewData(assessmentSessionId: string): Promise<ReviewData | null> {
@@ -187,7 +190,7 @@ export async function getAssessmentReviewData(assessmentSessionId: string): Prom
   if (!session) return null;
 
   const draftFactRows = await getDraftFactsForSession(assessmentSessionId);
-  const openConflicts = await getOpenConflictsForSession(assessmentSessionId);
+  const conflicts = await getConflictsForSession(assessmentSessionId);
 
   const draftFactsForReview: DraftFactForReview[] = draftFactRows.map((f) => ({
     id: f.id,
@@ -202,10 +205,52 @@ export async function getAssessmentReviewData(assessmentSessionId: string): Prom
 
   const reviewSummary = computeReviewExceptions(
     draftFactsForReview,
-    openConflicts.map((c) => ({ id: c.id, fieldPath: c.field_path, factADraftId: c.fact_a_draft_id, factBDraftId: c.fact_b_draft_id, status: c.status as "open" | "resolved" }))
+    conflicts.map((c) => ({
+      id: c.id,
+      fieldPath: c.field_path,
+      factADraftId: c.fact_a_draft_id,
+      factBDraftId: c.fact_b_draft_id,
+      status: c.status as "open" | "resolved",
+      resolvedFactId: c.resolved_fact_id,
+    }))
   );
 
-  return { session, draftFacts: draftFactRows, reviewSummary };
+  const coverage = computeAssessmentCoverage(
+    draftFactsForReview.map((f) => ({ fieldPath: f.fieldPath, assertionState: f.assertionState }))
+  );
+
+  return { session, draftFacts: draftFactRows, reviewSummary, coverage };
+}
+
+/** Durably resolves every open conflict row for one field_path in this session to a specific
+ * fact — the moment a reviewer picks "which is correct," not deferred until the whole
+ * assessment is approved, so the choice survives a reload or another session picking up the
+ * review from here. Resolves ALL conflict rows for the field_path (not just one), since a field
+ * can in principle have more than one open question about it (e.g. a self-flagged singleton
+ * alongside a paired conflict) — the field isn't truly settled until every one of them points
+ * to the same answer. Looks conflicts up by session + field_path rather than taking a raw
+ * conflict row id, so the client never needs to know assessment_fact_conflicts' internal ids. */
+export async function resolveAssessmentConflict(input: {
+  assessmentSessionId: string;
+  fieldPath: string;
+  resolvedFactId: string;
+}): Promise<{ error?: string }> {
+  const authResult = await requireActor();
+  if ("error" in authResult) return { error: authResult.error };
+
+  const conflicts = await getConflictsForSession(input.assessmentSessionId);
+  const fieldConflicts = conflicts.filter((c) => c.field_path === input.fieldPath);
+  if (fieldConflicts.length === 0) return { error: "No conflict found for this field." };
+
+  for (const conflict of fieldConflicts) {
+    const result = await resolveFactConflict({
+      conflictId: conflict.id,
+      resolvedFactId: input.resolvedFactId,
+      resolvedBy: authResult.actor,
+    });
+    if (result.error) return { error: result.error };
+  }
+  return {};
 }
 
 export interface ApprovedFactInput {

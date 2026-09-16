@@ -3,6 +3,7 @@ import { createServerClient } from "../supabase/server.ts";
 import { getPersonVendorIdentityLinksForSubject } from "./personVendorIdentityLinks.ts";
 import type { AxisCareIdentityLinkState } from "../assessmentIntelligence/axiscareReadiness.ts";
 import type { NormalizedDraftFact } from "../assessmentIntelligence/factTypes.ts";
+import { findConflictingFactPairs, findSelfFlaggedConflicts } from "../assessmentIntelligence/conflictDetection.ts";
 
 // Data layer for the assessment intelligence tables (supabase/migrations/
 // 20260901000000_create_assessment_intelligence_layer.sql). Machine-generated rows (draft
@@ -169,44 +170,58 @@ export interface FactConflictRow {
   id: string;
   field_path: string;
   fact_a_draft_id: string;
-  fact_b_draft_id: string;
+  fact_b_draft_id: string | null;
   status: string;
+  resolved_fact_id: string | null;
 }
 
-/** Detects and persists conflicts: two draft facts for the same field_path with different
- * confirmed_yes/confirmed_no assertion states. Called after extraction writes draft facts. */
+/** Detects and persists conflicts: same-field_path draft facts whose assertion states
+ * genuinely disagree (opposite confirmed_yes/confirmed_no polarity, or, for non-boolean
+ * fields, same-polarity facts with different values — see findConflictingFactPairs()), plus a
+ * "singleton" row (fact_b_draft_id null) for any model-self-flagged conflicting fact with no
+ * natural second fact to pair against — see findSelfFlaggedConflicts(). Called after extraction
+ * writes draft facts. */
 export async function detectAndRecordConflicts(residentId: string, assessmentSessionId: string): Promise<number> {
   const supabase = createServerClient();
   const facts = await getDraftFactsForSession(assessmentSessionId);
-  const byFieldPath = new Map<string, DraftFactRow[]>();
-  for (const fact of facts) {
-    const list = byFieldPath.get(fact.field_path) ?? [];
-    list.push(fact);
-    byFieldPath.set(fact.field_path, list);
-  }
+  const candidateFacts = facts.map((f) => ({ id: f.id, field_path: f.field_path, assertion_state: f.assertion_state, value: f.value }));
+  const pairs = findConflictingFactPairs(candidateFacts);
+  const selfFlagged = findSelfFlaggedConflicts(candidateFacts);
 
   let created = 0;
-  for (const [fieldPath, group] of byFieldPath) {
-    const confirmedYes = group.find((f) => f.assertion_state === "confirmed_yes");
-    const confirmedNo = group.find((f) => f.assertion_state === "confirmed_no");
-    if (confirmedYes && confirmedNo) {
-      const { error } = await supabase.from("assessment_fact_conflicts").insert([
-        {
-          resident_id: residentId,
-          field_path: fieldPath,
-          fact_a_draft_id: confirmedYes.id,
-          fact_b_draft_id: confirmedNo.id,
-          status: "open",
-        },
-      ]);
-      if (!error) created++;
-      else console.error("[detectAndRecordConflicts]", { fieldPath, message: error.message });
-    }
+  for (const pair of pairs) {
+    const { error } = await supabase.from("assessment_fact_conflicts").insert([
+      {
+        resident_id: residentId,
+        field_path: pair.fieldPath,
+        fact_a_draft_id: pair.factAId,
+        fact_b_draft_id: pair.factBId,
+        status: "open",
+      },
+    ]);
+    if (!error) created++;
+    else console.error("[detectAndRecordConflicts]", { fieldPath: pair.fieldPath, message: error.message });
+  }
+  for (const flagged of selfFlagged) {
+    const { error } = await supabase.from("assessment_fact_conflicts").insert([
+      {
+        resident_id: residentId,
+        field_path: flagged.fieldPath,
+        fact_a_draft_id: flagged.factId,
+        fact_b_draft_id: null,
+        status: "open",
+      },
+    ]);
+    if (!error) created++;
+    else console.error("[detectAndRecordConflicts]", { fieldPath: flagged.fieldPath, message: error.message });
   }
   return created;
 }
 
-export async function getOpenConflictsForSession(assessmentSessionId: string): Promise<FactConflictRow[]> {
+async function getConflictsForSessionByStatus(
+  assessmentSessionId: string,
+  status: "open" | "all"
+): Promise<FactConflictRow[]> {
   const supabase = createServerClient();
   const { data: sessionRow } = await supabase
     .from("intake_assessment_sessions")
@@ -220,18 +235,64 @@ export async function getOpenConflictsForSession(assessmentSessionId: string): P
   const draftFacts = await getDraftFactsForSession(assessmentSessionId);
   const sessionDraftIds = new Set(draftFacts.map((f) => f.id));
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("assessment_fact_conflicts")
     .select("*")
-    .eq("resident_id", (sessionRow as { resident_id: string }).resident_id)
-    .eq("status", "open");
+    .eq("resident_id", (sessionRow as { resident_id: string }).resident_id);
+  if (status === "open") query = query.eq("status", "open");
+
+  const { data, error } = await query;
   if (error) {
-    console.error("[getOpenConflictsForSession]", { assessmentSessionId, message: error.message });
+    console.error("[getConflictsForSessionByStatus]", { assessmentSessionId, status, message: error.message });
     return [];
   }
   return ((data as FactConflictRow[] | null) ?? []).filter(
-    (c) => sessionDraftIds.has(c.fact_a_draft_id) || sessionDraftIds.has(c.fact_b_draft_id)
+    (c) => sessionDraftIds.has(c.fact_a_draft_id) || (c.fact_b_draft_id !== null && sessionDraftIds.has(c.fact_b_draft_id))
   );
+}
+
+/** Open conflicts only — used right after extraction (pipeline.ts) to decide whether a fresh
+ * session needs review before anything has been reviewed at all, where "open" and "all" are
+ * equivalent anyway (nothing has been resolved yet). */
+export async function getOpenConflictsForSession(assessmentSessionId: string): Promise<FactConflictRow[]> {
+  return getConflictsForSessionByStatus(assessmentSessionId, "open");
+}
+
+/** Every conflict for this session regardless of status — the review screen needs to keep
+ * showing a field as "conflicting" (with its resolution, if any) even after it's been
+ * resolved, rather than having it silently vanish and its rejected value fall through to
+ * auto-accepted. */
+export async function getConflictsForSession(assessmentSessionId: string): Promise<FactConflictRow[]> {
+  return getConflictsForSessionByStatus(assessmentSessionId, "all");
+}
+
+/** Durably resolves a conflict: records which of the conflicting facts (or, for a singleton
+ * self-flagged conflict, the one fact) the reviewer confirmed as correct. Reuses the existing
+ * status/resolved_by/resolved_at columns (previously written 'open' at creation and never
+ * updated by any code path) plus resolved_fact_id (20260915020000_add_assessment_fact_conflict_
+ * resolution.sql) — never overwrites resolution_note, which stays free for a human note.
+ * Unconditional (no "must currently be open" guard): a reviewer changing their mind and picking
+ * a different value is expected, ordinary usage, not a race to guard against. */
+export async function resolveFactConflict(input: {
+  conflictId: string;
+  resolvedFactId: string;
+  resolvedBy: string;
+}): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("assessment_fact_conflicts")
+    .update({
+      status: "resolved",
+      resolved_fact_id: input.resolvedFactId,
+      resolved_by: input.resolvedBy,
+      resolved_at: new Date().toISOString(),
+    })
+    .eq("id", input.conflictId);
+  if (error) {
+    console.error("[resolveFactConflict]", { conflictId: input.conflictId, message: error.message });
+    return { error: error.message };
+  }
+  return {};
 }
 
 export interface ApprovedFactRow {

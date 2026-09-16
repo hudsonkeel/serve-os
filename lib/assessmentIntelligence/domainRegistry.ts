@@ -29,7 +29,12 @@ export interface FieldDefinition {
   fieldPath: string;
   domain: AssessmentDomain;
   label: string;
-  /** Required for the field's parent topic to be considered "covered" in the review UI. */
+  /** Required for the field's parent topic to be considered "covered" in the review UI.
+   * Predates and is narrower than the Core/Conditional/Supplemental coverage computation
+   * (coverage.ts) — kept as-is for this pilot rather than removed, since the two mechanisms
+   * don't conflict (the review UI shows only the new coverage summary; this still drives its
+   * own `missing_required` exceptions, which stay computed but unrendered here). Revisit after
+   * the Watermere pilot validates the new coverage behavior. */
   requiredForReview?: boolean;
   /** Required before "Make Active Client" / AxisCare preview may be offered. */
   requiredForOperationalization?: boolean;
@@ -64,13 +69,29 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   { fieldPath: "residence.apartment_unit", domain: "residence", label: "Apartment / unit" },
   { fieldPath: "residence.community", domain: "residence", label: "Community" },
   { fieldPath: "residence.residence_type", domain: "residence", label: "Residence type" },
+  // Full-address components (Assessment Contract / Coverage slice,
+  // 2026-09-15) — surfaced together, via the coverage computation's
+  // "not a recognized partner community" conditional, as an all-of group
+  // with address_line1 (apartment/unit is real but optional detail, not
+  // part of what makes an address complete — see coverage.ts).
+  { fieldPath: "residence.city", domain: "residence", label: "City" },
+  { fieldPath: "residence.state", domain: "residence", label: "State" },
+  { fieldPath: "residence.postal_code", domain: "residence", label: "Postal code" },
 
   // Important People
   { fieldPath: "important_people.primary_contact_name", domain: "important_people", label: "Primary contact", requiredForReview: true },
   { fieldPath: "important_people.primary_contact_relationship", domain: "important_people", label: "Relationship to person" },
   { fieldPath: "important_people.primary_contact_phone", domain: "important_people", label: "Primary contact phone", requiredForOperationalization: true },
   { fieldPath: "important_people.decision_maker", domain: "important_people", label: "Decision maker" },
+  // Conditional on a POA being mentioned, as an all-of group with
+  // decision_maker above (name AND relationship AND phone, not any one
+  // alone) — see coverage.ts.
+  { fieldPath: "important_people.decision_maker_relationship", domain: "important_people", label: "Decision maker's relationship to person" },
+  { fieldPath: "important_people.decision_maker_phone", domain: "important_people", label: "Decision maker phone" },
   { fieldPath: "important_people.emergency_contact", domain: "important_people", label: "Emergency contact" },
+  // Core, all-of with physician_phone below (both, not either) — see coverage.ts.
+  { fieldPath: "important_people.physician_name", domain: "important_people", label: "Physician name" },
+  { fieldPath: "important_people.physician_phone", domain: "important_people", label: "Physician phone" },
 
   // What / Why
   { fieldPath: "what_why.what_changed", domain: "what_why", label: "What changed" },
@@ -92,6 +113,11 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   { fieldPath: "daily_life.transportation_errands", domain: "daily_life", label: "Transportation / errands", isBoolean: true },
   { fieldPath: "daily_life.companionship_social", domain: "daily_life", label: "Companionship / social support", isBoolean: true },
   { fieldPath: "daily_life.medication_reminders", domain: "daily_life", label: "Medication reminders", isBoolean: true, requiredForReview: true },
+  // Conditional on medication_reminders being needed at all — see
+  // coverage.ts's "medication reminders needed" trigger. Free text (the
+  // schedule / who sets pills up), not yes/no.
+  { fieldPath: "daily_life.medication_timing", domain: "daily_life", label: "Medication timing" },
+  { fieldPath: "daily_life.medication_setup", domain: "daily_life", label: "Medication setup" },
   // Client Readiness taxonomy delta ("Client Readiness — Phase A.2
   // Architecture Lock" / Phase B, §5/§8): closes the one real §301(b) gap
   // — "supplies and equipment to be utilized" — for care-task supplies
@@ -109,6 +135,9 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   { fieldPath: "mobility_safety.wheelchair", domain: "mobility_safety", label: "Wheelchair", isBoolean: true },
   { fieldPath: "mobility_safety.shower_equipment", domain: "mobility_safety", label: "Shower equipment", isBoolean: true },
   { fieldPath: "mobility_safety.environmental_concerns", domain: "mobility_safety", label: "Environmental concerns" },
+  // Conditional on transfers being needed together with a reduced-mobility
+  // signal (recent falls or an existing mobility device) — see coverage.ts.
+  { fieldPath: "mobility_safety.transfer_lift_equipment", domain: "mobility_safety", label: "Transfer / lift equipment" },
 
   // Vision / Hearing
   { fieldPath: "vision_hearing.glasses", domain: "vision_hearing", label: "Glasses", isBoolean: true },
@@ -123,6 +152,8 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   { fieldPath: "cognition.medication_mistakes", domain: "cognition", label: "Medication mistakes", isBoolean: true },
   { fieldPath: "cognition.disorientation", domain: "cognition", label: "Disorientation", isBoolean: true },
   { fieldPath: "cognition.wandering", domain: "cognition", label: "Wandering", isBoolean: true, requiredForReview: true },
+  // Conditional alongside wandering on a cognition concern — see coverage.ts.
+  { fieldPath: "cognition.behavior_concerns", domain: "cognition", label: "Behavior concerns" },
   { fieldPath: "cognition.known_diagnosis", domain: "cognition", label: "Known cognitive diagnosis (explicitly stated)" },
 
   // Health
@@ -138,6 +169,13 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   { fieldPath: "health.blood_thinners", domain: "health", label: "Blood thinners", isBoolean: true },
   { fieldPath: "health.oxygen", domain: "health", label: "Oxygen", isBoolean: true },
   { fieldPath: "health.dietary_restrictions", domain: "health", label: "Dietary restrictions" },
+  // Core, unconditional — simple universal safety questions that
+  // shouldn't depend on correctly recognizing another trigger first (see
+  // coverage.ts).
+  { fieldPath: "health.swallowing_risk", domain: "health", label: "Swallowing risk", isBoolean: true },
+  // Core, unconditional — see coverage.ts. Free text (what the precaution
+  // actually is), not yes/no.
+  { fieldPath: "health.precautions_restrictions", domain: "health", label: "Precautions / restrictions" },
 
   // Advance Planning
   { fieldPath: "advance_planning.dnr", domain: "advance_planning", label: "DNR", isBoolean: true },

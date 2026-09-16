@@ -47,6 +47,7 @@ export default async function AssessmentReviewPage({
         exceptions={reviewData.reviewSummary.exceptions}
         clearFacts={reviewData.reviewSummary.clearFacts}
         readyForApproval={reviewData.reviewSummary.readyForApproval}
+        coverage={reviewData.coverage}
       />
     </PageContainer>
   );
