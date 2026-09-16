@@ -9,6 +9,7 @@ import {
   getDraftFactsForSession,
   getConflictsForSession,
   resolveFactConflict,
+  requeueSessionForRetry,
   getApprovedFactsForResident,
   approveAssessmentSession,
   writeAssessmentDecision,
@@ -16,9 +17,9 @@ import {
   getAssessmentSession,
   getAxisCareIdentityLinkState,
 } from "@/lib/data/assessmentIntelligence";
-import { runExtractionPipelineForSession } from "@/lib/assessmentIntelligence/pipeline";
 import { computeReviewExceptions, type DraftFactForReview } from "@/lib/assessmentIntelligence/reviewExceptions";
 import { computeAssessmentCoverage, type AssessmentCoverageSummary } from "@/lib/assessmentIntelligence/coverage";
+import { decideRetryEligibility, MAX_PROCESSING_ATTEMPTS } from "@/lib/assessmentIntelligence/processingQueue";
 import { recommendPricing, PRICING_RULES_VERSION, type FactForPricing } from "@/lib/assessmentIntelligence/pricingEngine";
 import { PRICING_CATALOG_VERSION } from "@/lib/assessmentIntelligence/pricingCatalog";
 import { computeAxisCareReadiness, buildAxisCarePayloadPreview } from "@/lib/assessmentIntelligence/axiscareReadiness";
@@ -157,12 +158,19 @@ export async function startAssessmentForNewProspect(displayName: string): Promis
 
 /** Temporary development/validation input adapter (docs/architecture/
  * ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md §3A) — writes only to intake_sources.
- * transcript_text, the same source-agnostic boundary a future transcription pipeline would
- * use. Runs extraction immediately after. */
+ * transcript_text, the same source-agnostic boundary a future transcription pipeline would use.
+ *
+ * Deliberately does NOT run extraction here (2026-09-16 async queue slice) — persists the
+ * transcript and marks the session 'queued', then returns immediately. A scheduled dispatcher +
+ * background worker (lib/assessmentIntelligence/pipeline.ts's dispatchEligibleAssessmentProcessing()
+ * / advanceQueuedAssessmentProcessing()) picks it up from there and runs the exact same
+ * extraction pipeline this used to call directly. This is what keeps a slow provider call (or a
+ * platform function timeout) from ever stranding the browser request that submitted the
+ * transcript — see docs on the incident this fixes. */
 export async function submitPastedTranscriptAndExtract(
   assessmentSessionId: string,
   transcriptText: string
-): Promise<{ error?: string; draftFactCount?: number; rejectedCount?: number }> {
+): Promise<{ error?: string; queued?: boolean }> {
   const authResult = await requireActor();
   if ("error" in authResult) return { error: authResult.error };
   if (!transcriptText || !transcriptText.trim()) return { error: "A transcript is required." };
@@ -173,9 +181,36 @@ export async function submitPastedTranscriptAndExtract(
   const source = await createPastedTranscriptSource({ assessmentSessionId, transcriptText });
   if (!source) return { error: "Could not save the transcript." };
 
-  await updateAssessmentSessionStatus(assessmentSessionId, "processing");
+  const queued = await updateAssessmentSessionStatus(assessmentSessionId, "queued");
+  if (!queued) return { error: "Transcript saved, but the assessment could not be queued for processing." };
 
-  return runExtractionPipelineForSession(assessmentSessionId, session.resident_id, source.id);
+  return { queued: true };
+}
+
+/** Operator-visible Retry for a failed session (requirement: the transcript/source is already
+ * durable, so retry must never create a duplicate session — it only requeues this one). Uses
+ * decideRetryEligibility() for the exact same bounded-attempt / already-failed check the data
+ * layer's conditional update enforces, so the error message a double-click or an
+ * already-exhausted session sees is specific and honest rather than a generic failure. */
+export async function retryFailedAssessmentProcessing(assessmentSessionId: string): Promise<{ error?: string; retried?: boolean }> {
+  const authResult = await requireActor();
+  if ("error" in authResult) return { error: authResult.error };
+
+  const session = await getAssessmentSession(assessmentSessionId);
+  if (!session) return { error: "Assessment session not found." };
+
+  const eligibility = decideRetryEligibility({
+    status: session.status,
+    processingAttemptCount: session.processing_attempt_count,
+    processingClaimedAt: session.processing_claimed_at,
+  });
+  if (!eligibility.allowed) return { error: eligibility.reason };
+
+  // requeueSessionForRetry()'s own conditional update is the real idempotency guard — even if
+  // it loses a race (someone else's retry, or the dispatcher, already moved this session), that
+  // is not an error: the session is already back in the queue, which is what this call wanted.
+  await requeueSessionForRetry(assessmentSessionId, MAX_PROCESSING_ATTEMPTS);
+  return { retried: true };
 }
 
 export interface ReviewData {

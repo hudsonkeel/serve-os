@@ -4,6 +4,7 @@ import { getPersonVendorIdentityLinksForSubject } from "./personVendorIdentityLi
 import type { AxisCareIdentityLinkState } from "../assessmentIntelligence/axiscareReadiness.ts";
 import type { NormalizedDraftFact } from "../assessmentIntelligence/factTypes.ts";
 import { findConflictingFactPairs, findSelfFlaggedConflicts } from "../assessmentIntelligence/conflictDetection.ts";
+import { decideStaleRecovery, type QueueableSession } from "../assessmentIntelligence/processingQueue.ts";
 
 // Data layer for the assessment intelligence tables (supabase/migrations/
 // 20260901000000_create_assessment_intelligence_layer.sql). Machine-generated rows (draft
@@ -23,6 +24,21 @@ export interface AssessmentSessionRecord {
   // structurally valid (see
   // supabase/migrations/20260902220000_add_community_id_to_intake_assessment_sessions.sql).
   community_id: string | null;
+  // Asynchronous extraction queue (supabase/migrations/
+  // 20260916000000_add_assessment_processing_queue.sql) — see processingQueue.ts for the
+  // decision logic these drive.
+  processing_attempt_count: number;
+  processing_claimed_at: string | null;
+  failure_reason: string | null;
+  failed_at: string | null;
+}
+
+function toQueueableSession(session: AssessmentSessionRecord): QueueableSession {
+  return {
+    status: session.status,
+    processingAttemptCount: session.processing_attempt_count,
+    processingClaimedAt: session.processing_claimed_at,
+  };
 }
 
 export async function getAssessmentSession(assessmentSessionId: string): Promise<AssessmentSessionRecord | null> {
@@ -107,6 +123,173 @@ export async function updateAssessmentSessionStatus(assessmentSessionId: string,
     return false;
   }
   return true;
+}
+
+/** The source a background worker should attribute freshly-extracted draft facts to — the most
+ * recently created intake_sources row for this session. There is exactly one for the
+ * pasted-transcript path; for a future multi-source (e.g. audio + a manual note) session the
+ * newest source is the one whose arrival is what triggered this processing run. */
+export async function getMostRecentSourceIdForSession(assessmentSessionId: string): Promise<string | null> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("intake_sources")
+    .select("id")
+    .eq("assessment_session_id", assessmentSessionId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.error("[getMostRecentSourceIdForSession]", { assessmentSessionId, message: error.message });
+    return null;
+  }
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+// ─── Asynchronous extraction queue (2026-09-16) ──────────────────────────────────────────────
+// Every transition below uses the same conditional-update-then-check-affected-rows pattern:
+// UPDATE ... WHERE id = ? AND <the exact precondition this transition requires>, then look at
+// whether any row was actually affected. This is what makes concurrent/duplicate dispatch,
+// duplicate background-worker invocations, and a double-clicked Retry all safe — Postgres
+// guarantees only one concurrent UPDATE against the same row can see the precondition still
+// true; every loser's UPDATE affects zero rows and is a harmless no-op, never a duplicate
+// extraction run or a corrupted state. Same pattern feature/assessment-aws-transcription-
+// pipeline's claimAssessmentProcessingStage() used for its own (more elaborate) multi-stage
+// claim — proven here in its smallest form, since extraction is one bounded step.
+
+/** Attempts to claim a queued session for processing. Returns true only if THIS call won the
+ * claim (the update affected a row) — false means either another worker already claimed it, or
+ * it wasn't queued at all. Increments processing_attempt_count as part of the same atomic
+ * update, so "how many times has this session actually been attempted" can never drift from
+ * how many times it was actually claimed. */
+export async function claimSessionForProcessing(assessmentSessionId: string): Promise<boolean> {
+  const supabase = createServerClient();
+  const session = await getAssessmentSession(assessmentSessionId);
+  if (!session) return false;
+  const { data, error } = await supabase
+    .from("intake_assessment_sessions")
+    .update({
+      status: "processing",
+      processing_claimed_at: new Date().toISOString(),
+      processing_attempt_count: session.processing_attempt_count + 1,
+    })
+    .eq("id", assessmentSessionId)
+    .eq("status", "queued")
+    .select("id");
+  if (error) {
+    console.error("[claimSessionForProcessing]", { assessmentSessionId, message: error.message });
+    return false;
+  }
+  return (data?.length ?? 0) > 0;
+}
+
+/** Durably marks a session failed with a sanitized (see processingQueue.ts's
+ * sanitizeFailureReason()), bounded reason — administrator/debugging detail only, never the raw
+ * text shown in the operator UI (see SAFE_PROCESSING_FAILURE_MESSAGE). Scoped to sessions
+ * currently 'processing' — the only state a worker holding a real claim should ever be failing
+ * out of. */
+export async function markSessionFailed(assessmentSessionId: string, reason: string): Promise<boolean> {
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("intake_assessment_sessions")
+    .update({ status: "failed", failure_reason: reason, failed_at: new Date().toISOString() })
+    .eq("id", assessmentSessionId)
+    .eq("status", "processing");
+  if (error) {
+    console.error("[markSessionFailed]", { assessmentSessionId, message: error.message });
+    return false;
+  }
+  return true;
+}
+
+/** Operator-triggered retry: requeues a failed session, clearing its failure metadata, WITHOUT
+ * resetting processing_attempt_count — retry counts toward the same bounded attempt policy as
+ * automatic recovery, never an unlimited escape hatch. Only proceeds if the session is currently
+ * 'failed' AND under the attempt cap, checked atomically in the same update as the requeue — a
+ * double-click or concurrent retry attempt loses safely (see the module comment above) rather
+ * than requeuing twice. */
+export async function requeueSessionForRetry(
+  assessmentSessionId: string,
+  maxAttempts: number
+): Promise<boolean> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("intake_assessment_sessions")
+    .update({ status: "queued", failure_reason: null, failed_at: null })
+    .eq("id", assessmentSessionId)
+    .eq("status", "failed")
+    .lt("processing_attempt_count", maxAttempts)
+    .select("id");
+  if (error) {
+    console.error("[requeueSessionForRetry]", { assessmentSessionId, message: error.message });
+    return false;
+  }
+  return (data?.length ?? 0) > 0;
+}
+
+/** Finds sessions genuinely stuck at 'processing' (claimed long enough ago that the worker
+ * holding that claim is presumed dead — crashed, or killed by a platform timeout) and, per
+ * decideStaleRecovery()'s bounded policy, either requeues them for another attempt or marks
+ * them permanently failed once the attempt cap is reached. Called by the scheduled dispatcher
+ * before it looks for newly-queued work, so a stuck session gets the exact same recovery path
+ * regardless of how it got stuck. */
+export async function recoverStaleProcessingSessions(staleAfterMs: number, maxAttempts: number): Promise<number> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase.from("intake_assessment_sessions").select("*").eq("status", "processing");
+  if (error) {
+    console.error("[recoverStaleProcessingSessions]", { message: error.message });
+    return 0;
+  }
+  const sessions = (data as AssessmentSessionRecord[] | null) ?? [];
+  const now = Date.now();
+  let recovered = 0;
+
+  for (const session of sessions) {
+    const queueable = toQueueableSession(session);
+    const claimedAtMs = queueable.processingClaimedAt ? new Date(queueable.processingClaimedAt).getTime() : null;
+    const isStale = claimedAtMs === null || now - claimedAtMs >= staleAfterMs;
+    if (!isStale) continue;
+
+    const decision = decideStaleRecovery(queueable, maxAttempts);
+    if (decision.action === "fail") {
+      const { error: failError } = await supabase
+        .from("intake_assessment_sessions")
+        .update({ status: "failed", failure_reason: decision.reason, failed_at: new Date().toISOString() })
+        .eq("id", session.id)
+        .eq("status", "processing");
+      if (!failError) recovered++;
+      continue;
+    }
+
+    // Requeue -- re-affirm staleness in the WHERE clause itself so a worker that finished and
+    // wrote a terminal status in the moment between the read above and this write is never
+    // clobbered back to 'queued'.
+    const cutoffIso = new Date(now - staleAfterMs).toISOString();
+    let query = supabase
+      .from("intake_assessment_sessions")
+      .update({ status: "queued", processing_claimed_at: null })
+      .eq("id", session.id)
+      .eq("status", "processing");
+    query = queueable.processingClaimedAt === null ? query.is("processing_claimed_at", null) : query.lt("processing_claimed_at", cutoffIso);
+    const { data: updated, error: requeueError } = await query.select("id");
+    if (!requeueError && (updated?.length ?? 0) > 0) recovered++;
+  }
+
+  return recovered;
+}
+
+export async function getQueuedSessionsForDispatch(limit: number): Promise<AssessmentSessionRecord[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("intake_assessment_sessions")
+    .select("*")
+    .eq("status", "queued")
+    .order("started_at", { ascending: true })
+    .limit(limit);
+  if (error) {
+    console.error("[getQueuedSessionsForDispatch]", { message: error.message });
+    return [];
+  }
+  return (data as AssessmentSessionRecord[] | null) ?? [];
 }
 
 export async function writeDraftFacts(input: {
