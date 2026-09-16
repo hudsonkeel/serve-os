@@ -16,6 +16,7 @@ import {
   recoverStaleProcessingSessions,
   getQueuedSessionsForDispatch,
   getMostRecentSourceIdForSession,
+  recordProcessingDiagnosticStage,
 } from "../data/assessmentIntelligence.ts";
 import { transcribeAudioChunks } from "./transcription.ts";
 import { isPhiOpenAiProcessingConfirmed, type PhiGateOverride } from "./phiGovernance.ts";
@@ -208,6 +209,11 @@ export interface AdvanceProcessingResult {
  * browser — only by the background-function handler (netlify/functions/
  * assessment-processing-stage-worker-background.mts) after verifying the shared secret. */
 export async function advanceQueuedAssessmentProcessing(assessmentSessionId: string): Promise<AdvanceProcessingResult> {
+  // Diagnostic-only breadcrumb, written before authentication/claim are known to have succeeded
+  // -- proves the background handler itself actually started running at all (see
+  // recordProcessingDiagnosticStage()'s comment; never blocks or fails this real path).
+  await recordProcessingDiagnosticStage(assessmentSessionId, "worker_received");
+
   const claimed = await claimSessionForProcessing(assessmentSessionId);
   if (!claimed) {
     // Not an error: either another invocation already claimed it (safe, expected — see the
@@ -222,6 +228,8 @@ export async function advanceQueuedAssessmentProcessing(assessmentSessionId: str
     await markSessionFailed(assessmentSessionId, "Session not found immediately after being claimed for processing.");
     return { assessmentSessionId, outcome: "failed", error: "Session not found after claim." };
   }
+
+  await recordProcessingDiagnosticStage(assessmentSessionId, "extraction_started");
 
   try {
     const sourceId = await getMostRecentSourceIdForSession(assessmentSessionId);
@@ -285,6 +293,12 @@ async function invokeStageWorker(assessmentSessionId: string): Promise<DispatchO
     };
   }
 
+  // Diagnostic-only breadcrumb: the dispatcher has selected this session and is about to invoke
+  // the worker. Written even though the fetch below might still fail -- that's the point: if the
+  // next Maggie test shows a session stuck at exactly this stage, the failure is in the fetch
+  // itself (network/DNS/URL), not anywhere past it.
+  await recordProcessingDiagnosticStage(assessmentSessionId, "dispatched");
+
   try {
     // Netlify Background Functions acknowledge (202) almost immediately, before the handler
     // itself finishes running — this fetch resolves as soon as the invocation is accepted, not
@@ -298,6 +312,10 @@ async function invokeStageWorker(assessmentSessionId: string): Promise<DispatchO
     if (!response.ok) {
       return { assessmentSessionId, dispatched: false, error: `Background worker invocation responded ${response.status}.` };
     }
+    // Netlify returned a 2xx for the initial HTTP request only -- see DispatchOutcome's comment.
+    // This does NOT mean the worker itself has started; "worker_received" (written from inside
+    // advanceQueuedAssessmentProcessing) is the next, and first worker-side, evidence.
+    await recordProcessingDiagnosticStage(assessmentSessionId, "invocation_accepted");
     return { assessmentSessionId, dispatched: true };
   } catch (err) {
     return { assessmentSessionId, dispatched: false, error: err instanceof Error ? err.message : "Unknown error invoking background worker." };

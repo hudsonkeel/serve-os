@@ -15,6 +15,8 @@ import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { buildCurrentUserDisplay } from "@/lib/auth/display";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { AssessmentProcessingDispatchTrigger } from "@/components/settings/AssessmentProcessingDispatchTrigger";
+import { AssessmentProcessingDiagnostics } from "@/components/settings/AssessmentProcessingDiagnostics";
+import { getSessionsWithProcessingDiagnostics } from "@/lib/data/assessmentIntelligence";
 import {
   buildIntegrationDefinitions,
   INTEGRATION_STATUS_LABELS,
@@ -105,6 +107,10 @@ export default async function SettingsPage() {
   // response or rendered anywhere.
   const resendConnected = Boolean(process.env.RESEND_API_KEY);
   const integrations = buildIntegrationDefinitions({ resendConnected });
+
+  // Admin/diagnostic-only — only fetched for roles that can see the Assessment Processing
+  // section at all (same gate as the manual dispatch trigger below).
+  const processingDiagnostics = canViewManagement ? await getSessionsWithProcessingDiagnostics(25) : [];
 
   return (
     <PageContainer title="Settings">
@@ -271,6 +277,12 @@ export default async function SettingsPage() {
               description="Admin/manager tooling only, not the normal assessor workflow. Manually runs the same background dispatcher that automatically picks up queued assessments in production — useful on branch/preview deploys, where Netlify does not run the scheduled dispatcher on its own."
             >
               <AssessmentProcessingDispatchTrigger />
+              <div className="mt-5 border-t border-ivory-border pt-5">
+                <p className="mb-3 font-sans text-sm font-medium text-body">
+                  In-flight sessions
+                </p>
+                <AssessmentProcessingDiagnostics rows={processingDiagnostics} />
+              </div>
             </SettingsSection>
 
             <SettingsSection

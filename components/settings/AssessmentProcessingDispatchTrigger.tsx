@@ -29,9 +29,12 @@ export function AssessmentProcessingDispatchTrigger() {
       setResult(
         considered === 0
           ? "No eligible sessions were found."
-          : `${considered} session(s) considered — ${dispatched} dispatched${
-              failedToDispatch > 0 ? `, ${failedToDispatch} failed to dispatch` : ""
-            }.`
+          : // "Submitted" only means Netlify returned a 2xx acknowledgment for the background-
+            // function invocation -- it does NOT prove the worker started or claimed the session.
+            // See each session's processing diagnostic stage below for what actually happened.
+            `${considered} session(s) submitted to background processing (${dispatched} accepted${
+              failedToDispatch > 0 ? `, ${failedToDispatch} failed to submit` : ""
+            }).`
       );
     });
   }

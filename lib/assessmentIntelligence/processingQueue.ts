@@ -32,16 +32,23 @@ export function isEligibleForDispatch(session: QueueableSession): boolean {
   return session.status === "queued";
 }
 
-/** Has a 'processing' session been claimed long enough ago to safely treat as abandoned? A
- * claimed-but-never-timestamped row (defensive -- the real claim path always sets this) is
- * conservatively treated as stale rather than stuck there forever with no recovery path. */
+/** Has a 'processing' session been claimed long enough ago to safely treat as abandoned?
+ * processing_claimed_at is written exclusively by claimSessionForProcessing() -- its presence
+ * is the only reliable evidence a session was actually claimed by the new async worker at all.
+ * A 'processing' row with no claim timestamp is NOT eligible for automatic recovery: it
+ * predates this queue (every session created before the 20260916000000 migration has this
+ * column NULL by construction, including long-abandoned legacy sessions from before this
+ * architecture existed) and must never be swept up and silently resurrected as if it were new,
+ * genuinely-queued work. (2026-09-16 incident: this previously returned true for a null
+ * timestamp, which requeued a resident's months-old, pre-async-architecture stuck session
+ * during the first live dispatch run on a branch deploy.) */
 export function isStaleProcessing(
   session: QueueableSession,
   nowMs: number,
   staleAfterMs: number = STALE_PROCESSING_AFTER_MS
 ): boolean {
   if (session.status !== "processing") return false;
-  if (!session.processingClaimedAt) return true;
+  if (!session.processingClaimedAt) return false;
   return nowMs - new Date(session.processingClaimedAt).getTime() >= staleAfterMs;
 }
 
@@ -102,6 +109,33 @@ export function decideRetryEligibility(
 export function sanitizeFailureReason(err: unknown, maxLength = 2000): string {
   const message = err instanceof Error ? err.message : String(err);
   return message.slice(0, maxLength);
+}
+
+// ─── Processing diagnostics (2026-09-16 observability slice) ──────────────────────────────────
+// A compact, additive breadcrumb of the furthest stage the most recent dispatch/claim attempt
+// reached (supabase/migrations/20260916010000_add_assessment_processing_diagnostics.sql) --
+// overwritten each attempt, not an append-only event log. Deliberately NOT a full 9-stage model:
+// claim success, extraction success, and failure are already fully derivable from existing
+// columns (status='processing' AND processing_claimed_at IS NOT NULL; status IN ('draft',
+// 'needs_review'); status='failed' + failure_reason/failed_at), so only the otherwise-invisible
+// stages get their own marker -- see recordProcessingDiagnosticStage() in
+// lib/data/assessmentIntelligence.ts for where each one is written.
+
+export const PROCESSING_DIAGNOSTIC_STAGES = [
+  "dispatched",
+  "invocation_accepted",
+  "worker_received",
+  "extraction_started",
+] as const;
+
+export type ProcessingDiagnosticStage = (typeof PROCESSING_DIAGNOSTIC_STAGES)[number];
+
+/** Guards the one write path (recordProcessingDiagnosticStage) against ever persisting a stage
+ * value outside the set the DB CHECK constraint allows -- kept here, pure and testable, rather
+ * than only relying on TypeScript's compile-time narrowing, since the caller passes a value
+ * computed at each call site, not a literal. */
+export function isRecordableDiagnosticStage(stage: string): stage is ProcessingDiagnosticStage {
+  return (PROCESSING_DIAGNOSTIC_STAGES as readonly string[]).includes(stage);
 }
 
 // ─── Admin-only manual dispatch trigger (lib/actions/assessmentProcessingAdmin.ts) ───────────

@@ -10,6 +10,8 @@ import {
   decideRetryEligibility,
   sanitizeFailureReason,
   runDispatchTrigger,
+  isRecordableDiagnosticStage,
+  PROCESSING_DIAGNOSTIC_STAGES,
   type QueueableSession,
   type DispatchTriggerOutcome,
 } from "../processingQueue.ts";
@@ -39,8 +41,8 @@ test("isStaleProcessing: false for a non-'processing' session regardless of time
   assert.equal(isStaleProcessing(session({ status: "queued", processingClaimedAt: null }), Date.now()), false);
 });
 
-test("isStaleProcessing: true when claimed but no timestamp was ever recorded (defensive)", () => {
-  assert.equal(isStaleProcessing(session({ status: "processing", processingClaimedAt: null }), Date.now()), true);
+test("isStaleProcessing: NOT eligible for recovery when 'processing' with no claim timestamp — this row was never claimed by the new async worker at all (every pre-existing/legacy session has this), so it must be left alone rather than resurrected as if it were newly-queued work", () => {
+  assert.equal(isStaleProcessing(session({ status: "processing", processingClaimedAt: null }), Date.now()), false);
 });
 
 test("isStaleProcessing: false while still within the stale window", () => {
@@ -211,6 +213,26 @@ test("runDispatchTrigger: a thrown error from the dispatch function never leaks 
   const result = await runDispatchTrigger(true, dispatch);
   assert.equal(result.error, "Could not run the processing dispatcher. Check server logs for detail.");
   assert.doesNotMatch(result.error ?? "", /sk-live|invalid_api_key|OpenAI/);
+});
+
+// ─── Processing diagnostics — isRecordableDiagnosticStage ──────────────
+
+test("isRecordableDiagnosticStage: true for every declared stage, in order", () => {
+  for (const stage of PROCESSING_DIAGNOSTIC_STAGES) {
+    assert.equal(isRecordableDiagnosticStage(stage), true, `${stage} should be recordable`);
+  }
+  assert.deepEqual(PROCESSING_DIAGNOSTIC_STAGES, [
+    "dispatched",
+    "invocation_accepted",
+    "worker_received",
+    "extraction_started",
+  ]);
+});
+
+test("isRecordableDiagnosticStage: false for values the DB CHECK constraint would reject — including terminal states that are derived from existing columns, never written as a diagnostic stage", () => {
+  for (const notAStage of ["", "queued", "processing", "failed", "claimed", "DISPATCHED", " dispatched"]) {
+    assert.equal(isRecordableDiagnosticStage(notAStage), false, `"${notAStage}" must not be recordable`);
+  }
 });
 
 let passed = 0;

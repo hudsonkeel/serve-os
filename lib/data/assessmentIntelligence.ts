@@ -4,7 +4,13 @@ import { getPersonVendorIdentityLinksForSubject } from "./personVendorIdentityLi
 import type { AxisCareIdentityLinkState } from "../assessmentIntelligence/axiscareReadiness.ts";
 import type { NormalizedDraftFact } from "../assessmentIntelligence/factTypes.ts";
 import { findConflictingFactPairs, findSelfFlaggedConflicts } from "../assessmentIntelligence/conflictDetection.ts";
-import { decideStaleRecovery, type QueueableSession } from "../assessmentIntelligence/processingQueue.ts";
+import {
+  decideStaleRecovery,
+  isStaleProcessing,
+  isRecordableDiagnosticStage,
+  type QueueableSession,
+  type ProcessingDiagnosticStage,
+} from "../assessmentIntelligence/processingQueue.ts";
 
 // Data layer for the assessment intelligence tables (supabase/migrations/
 // 20260901000000_create_assessment_intelligence_layer.sql). Machine-generated rows (draft
@@ -31,6 +37,13 @@ export interface AssessmentSessionRecord {
   processing_claimed_at: string | null;
   failure_reason: string | null;
   failed_at: string | null;
+  // Diagnostic-only handoff breadcrumb (supabase/migrations/
+  // 20260916010000_add_assessment_processing_diagnostics.sql) — the furthest stage the most
+  // recent dispatch/claim attempt reached. Never governs behavior; admin/diagnostic display
+  // only (components/settings/AssessmentProcessingDispatchTrigger.tsx), never rendered in the
+  // normal assessor-facing UI.
+  processing_diagnostic_stage: string | null;
+  processing_diagnostic_stage_at: string | null;
 }
 
 function toQueueableSession(session: AssessmentSessionRecord): QueueableSession {
@@ -182,6 +195,31 @@ export async function claimSessionForProcessing(assessmentSessionId: string): Pr
   return (data?.length ?? 0) > 0;
 }
 
+/** Best-effort breadcrumb of the furthest stage the most recent dispatch/claim attempt reached —
+ * overwritten each attempt, not an append-only log (see the migration's comment for why). Never
+ * throws and never blocks or fails the real dispatch/claim/extraction path it's called
+ * alongside: a diagnostic write failing must never be the reason a real assessment fails to
+ * process. Deliberately does not condition on the session's current status — the call sites
+ * (pipeline.ts) already only call this at the exact moments each stage genuinely occurs. */
+export async function recordProcessingDiagnosticStage(
+  assessmentSessionId: string,
+  stage: ProcessingDiagnosticStage
+): Promise<void> {
+  if (!isRecordableDiagnosticStage(stage)) return;
+  try {
+    const supabase = createServerClient();
+    const { error } = await supabase
+      .from("intake_assessment_sessions")
+      .update({ processing_diagnostic_stage: stage, processing_diagnostic_stage_at: new Date().toISOString() })
+      .eq("id", assessmentSessionId);
+    if (error) {
+      console.error("[recordProcessingDiagnosticStage]", { assessmentSessionId, stage, message: error.message });
+    }
+  } catch (err) {
+    console.error("[recordProcessingDiagnosticStage]", { assessmentSessionId, stage, err });
+  }
+}
+
 /** Durably marks a session failed with a sanitized (see processingQueue.ts's
  * sanitizeFailureReason()), bounded reason — administrator/debugging detail only, never the raw
  * text shown in the operator UI (see SAFE_PROCESSING_FAILURE_MESSAGE). Scoped to sessions
@@ -214,7 +252,13 @@ export async function requeueSessionForRetry(
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("intake_assessment_sessions")
-    .update({ status: "queued", failure_reason: null, failed_at: null })
+    .update({
+      status: "queued",
+      failure_reason: null,
+      failed_at: null,
+      processing_diagnostic_stage: null,
+      processing_diagnostic_stage_at: null,
+    })
     .eq("id", assessmentSessionId)
     .eq("status", "failed")
     .lt("processing_attempt_count", maxAttempts)
@@ -231,7 +275,14 @@ export async function requeueSessionForRetry(
  * decideStaleRecovery()'s bounded policy, either requeues them for another attempt or marks
  * them permanently failed once the attempt cap is reached. Called by the scheduled dispatcher
  * before it looks for newly-queued work, so a stuck session gets the exact same recovery path
- * regardless of how it got stuck. */
+ * regardless of how it got stuck.
+ *
+ * A 'processing' row with processing_claimed_at IS NULL is never eligible here — that column is
+ * written exclusively by claimSessionForProcessing(), so its absence means this row was never
+ * claimed by the new async worker at all (every session that predates the 20260916000000
+ * migration has it NULL by construction, including long-abandoned legacy sessions). Such a row
+ * is left untouched, not swept up and silently resurrected as if it were genuinely-queued new
+ * work — see isStaleProcessing()'s own comment for the incident this fixes. */
 export async function recoverStaleProcessingSessions(staleAfterMs: number, maxAttempts: number): Promise<number> {
   const supabase = createServerClient();
   const { data, error } = await supabase.from("intake_assessment_sessions").select("*").eq("status", "processing");
@@ -245,9 +296,7 @@ export async function recoverStaleProcessingSessions(staleAfterMs: number, maxAt
 
   for (const session of sessions) {
     const queueable = toQueueableSession(session);
-    const claimedAtMs = queueable.processingClaimedAt ? new Date(queueable.processingClaimedAt).getTime() : null;
-    const isStale = claimedAtMs === null || now - claimedAtMs >= staleAfterMs;
-    if (!isStale) continue;
+    if (!isStaleProcessing(queueable, now, staleAfterMs)) continue;
 
     const decision = decideStaleRecovery(queueable, maxAttempts);
     if (decision.action === "fail") {
@@ -262,15 +311,21 @@ export async function recoverStaleProcessingSessions(staleAfterMs: number, maxAt
 
     // Requeue -- re-affirm staleness in the WHERE clause itself so a worker that finished and
     // wrote a terminal status in the moment between the read above and this write is never
-    // clobbered back to 'queued'.
+    // clobbered back to 'queued'. isStaleProcessing() above already guarantees
+    // processing_claimed_at is non-null here, so this can compare it directly.
     const cutoffIso = new Date(now - staleAfterMs).toISOString();
-    let query = supabase
+    const { data: updated, error: requeueError } = await supabase
       .from("intake_assessment_sessions")
-      .update({ status: "queued", processing_claimed_at: null })
+      .update({
+        status: "queued",
+        processing_claimed_at: null,
+        processing_diagnostic_stage: null,
+        processing_diagnostic_stage_at: null,
+      })
       .eq("id", session.id)
-      .eq("status", "processing");
-    query = queueable.processingClaimedAt === null ? query.is("processing_claimed_at", null) : query.lt("processing_claimed_at", cutoffIso);
-    const { data: updated, error: requeueError } = await query.select("id");
+      .eq("status", "processing")
+      .lt("processing_claimed_at", cutoffIso)
+      .select("id");
     if (!requeueError && (updated?.length ?? 0) > 0) recovered++;
   }
 
@@ -290,6 +345,62 @@ export async function getQueuedSessionsForDispatch(limit: number): Promise<Asses
     return [];
   }
   return (data as AssessmentSessionRecord[] | null) ?? [];
+}
+
+export interface ProcessingDiagnosticRow {
+  readonly id: string;
+  readonly residentId: string;
+  readonly residentName: string | null;
+  readonly status: string;
+  readonly processingAttemptCount: number;
+  readonly processingClaimedAt: string | null;
+  readonly processingDiagnosticStage: string | null;
+  readonly processingDiagnosticStageAt: string | null;
+  // Admin/diagnostic-only detail -- never the operator-facing message (SAFE_PROCESSING_FAILURE_
+  // MESSAGE), see markSessionFailed()'s comment.
+  readonly failureReason: string | null;
+  readonly startedAt: string;
+}
+
+/** Admin-only diagnostic listing (app/settings/page.tsx, gated the same as the manual dispatch
+ * trigger) -- every session currently in flight in the async queue, most recent first, so the
+ * next dispatch/claim attempt's exact stopping point is visible without Netlify log access. Not
+ * used by, and must never be wired into, the normal assessor-facing UI. */
+export async function getSessionsWithProcessingDiagnostics(limit: number): Promise<ProcessingDiagnosticRow[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("intake_assessment_sessions")
+    .select("*, residents(display_name, full_name, first_name, last_name)")
+    .in("status", ["queued", "processing", "failed"])
+    .order("started_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.error("[getSessionsWithProcessingDiagnostics]", { message: error.message });
+    return [];
+  }
+  type ResidentNameFields = {
+    display_name: string | null;
+    full_name: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  };
+  const rows = (data as (AssessmentSessionRecord & { residents: ResidentNameFields | null })[] | null) ?? [];
+  return rows.map((row) => ({
+    id: row.id,
+    residentId: row.resident_id,
+    residentName:
+      row.residents?.display_name ||
+      row.residents?.full_name ||
+      [row.residents?.first_name, row.residents?.last_name].filter(Boolean).join(" ") ||
+      null,
+    status: row.status,
+    processingAttemptCount: row.processing_attempt_count,
+    processingClaimedAt: row.processing_claimed_at,
+    processingDiagnosticStage: row.processing_diagnostic_stage,
+    processingDiagnosticStageAt: row.processing_diagnostic_stage_at,
+    failureReason: row.failure_reason,
+    startedAt: row.started_at,
+  }));
 }
 
 export async function writeDraftFacts(input: {
