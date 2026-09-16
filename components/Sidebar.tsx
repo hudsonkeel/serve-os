@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
-import { NAV_SECTIONS as sections, NAV_COMING_SOON as comingSoonNav, NAV_UTILITY } from "@/lib/navigation/primaryNav";
+import { NAV_COMING_SOON as comingSoonNav, getVisibleNavSections, getVisibleUtilityItems } from "@/lib/navigation/primaryNav";
 
 // Desktop-only (hidden below the md breakpoint — see MobileNavDrawer.tsx for
 // the phone-width equivalent, which reuses NAV_SECTIONS/NAV_COMING_SOON/
@@ -31,6 +31,8 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
   const pathname = usePathname();
 
   const isActive = (href: string) => pathname.startsWith(href);
+  const sections = getVisibleNavSections(currentUser.role);
+  const utilityItems = getVisibleUtilityItems(currentUser.role);
 
   return (
     <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 flex-col bg-navy shadow-sidebar md:flex">
@@ -96,7 +98,7 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
         {/* Utility area — Ask Serve + Settings, deliberately outside the
             Today/Serve/Understand work hierarchy above. */}
         <div className="mt-6 space-y-1 border-t border-white/10 pt-6">
-          {NAV_UTILITY.map((item) => {
+          {utilityItems.map((item) => {
             const active = isActive(item.href);
             return (
               <Link

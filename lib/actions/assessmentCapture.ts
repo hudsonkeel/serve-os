@@ -2,6 +2,7 @@
 
 import { createServerClient } from "@/lib/supabase/server";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canCaptureResidentAssessment } from "@/lib/auth/permissions";
 
 // Entry point into the Serve Intake Engine's voice/mobile capture experience — distinct
 // from lib/actions/intakeEngine.ts (the website-form Intake Intelligence Engine; see
@@ -28,6 +29,13 @@ export async function startAssessmentCapture(
   const profile = await getCurrentAuthorizedUser();
   if (!profile) {
     return { error: "You must be signed in to start an assessment." };
+  }
+  // Office Staff Visibility v0.1 (resident-access revision) — the UI
+  // already hides this action for office_staff (see
+  // WorkWithThisPersonStrip.tsx's canCaptureAssessment prop); this is
+  // the real enforcement, since hiding a button is not authorization.
+  if (!canCaptureResidentAssessment(profile.role)) {
+    return { error: "You do not have permission to start an assessment." };
   }
 
   const intakeBaseUrl = process.env.NEXT_PUBLIC_SERVE_INTAKE_URL;

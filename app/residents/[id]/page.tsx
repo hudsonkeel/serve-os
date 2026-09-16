@@ -25,7 +25,12 @@ import { getAssessmentSessionsForResident } from "@/lib/data/assessmentIntellige
 import { Badge } from "@/components/ui/Badge";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
-import { canAccessResidentEvidence, canEditResidentProfile, canPerformReconciliationActions } from "@/lib/auth/permissions";
+import {
+  canAccessResidentEvidence,
+  canCaptureResidentAssessment,
+  canEditResidentProfile,
+  canPerformReconciliationActions,
+} from "@/lib/auth/permissions";
 import { ResidentEvidenceSection } from "@/components/residents/ResidentEvidenceSection";
 import { ServeRelationshipCorrectionControl } from "@/components/residents/ServeRelationshipCorrectionControl";
 import { ClientReadinessBoard, type ClientReadinessBoardItem } from "@/components/clientReadiness/ClientReadinessBoard";
@@ -130,6 +135,12 @@ export default async function ResidentDetailPage({
   const canEditProfile = canEditResidentProfile(profile?.role);
   const canManageEvidence = canAccessResidentEvidence(profile?.role);
   const canResolveIdentity = canPerformReconciliationActions(profile?.role);
+  // office_staff may capture ordinary operational notes/updates on this
+  // page (Add Note, Wellbeing Observation, Current Needs, follow-ups,
+  // prospect/lead creation — all already unrestricted) but must not be
+  // able to initiate an Assessment — that's care-plan territory, not
+  // ordinary personnel/resident-note administration.
+  const canCaptureAssessment = canCaptureResidentAssessment(profile?.role);
   const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
 
   const connections = await getResidentConnections(id);
@@ -341,6 +352,7 @@ export default async function ResidentDetailPage({
             residentDisplayName={record.residentDisplayName}
             relationshipId={primaryRelationship?.id ?? null}
             hasCompletedAssessment={hasCompletedAssessment}
+            canCaptureAssessment={canCaptureAssessment}
             canAddToProspectPipeline={activeProspectRelationship === null}
             communityName={resident.community_name}
             contactName={contactName}

@@ -33,3 +33,17 @@ const RESIDENT_EVIDENCE_ROLES: readonly AuthRole[] = ["admin", "manager", "execu
 export function canAccessResidentEvidence(role: AuthRole | null | undefined): boolean {
   return Boolean(role && RESIDENT_EVIDENCE_ROLES.includes(role));
 }
+
+// Office Staff Visibility v0.1 (resident-access revision) — starting a
+// live audio-capture Assessment session is care-plan territory, not
+// ordinary resident-note/operational-update administration. Unlike the
+// three roles-narrower predicates above (which exclude operations too),
+// this one only excludes office_staff: startAssessmentCapture had no
+// role check at all before this predicate existed, so every other role
+// — including operations — already had this capability and keeps it
+// unchanged.
+const RESIDENT_ASSESSMENT_CAPTURE_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "operations"];
+
+export function canCaptureResidentAssessment(role: AuthRole | null | undefined): boolean {
+  return Boolean(role && RESIDENT_ASSESSMENT_CAPTURE_ROLES.includes(role));
+}

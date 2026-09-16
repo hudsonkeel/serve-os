@@ -110,3 +110,17 @@ export function canEditWorkforceLegalIdentity(role: string | null | undefined): 
 export function canManageWorkforceCommunityMemberships(role: string | null | undefined): boolean {
   return Boolean(role && (CANONICAL_PROFILE_EDIT_ROLES as readonly string[]).includes(role));
 }
+
+// Office Staff Visibility v0.1 — the caregiver detail page's Open
+// Actions, Source Identities, Workforce Activity Timeline, and Profile
+// Change History sections are read-only audit-trail/data-integrity
+// information (compliance-action status, AxisCare vendor-identity
+// linkage/duplicates, a general event log, and a field-change history),
+// not needed for ordinary personnel-document administration. Every role
+// that existed before office_staff keeps seeing them unchanged; only
+// office_staff is excluded.
+const WORKFORCE_TECHNICAL_DETAIL_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "operations"];
+
+export function canViewWorkforceTechnicalDetails(role: string | null | undefined): boolean {
+  return Boolean(role && (WORKFORCE_TECHNICAL_DETAIL_ROLES as readonly string[]).includes(role));
+}

@@ -17,6 +17,12 @@ interface WorkWithThisPersonStripProps {
   // "operationalized" status vocabulary, applied to the already-fetched
   // assessment sessions — see page.tsx. No new assessment-state logic.
   hasCompletedAssessment: boolean;
+  // Office Staff Visibility v0.1 — lib/auth/permissions.ts's
+  // canCaptureResidentAssessment(role), computed by the page. Assessment
+  // capture is care-plan territory, not ordinary resident-note
+  // administration; office_staff gets every other capture action on this
+  // strip but not this one.
+  canCaptureAssessment: boolean;
   // Reused from lib/relationships/duplicateDetection.ts's
   // findActiveResidentProspect() — true only when no open Resident
   // Prospect relationship already exists, so "Add to Prospect Pipeline"
@@ -55,6 +61,7 @@ export function WorkWithThisPersonStrip({
   residentDisplayName,
   relationshipId,
   hasCompletedAssessment,
+  canCaptureAssessment,
   canAddToProspectPipeline,
   communityName,
   contactName,
@@ -104,11 +111,13 @@ export function WorkWithThisPersonStrip({
         Relationship Follow-up
       </Link>
 
-      <AssessmentCaptureButton
-        residentId={residentId}
-        label={hasCompletedAssessment ? "Reassessment" : "Assessment"}
-        className={PRIMARY_BUTTON_CLASS + mainActionClass}
-      />
+      {canCaptureAssessment && (
+        <AssessmentCaptureButton
+          residentId={residentId}
+          label={hasCompletedAssessment ? "Reassessment" : "Assessment"}
+          className={PRIMARY_BUTTON_CLASS + mainActionClass}
+        />
+      )}
 
       <div className="relative flex-none" ref={menuRef}>
         <button type="button" onClick={() => setIsMenuOpen((open) => !open)} className={MENU_TRIGGER_CLASS + " w-24 px-3"}>

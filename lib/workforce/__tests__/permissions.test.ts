@@ -13,6 +13,7 @@ import {
   canReassignWorkforceEvidence,
   canTriggerAxisCareSync,
   canVerifyWorkforceEvidence,
+  canViewWorkforceTechnicalDetails,
 } from "../permissions.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
@@ -148,6 +149,17 @@ assertRoleTable(canManageWorkforceCommunityMemberships, "canManageWorkforceCommu
   office_staff: false,
 });
 
+// ─── canViewWorkforceTechnicalDetails — Office Staff Visibility v0.1 ─────
+// Open Actions, Source Identities, Workforce Activity Timeline, Profile
+// Change History. Every pre-existing role unchanged; office_staff denied.
+assertRoleTable(canViewWorkforceTechnicalDetails, "canViewWorkforceTechnicalDetails", {
+  admin: true,
+  manager: true,
+  executive: true,
+  operations: true,
+  office_staff: false,
+});
+
 // ─── Explicit regression guards for the v0.1 business requirement ────────
 // "office_staff should be allowed to do ordinary personnel-document work,
 // and NOT receive broader administrative or compliance-decision
@@ -205,6 +217,14 @@ test("office_staff CANNOT hard-delete a document (kept at pre-v0.1 level)", () =
 
 test("office_staff CANNOT reassign evidence to a different caregiver", () => {
   assert.equal(canReassignWorkforceEvidence("office_staff"), false);
+});
+
+test("office_staff CANNOT view workforce technical/administrative sections (Open Actions, Source Identities, Activity Timeline, Change History)", () => {
+  assert.equal(canViewWorkforceTechnicalDetails("office_staff"), false);
+});
+
+test("operations retains workforce technical-detail visibility (unchanged pre-existing behavior)", () => {
+  assert.equal(canViewWorkforceTechnicalDetails("operations"), true);
 });
 
 // User/role management: no executable capability exists yet for any role
