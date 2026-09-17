@@ -3,6 +3,8 @@ import {
   computeReviewExceptions,
   distinctFactValues,
   isExceptionDispositioned,
+  getDispositionableExceptions,
+  isReviewReadyForApproval,
   buildApprovedFactsForReview,
   type DraftFactForReview,
   type FactConflictForReview,
@@ -73,22 +75,6 @@ test("a field with an open conflict is surfaced as 'conflicting', overriding an 
   const conflictingExceptions = summary.exceptions.filter((e) => e.kind === "conflicting");
   assert.equal(conflictingExceptions.length, 1);
   assert.equal(conflictingExceptions[0].facts.length, 2);
-});
-
-test("a resolved conflict does not block approval readiness", () => {
-  const facts = [draftFact({ id: "1", fieldPath: "daily_life.bathing" })];
-  const conflicts = [
-    conflict({ id: "c1", fieldPath: "daily_life.bathing", factADraftId: "1", factBDraftId: "2", status: "resolved", resolvedFactId: "1" }),
-  ];
-  const summary = computeReviewExceptions(facts, conflicts);
-  assert.equal(summary.readyForApproval, true);
-});
-
-test("an open conflict blocks readyForApproval", () => {
-  const facts = [draftFact({ id: "1", fieldPath: "daily_life.bathing" })];
-  const conflicts = [conflict({ id: "c1", fieldPath: "daily_life.bathing", factADraftId: "1", factBDraftId: "2" })];
-  const summary = computeReviewExceptions(facts, conflicts);
-  assert.equal(summary.readyForApproval, false);
 });
 
 test("MISSING vs FALSE: a required-for-review field never discussed shows as 'missing_required', never inferred as a negative fact", () => {
@@ -257,6 +243,84 @@ test("mixed conflict + uncertain set: every exception must be dispositioned, not
     dispositioned.every((e) => isExceptionDispositioned(e, resolutionsOneMissing)),
     false
   );
+});
+
+// ─── isReviewReadyForApproval — the actual Approve-button gate, not just its building block
+// (2026-09-17, Slice A follow-up: fixes the adjacent "Not discussed" projection defect). This is
+// the exact computation AssessmentReviewPanel.tsx's `canApprove` calls, tested directly so the
+// gate itself -- not only isExceptionDispositioned() in isolation -- is proven correct. ─────────
+
+test("getDispositionableExceptions: only conflicting and uncertain kinds require a disposition -- missing_required is surfaced but never gates approval", () => {
+  const exceptions: ReviewException[] = [
+    conflictingException({ fieldPath: "field.a" }),
+    uncertainException({ fieldPath: "field.b" }),
+    { kind: "missing_required", fieldPath: "field.c", label: "Field C", facts: [], resolvedFactId: null },
+  ];
+  const dispositionable = getDispositionableExceptions(exceptions);
+  assert.deepEqual(dispositionable.map((e) => e.fieldPath).sort(), ["field.a", "field.b"]);
+});
+
+test("conflict + Confirm Yes (a boolean conflict's 'fact:<id>' pick): dispositioned, approval allowed", () => {
+  const clearFacts = [draftFact({ id: "clear", fieldPath: "daily_life.bathing" })];
+  const exceptions = [conflictingException({ fieldPath: "cognition.short_term_memory_change" })];
+  const resolutions = { "cognition.short_term_memory_change": "fact:1" };
+  assert.equal(isReviewReadyForApproval(clearFacts, exceptions, resolutions), true);
+});
+
+test("conflict + Confirm No (the other boolean pick): dispositioned, approval allowed", () => {
+  const clearFacts = [draftFact({ id: "clear", fieldPath: "daily_life.bathing" })];
+  const exceptions = [conflictingException({ fieldPath: "cognition.short_term_memory_change" })];
+  const resolutions = { "cognition.short_term_memory_change": "fact:2" };
+  assert.equal(isReviewReadyForApproval(clearFacts, exceptions, resolutions), true);
+});
+
+test("conflict + Neither / needs follow-up: dispositioned, approval allowed, even though no definitive value was picked", () => {
+  const clearFacts = [draftFact({ id: "clear", fieldPath: "daily_life.bathing" })];
+  const exceptions = [conflictingException({ fieldPath: "cognition.short_term_memory_change" })];
+  const resolutions = { "cognition.short_term_memory_change": "leave_uncertain" };
+  assert.equal(isReviewReadyForApproval(clearFacts, exceptions, resolutions), true);
+});
+
+test("uncertain + Leave Unknown: dispositioned, approval allowed", () => {
+  const clearFacts = [draftFact({ id: "clear", fieldPath: "daily_life.bathing" })];
+  const exceptions = [uncertainException({ fieldPath: "daily_life.laundry" })];
+  const resolutions = { "daily_life.laundry": "leave_uncertain" };
+  assert.equal(isReviewReadyForApproval(clearFacts, exceptions, resolutions), true);
+});
+
+test("an exception with no disposition at all blocks approval", () => {
+  const clearFacts = [draftFact({ id: "clear", fieldPath: "daily_life.bathing" })];
+  const exceptions = [uncertainException({ fieldPath: "important_people.physician_phone" })];
+  assert.equal(isReviewReadyForApproval(clearFacts, exceptions, {}), false);
+});
+
+test("mixed exceptions where every one has an explicit disposition, including 'needs follow-up' and 'leave unknown': approval allowed", () => {
+  const clearFacts = [draftFact({ id: "clear", fieldPath: "daily_life.bathing" })];
+  const exceptions = [
+    conflictingException({ fieldPath: "cognition.short_term_memory_change" }),
+    uncertainException({ fieldPath: "daily_life.laundry" }),
+    uncertainException({ fieldPath: "important_people.physician_phone" }),
+  ];
+  const resolutions = {
+    "cognition.short_term_memory_change": "leave_uncertain",
+    "daily_life.laundry": "leave_uncertain",
+    "important_people.physician_phone": "confirmed_no",
+  };
+  assert.equal(isReviewReadyForApproval(clearFacts, exceptions, resolutions), true);
+});
+
+test("mixed exceptions where one of several has no disposition: approval blocked", () => {
+  const clearFacts = [draftFact({ id: "clear", fieldPath: "daily_life.bathing" })];
+  const exceptions = [
+    conflictingException({ fieldPath: "cognition.short_term_memory_change" }),
+    uncertainException({ fieldPath: "daily_life.laundry" }),
+    uncertainException({ fieldPath: "important_people.physician_phone" }), // never touched
+  ];
+  const resolutions = {
+    "cognition.short_term_memory_change": "leave_uncertain",
+    "daily_life.laundry": "confirmed_yes",
+  };
+  assert.equal(isReviewReadyForApproval(clearFacts, exceptions, resolutions), false);
 });
 
 // ─── buildApprovedFactsForReview — the shared preview/approval source of truth (2026-09-17) ───

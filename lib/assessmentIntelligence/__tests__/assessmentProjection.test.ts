@@ -72,6 +72,27 @@ test("a field with no fact at all projects as 'not_discussed', with no source", 
   assert.equal(field?.displayValue, null);
 });
 
+test("NEEDS FOLLOW-UP: a field with no fact but listed in needsFollowUpFieldPaths projects as 'needs_follow_up', not 'not_discussed'", () => {
+  const sections = buildAssessmentProjection([], new Set(["cognition.short_term_memory_change"]));
+  const field = fieldIn(sections, "cognition.short_term_memory_change");
+  assert.equal(field?.state, "needs_follow_up");
+  assert.equal(field?.displayValue, null);
+  assert.equal(field?.source, null);
+});
+
+test("NEEDS FOLLOW-UP vs NOT DISCUSSED: within the same call, a listed field path projects 'needs_follow_up' while a genuinely untouched sibling still projects 'not_discussed'", () => {
+  const sections = buildAssessmentProjection([], new Set(["daily_life.laundry"]));
+  const laundry = fieldIn(sections, "daily_life.laundry");
+  const bathing = fieldIn(sections, "daily_life.bathing"); // never mentioned at all
+  assert.equal(laundry?.state, "needs_follow_up");
+  assert.equal(bathing?.state, "not_discussed");
+});
+
+test("NEEDS FOLLOW-UP is distinct real content: a domain with only a needs_follow_up field is still included, not collapsed away as empty", () => {
+  const sections = buildAssessmentProjection([], new Set(["cognition.short_term_memory_change"]));
+  assert.ok(sections.some((s) => s.domain === "cognition"), "cognition section should be present -- needs_follow_up counts as real content");
+});
+
 test("PROVENANCE: an assessment-sourced field is tagged source 'assessment'", () => {
   const sections = buildAssessmentProjection([fact({ fieldPath: "identity.phone", value: "9725551234", source: "assessment" })]);
   assert.equal(fieldIn(sections, "identity.phone")?.source, "assessment");
