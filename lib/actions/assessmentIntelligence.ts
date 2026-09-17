@@ -401,8 +401,6 @@ export async function resolveAssessmentConflict(input: {
   return {};
 }
 
-export type { ApprovedFactInput };
-
 /** Writes the immutable assessment_document snapshot for an already-approved session, exactly
  * once. Idempotent by construction, not by luck: checks getOutputsForSession() for an existing
  * assessment_document row first (the fast path — true on every retry/reconciliation call after
