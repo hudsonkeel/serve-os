@@ -11,7 +11,7 @@ import {
 } from "@/lib/actions/assessmentIntelligence";
 import {
   distinctFactValues,
-  isConflictResolutionComplete,
+  isExceptionDispositioned,
   buildApprovedFactsForReview,
   type ApprovedFactInput,
   type DraftFactForReview,
@@ -164,9 +164,22 @@ export function AssessmentReviewPanel({
   }, [approvedFactsPreview]);
 
   const hasAnyDraftFacts = clearFacts.length > 0 || exceptions.length > 0;
+  // Every rendered conflicting/uncertain exception must have SOME explicit reviewer disposition
+  // -- "Neither / needs follow-up" and "Leave Unknown" count exactly like a definitive pick;
+  // only an exception no one has looked at yet blocks approval. See isExceptionDispositioned()'s
+  // own comment for why this is deliberately a different question than "does this exception
+  // contribute an approved fact" (buildApprovedFactsForReview(), unaffected by this gate).
+  const dispositionableExceptions = useMemo(
+    () => [...conflictingExceptions, ...uncertainExceptions],
+    [conflictingExceptions, uncertainExceptions]
+  );
+  const allExceptionsDispositioned = useMemo(
+    () => dispositionableExceptions.every((exception) => isExceptionDispositioned(exception, resolutions)),
+    [dispositionableExceptions, resolutions]
+  );
   const canApprove = useMemo(
-    () => hasAnyDraftFacts && isConflictResolutionComplete(conflictingExceptions, resolutions),
-    [hasAnyDraftFacts, conflictingExceptions, resolutions]
+    () => hasAnyDraftFacts && allExceptionsDispositioned,
+    [hasAnyDraftFacts, allExceptionsDispositioned]
   );
 
   function handleResolveConflict(fieldPath: string, factId: string) {
@@ -328,9 +341,9 @@ export function AssessmentReviewPanel({
             >
               {isPending ? "Approving…" : "Approve Assessment"}
             </button>
-            {!isConflictResolutionComplete(conflictingExceptions, resolutions) && conflictingExceptions.length > 0 && (
+            {!allExceptionsDispositioned && dispositionableExceptions.length > 0 && (
               <p className="mt-2 font-sans text-xs text-danger-text">
-                Resolve all conflicting statements before approving — see the Needs Attention tab.
+                Review each flagged item before approving the assessment — see the Needs Attention tab.
               </p>
             )}
           </div>

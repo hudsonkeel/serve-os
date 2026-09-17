@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {
   computeReviewExceptions,
   distinctFactValues,
-  isConflictResolutionComplete,
+  isExceptionDispositioned,
   buildApprovedFactsForReview,
   type DraftFactForReview,
   type FactConflictForReview,
@@ -176,31 +176,87 @@ function conflictingException(overrides: Partial<ReviewException> = {}): ReviewE
   };
 }
 
-test("isConflictResolutionComplete: false with no resolution picked and no durable resolution", () => {
-  assert.equal(isConflictResolutionComplete([conflictingException()], {}), false);
+function uncertainException(overrides: Partial<ReviewException> = {}): ReviewException {
+  return {
+    kind: "uncertain",
+    fieldPath: "cognition.short_term_memory_change",
+    label: "Short-term memory change",
+    facts: [],
+    resolvedFactId: null,
+    ...overrides,
+  };
+}
+
+// ─── isExceptionDispositioned — the approval gate's actual question (2026-09-17): has the
+// reviewer recorded ANY explicit disposition, independent of exception kind and independent of
+// whether that disposition contributes an approved fact. Replaces the old, kind-specific
+// isConflictResolutionComplete(), which wrongly treated "leave_uncertain" as an incomplete
+// review — a business-rule correction, not a restored bug. ─────────────────────────────────────
+
+test("isExceptionDispositioned: false with no resolution picked and no durable resolution — never looked at", () => {
+  assert.equal(isExceptionDispositioned(conflictingException(), {}), false);
 });
 
-test("isConflictResolutionComplete: a 'leave_uncertain' / 'neither, needs follow-up' pick does NOT satisfy it — a conflict is a data-integrity exception, not a mere unknown", () => {
-  assert.equal(
-    isConflictResolutionComplete([conflictingException()], { "important_people.physician_name": "leave_uncertain" }),
-    false
-  );
+test("untouched uncertain exception blocks approval — no resolution entry at all is not a disposition", () => {
+  assert.equal(isExceptionDispositioned(uncertainException(), {}), false);
 });
 
-test("isConflictResolutionComplete: true once a specific value has been picked this session ('fact:<id>')", () => {
+test("conflict + Neither / needs follow-up counts as reviewed — a deliberate human decision, not a missing review", () => {
   assert.equal(
-    isConflictResolutionComplete([conflictingException()], { "important_people.physician_name": "fact:1" }),
+    isExceptionDispositioned(conflictingException(), { "important_people.physician_name": "leave_uncertain" }),
     true
   );
 });
 
-test("isConflictResolutionComplete: true when durably resolved (exception.resolvedFactId set), even with no local resolution entry at all — this is what survives reload/another session", () => {
-  const exception = conflictingException({ resolvedFactId: "1" });
-  assert.equal(isConflictResolutionComplete([exception], {}), true);
+test("uncertain + Leave Unknown counts as reviewed — same deliberate-non-assertion semantics as conflict Neither", () => {
+  assert.equal(
+    isExceptionDispositioned(uncertainException(), { "cognition.short_term_memory_change": "leave_uncertain" }),
+    true
+  );
 });
 
-test("isConflictResolutionComplete: vacuously true with no conflicting exceptions at all", () => {
-  assert.equal(isConflictResolutionComplete([], {}), true);
+test("uncertain + Confirm Yes counts as reviewed", () => {
+  assert.equal(
+    isExceptionDispositioned(uncertainException(), { "cognition.short_term_memory_change": "confirmed_yes" }),
+    true
+  );
+});
+
+test("uncertain + Confirm No counts as reviewed", () => {
+  assert.equal(
+    isExceptionDispositioned(uncertainException(), { "cognition.short_term_memory_change": "confirmed_no" }),
+    true
+  );
+});
+
+test("isExceptionDispositioned: true once a specific value has been picked this session ('fact:<id>')", () => {
+  assert.equal(
+    isExceptionDispositioned(conflictingException(), { "important_people.physician_name": "fact:1" }),
+    true
+  );
+});
+
+test("isExceptionDispositioned: true when durably resolved (exception.resolvedFactId set), even with no local resolution entry at all — this is what survives reload/another session", () => {
+  const exception = conflictingException({ resolvedFactId: "1" });
+  assert.equal(isExceptionDispositioned(exception, {}), true);
+});
+
+test("mixed conflict + uncertain set: every exception must be dispositioned, not just some", () => {
+  const dispositioned = [
+    conflictingException({ fieldPath: "field.a" }),
+    uncertainException({ fieldPath: "field.b" }),
+  ];
+  const resolutionsAllDispositioned = { "field.a": "leave_uncertain", "field.b": "confirmed_no" };
+  assert.equal(
+    dispositioned.every((e) => isExceptionDispositioned(e, resolutionsAllDispositioned)),
+    true
+  );
+
+  const resolutionsOneMissing = { "field.a": "leave_uncertain" }; // field.b never touched
+  assert.equal(
+    dispositioned.every((e) => isExceptionDispositioned(e, resolutionsOneMissing)),
+    false
+  );
 });
 
 // ─── buildApprovedFactsForReview — the shared preview/approval source of truth (2026-09-17) ───

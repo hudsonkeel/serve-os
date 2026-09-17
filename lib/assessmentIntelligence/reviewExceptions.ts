@@ -139,22 +139,29 @@ export function distinctFactValues(facts: readonly DraftFactForReview[]): Distin
   return distinct;
 }
 
-/** A conflict is an explicit data-integrity exception (two facts genuinely disagree), not a
- * mere unknown — unlike an "uncertain" exception, it is not enough to acknowledge it and move
- * on. It only counts as resolved once a specific value has actually been picked and durably
- * persisted (exception.resolvedFactId, from the database) or just was, this session, via a
- * "fact:<id>" selection. A "leave uncertain" / "neither, needs follow-up" choice is a
- * deliberate non-resolution — it must keep blocking approval, exactly like never having picked
- * anything at all. */
-export function isConflictResolutionComplete(
-  conflictingExceptions: readonly ReviewException[],
+/** Whether a reviewer has explicitly dispositioned this exception — the approval gate's actual
+ * question, independent of exception kind and independent of whether that disposition produces
+ * an approved fact. A conflict resolved to "Neither / needs follow-up" and an uncertain field
+ * left as "Leave Unknown" are both genuine, deliberate human decisions (share the same
+ * "leave_uncertain" resolution string) — not a missing review. Only an exception with NO
+ * disposition recorded at all — never looked at — blocks approval.
+ *
+ * This is a different, broader question than "does this exception contribute an approved fact":
+ * buildApprovedFactsForReview() below correctly continues to exclude "leave_uncertain" from the
+ * approved payload (it must never invent a value), independent of this function. */
+export function isExceptionDispositioned(
+  exception: ReviewException,
   resolutions: Readonly<Record<string, string | undefined>>
 ): boolean {
-  return conflictingExceptions.every((exception) => {
-    if (exception.resolvedFactId !== null) return true;
-    const resolution = resolutions[exception.fieldPath];
-    return typeof resolution === "string" && resolution.startsWith("fact:");
-  });
+  if (exception.resolvedFactId !== null) return true;
+  const resolution = resolutions[exception.fieldPath];
+  if (!resolution) return false;
+  return (
+    resolution === "confirmed_yes" ||
+    resolution === "confirmed_no" ||
+    resolution === "leave_uncertain" ||
+    resolution.startsWith("fact:")
+  );
 }
 
 export interface ApprovedFactInput {
