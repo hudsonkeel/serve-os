@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   approveAssessment,
   generateAxisCarePreview,
@@ -18,13 +19,16 @@ import {
 } from "@/lib/assessmentIntelligence/reviewExceptions";
 import { getFieldDefinition } from "@/lib/assessmentIntelligence/domainRegistry";
 import type { AssessmentCoverageSummary } from "@/lib/assessmentIntelligence/coverage";
-import type { AssertionState } from "@/lib/assessmentIntelligence/factTypes";
 import {
   buildAssessmentProjection,
   mergeEffectiveFacts,
+  approvedFactInputsToEffectiveFacts,
   type EffectiveFact,
   type FieldDisplayState,
+  type ProjectedDomainSection,
 } from "@/lib/assessmentIntelligence/assessmentProjection";
+import type { AssessmentDocumentSnapshot } from "@/lib/assessmentIntelligence/assessmentSnapshot";
+import { formatCentralTimestamp } from "@/lib/utils/date";
 
 // Client operationalization deliberately does NOT live here (Slice 1: Service Agreement ->
 // Enrolled Inactive Client, 2026-09-15). Assessment approval must never be able to activate a
@@ -57,6 +61,12 @@ interface AssessmentReviewPanelProps {
    * from assessment-derived facts; never merged into clearFacts/exceptions, never submitted as
    * part of approval (approval only ever writes what this assessment itself established). */
   canonicalProfileFacts: EffectiveFact[];
+  /** The immutable snapshot written at approval (Assessment Workflow Slice B) — null until this
+   * session is approved. Once present, this is the SOLE rendering source for the approved/
+   * read-only view below: never recomputed from the live clearFacts/exceptions/
+   * canonicalProfileFacts props above, which stay mutable and would silently rewrite a
+   * historical assessment's displayed content as the resident's profile changes after approval. */
+  approvedSnapshot: AssessmentDocumentSnapshot | null;
 }
 
 // "fact:<draftFactId>" selects that specific conflicting fact's own value as correct — used for
@@ -100,7 +110,9 @@ export function AssessmentReviewPanel({
   clearFacts,
   coverage,
   canonicalProfileFacts,
+  approvedSnapshot,
 }: AssessmentReviewPanelProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"assessment" | "needs_attention">("assessment");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -130,13 +142,7 @@ export function AssessmentReviewPanel({
   );
 
   const assessmentEffectiveFacts: EffectiveFact[] = useMemo(
-    () =>
-      approvedFactsPreview.map((f) => ({
-        fieldPath: f.field_path,
-        value: f.value,
-        assertionState: f.assertion_state as AssertionState,
-        source: "assessment" as const,
-      })),
+    () => approvedFactInputsToEffectiveFacts(approvedFactsPreview),
     [approvedFactsPreview]
   );
 
@@ -185,6 +191,11 @@ export function AssessmentReviewPanel({
       }
       setApproved(true);
       setPricingStatus(result.pricingStatus ?? null);
+      // approvedSnapshot is a server-fetched prop, not local state — this action just wrote it
+      // (ensureApprovedAssessmentSnapshot(), inside approveAssessment()), so a refresh is what
+      // picks it up. Until it lands, the approved-but-no-snapshot branch below covers the gap
+      // honestly rather than rendering stale/empty content.
+      router.refresh();
     });
   }
 
@@ -326,10 +337,22 @@ export function AssessmentReviewPanel({
         </div>
       )}
 
+      {approved && approvedSnapshot && (
+        <ApprovedAssessmentDocument residentName={residentName} snapshot={approvedSnapshot} />
+      )}
+
+      {approved && !approvedSnapshot && (
+        <div className="rounded-xl border border-warning-surface bg-warning-surface/40 p-6 shadow-card print:hidden">
+          <p className="font-sans text-sm text-body">
+            This assessment was approved, but its formal document is still being prepared — refresh in a moment.
+          </p>
+        </div>
+      )}
+
       {approved && (
-        <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
+        <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card print:hidden">
           <h3 className="mb-3 font-sans text-label font-semibold uppercase tracking-widest text-muted">
-            Approved
+            Operationalize
           </h3>
           {pricingStatus && (
             <p className="mb-3 font-sans text-sm text-body">
@@ -358,6 +381,13 @@ export function AssessmentReviewPanel({
             >
               Generate Cinch Projection
             </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex h-10 items-center rounded-lg border border-ivory-border bg-ivory px-5 font-sans text-sm font-semibold text-body hover:bg-white"
+            >
+              Print / Save as PDF
+            </button>
           </div>
           {axiscareReadiness && (
             <p className="mt-3 font-sans text-sm text-body">AxisCare readiness: {axiscareReadiness.replace(/_/g, " ")}</p>
@@ -370,11 +400,93 @@ export function AssessmentReviewPanel({
         </div>
       )}
 
-      {error && <p className="font-sans text-sm text-danger-text">{error}</p>}
+      {error && <p className="font-sans text-sm text-danger-text print:hidden">{error}</p>}
 
-      <Link href={`/residents/${residentId}`} className="inline-block font-sans text-sm text-navy hover:text-navy-light">
+      <Link
+        href={`/residents/${residentId}`}
+        className="inline-block font-sans text-sm text-navy hover:text-navy-light print:hidden"
+      >
         ← Back to {residentName}
       </Link>
+    </div>
+  );
+}
+
+// The formal, immutable Serve Assessment — rendered exclusively from the approval-time snapshot
+// (Assessment Workflow Slice B), never from this component's own live clearFacts/exceptions/
+// canonicalProfileFacts props. Same domain-grouped structure as AssessmentTab's live preview
+// below, deliberately simpler (no evidence-expand — ProjectedField carries no evidence detail,
+// and re-deriving it from today's draft facts would reintroduce a live dependency this view must
+// not have), and print-ready as-is: this is the one thing on the page NOT hidden by print:hidden.
+function ApprovedAssessmentDocument({
+  residentName,
+  snapshot,
+}: {
+  residentName: string;
+  snapshot: AssessmentDocumentSnapshot;
+}) {
+  const assessmentDateDisplay = formatCentralTimestamp(snapshot.assessmentDate) ?? snapshot.assessmentDate;
+  const approvedAtDisplay = formatCentralTimestamp(snapshot.approvedAt) ?? snapshot.approvedAt;
+
+  return (
+    <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card print:rounded-none print:border-none print:p-0 print:shadow-none print:[-webkit-print-color-adjust:exact] print:[print-color-adjust:exact]">
+      <div className="mb-6 border-b border-ivory-border pb-4">
+        <p className="font-sans text-label font-semibold uppercase tracking-widest text-muted">Serve Assessment</p>
+        <h2 className="font-serif text-card-title font-light text-body">{residentName}</h2>
+        <p className="mt-1 font-sans text-sm text-muted">Assessment date: {assessmentDateDisplay}</p>
+        <p className="font-sans text-sm text-muted">
+          Approved {approvedAtDisplay} by {snapshot.approvedBy}
+        </p>
+      </div>
+      <AssessmentDocumentSections sections={snapshot.sections} />
+    </div>
+  );
+}
+
+function AssessmentDocumentSections({ sections }: { sections: readonly ProjectedDomainSection[] }) {
+  if (sections.length === 0) {
+    return <p className="font-sans text-sm text-muted">Nothing was established in this assessment.</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      {sections.map((section) => (
+        <div key={section.domain}>
+          <h3 className="mb-2 font-sans text-label font-semibold uppercase tracking-widest text-muted">
+            {section.label}
+          </h3>
+          <div className="divide-y divide-ivory-border rounded-lg border border-ivory-border print:divide-ivory-border print:rounded-none print:border-0 print:border-t">
+            {section.fields.map((field) => {
+              const style = STATE_STYLES[field.state];
+              return (
+                <div key={field.fieldPath} className="px-4 py-2.5 print:px-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-sans text-sm text-body">{field.label}</p>
+                      {field.source === "profile" && (
+                        <span
+                          className="inline-flex items-center rounded-full bg-ivory-warm px-2 py-0.5 font-sans text-[11px] font-medium text-subtle"
+                          title="Already known from this person's Serve profile, not stated during this conversation"
+                        >
+                          From Serve profile
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-sans text-xs font-semibold ${style.className}`}>
+                        {field.state === "value" ? (field.displayValue ?? "—") : style.label}
+                      </span>
+                      {field.state === "uncertain" && field.displayValue && (
+                        <span className="font-sans text-xs text-muted">{field.displayValue}</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

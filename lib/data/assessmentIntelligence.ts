@@ -324,6 +324,7 @@ export async function resolveFactConflict(input: {
 export interface ApprovedFactRow {
   id: string;
   resident_id: string;
+  originating_assessment_session_id: string;
   field_path: string;
   value: unknown;
   assertion_state: string;
@@ -351,6 +352,27 @@ export async function getApprovedFactsForResident(residentId: string): Promise<A
   const all = (data as (ApprovedFactRow & { supersedes_fact_id: string | null })[] | null) ?? [];
   const supersededIds = new Set(all.map((f) => f.supersedes_fact_id).filter(Boolean));
   return all.filter((f) => !supersededIds.has(f.id));
+}
+
+/** Unlike getApprovedFactsForResident() above (deliberately resident-scoped, per
+ * assessment_approved_facts' own "a fact survives repeat assessments" design), this reads back
+ * exactly what ONE session's approval submitted — every row this session's approve_assessment_
+ * session() call originated, regardless of whether a later assessment has since superseded it.
+ * This is what a stored assessment snapshot must be rebuilt from when reconciling a missing one
+ * after the fact: "what this reviewer approved at this approval," not "the resident's current
+ * global fact picture," which could already include changes from an unrelated later session. */
+export async function getApprovedFactsForSession(assessmentSessionId: string): Promise<ApprovedFactRow[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("assessment_approved_facts")
+    .select("*")
+    .eq("originating_assessment_session_id", assessmentSessionId)
+    .order("approved_at", { ascending: true });
+  if (error) {
+    console.error("[getApprovedFactsForSession]", { assessmentSessionId, message: error.message });
+    return [];
+  }
+  return (data as ApprovedFactRow[] | null) ?? [];
 }
 
 export async function approveAssessmentSession(input: {
@@ -437,7 +459,7 @@ export async function getLatestDecision(
 
 export async function writeAssessmentOutput(input: {
   assessmentSessionId: string;
-  outputType: "internal_summary" | "client_email" | "proposal" | "axiscare_payload_preview" | "cinch_projection";
+  outputType: "internal_summary" | "client_email" | "proposal" | "axiscare_payload_preview" | "cinch_projection" | "assessment_document";
   content: Record<string, unknown>;
   generatedBy?: string;
 }): Promise<{ id: string } | null> {

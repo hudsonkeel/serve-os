@@ -22,6 +22,7 @@ import { WorkWithThisPersonStrip } from "@/components/residents/WorkWithThisPers
 import { ResidentTimeline } from "@/components/residents/ResidentTimeline";
 import { AssessmentSection } from "@/components/residents/AssessmentSection";
 import { getAssessmentSessionsForResident } from "@/lib/data/assessmentIntelligence";
+import { getCurrentAssessmentSummary } from "@/lib/actions/assessmentIntelligence";
 import { Badge } from "@/components/ui/Badge";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
@@ -140,6 +141,7 @@ export default async function ResidentDetailPage({
   const timelineEvents = await getResidentTimeline(id);
   const relationships = await getRelationshipsByResident(id);
   const assessmentSessions = await getAssessmentSessionsForResident(id);
+  const currentAssessmentState = await getCurrentAssessmentSummary(id);
   const residentDocuments = canManageEvidence ? await getPersonDocumentsForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
   const residentEvidence = canManageEvidence ? await getPersonEvidenceForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
   const canSeeRelationshipDetail = canManageEvidence || canEditProfile;
@@ -396,6 +398,7 @@ export default async function ResidentDetailPage({
             workingNotes={workingNotes}
             wellnessNotes={wellnessNotes}
             openFollowUps={openFollowUps}
+            currentAssessmentState={currentAssessmentState}
           />
 
           {/* C — Client Readiness. Collapsed by default (this is a CRM/

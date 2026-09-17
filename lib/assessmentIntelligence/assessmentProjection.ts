@@ -10,6 +10,7 @@
 import { FIELD_REGISTRY, DOMAIN_LABELS, type AssessmentDomain } from "./domainRegistry.ts";
 import type { AssertionState } from "./factTypes.ts";
 import type { CanonicalResidentProfileFacts } from "./coverage.ts";
+import type { ApprovedFactInput } from "./reviewExceptions.ts";
 
 // serve_relationship_intelligence deliberately excluded -- domainRegistry.ts's own comment marks
 // it Serve-internal sales/relationship-pipeline material, never part of the client-facing
@@ -39,6 +40,28 @@ export interface EffectiveFact {
   readonly value: unknown;
   readonly assertionState: AssertionState;
   readonly source: EffectiveFactSource;
+}
+
+/** The one shared translation from "what got approved" (ApprovedFactInput, reviewExceptions.ts's
+ * shape for the approval payload) to "what the projection renders" (EffectiveFact) -- used by
+ * both AssessmentReviewPanel.tsx's live pre-approval preview and, at approval time,
+ * assessmentSnapshot.ts's buildApprovedAssessmentSnapshot(). Extracted so the two can never
+ * render a different picture of "what this assessment established" than what was actually
+ * submitted -- one transform, two callers, never two independently-maintained copies.
+ *
+ * Typed as a Pick, not the full ApprovedFactInput, so the same transform also serves a THIRD
+ * caller with a structurally-compatible but distinct shape: ApprovedFactRow, the row already
+ * durably written to assessment_approved_facts, which reconcileApprovedAssessmentArtifacts()
+ * reads back when reconstructing a snapshot without a fresh approval payload in hand. */
+export function approvedFactInputsToEffectiveFacts(
+  facts: readonly Pick<ApprovedFactInput, "field_path" | "value" | "assertion_state">[]
+): EffectiveFact[] {
+  return facts.map((f) => ({
+    fieldPath: f.field_path,
+    value: f.value,
+    assertionState: f.assertion_state as AssertionState,
+    source: "assessment" as const,
+  }));
 }
 
 /** Combines this assessment's own effective facts with canonical profile facts, assessment
