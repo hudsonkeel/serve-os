@@ -11,7 +11,7 @@ interface TopNavProps {
 
 export function TopNav({ title = "Dashboard", currentUser, communitySwitcher }: TopNavProps) {
   return (
-    <header className="sticky top-0 z-20 hidden h-[72px] items-center gap-6 border-b border-white/10 bg-navy px-8 md:flex">
+    <header className="sticky top-0 z-20 hidden h-[72px] items-center gap-6 border-b border-white/10 bg-navy px-8 md:flex print:hidden">
       {/* Page title */}
       <div className="flex-1">
         <p className="font-sans text-label font-semibold uppercase tracking-[0.16em] text-white/55">

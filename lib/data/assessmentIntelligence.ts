@@ -2,40 +2,65 @@ import "server-only";
 import { createServerClient } from "../supabase/server.ts";
 import { getPersonVendorIdentityLinksForSubject } from "./personVendorIdentityLinks.ts";
 import type { AxisCareIdentityLinkState } from "../assessmentIntelligence/axiscareReadiness.ts";
-import type { NormalizedDraftFact } from "../assessmentIntelligence/factTypes.ts";
+import { decideStaleRecovery, isStaleProcessing, type QueueableSession } from "../assessmentIntelligence/processingQueue.ts";
+import {
+  getAssessmentSession,
+  getCombinedTranscriptText,
+  getMostRecentSourceIdForSession,
+  claimSessionForProcessing,
+  recordProcessingDiagnosticStage,
+  markSessionFailed,
+  writeDraftFacts,
+  getDraftFactsForSession,
+  getOpenConflictsForSession,
+  getConflictsForSessionByStatus,
+  detectAndRecordConflicts,
+  updateAssessmentSessionStatus,
+  type AssessmentSessionRecord,
+  type DraftFactRow,
+  type FactConflictRow,
+} from "../assessmentIntelligence/backgroundCore/dataAccess.ts";
 
 // Data layer for the assessment intelligence tables (supabase/migrations/
 // 20260901000000_create_assessment_intelligence_layer.sql). Machine-generated rows (draft
 // facts, decisions, outputs) are written directly via the service-role client, matching how
 // intake_sources/intake_assessment_sessions are already written elsewhere in this repo.
 // Approval is the one governed, atomic action — routed through approve_assessment_session().
+//
+// SPLIT (2026-09-17): everything advanceQueuedAssessmentProcessing() needs (claim, mark-failed,
+// diagnostic-stage writes, draft facts, conflict detection, transcript read, status update) now
+// lives in ../assessmentIntelligence/backgroundCore/dataAccess.ts -- a module with no
+// `import "server-only"` and no React/Next dependency, so it's safely importable from a
+// standalone Netlify Background Function, which this file (still guarded) cannot be. Imported
+// above and re-exported below so every existing Next.js Server Action/Route Handler import of
+// these names is unaffected -- this is the one implementation, never duplicated. Everything else
+// in this file (approval, decisions, outputs, audio, retry/stale-recovery, the admin diagnostics
+// list, AxisCare identity) stays here unchanged -- none of it is needed outside Next's own
+// server runtime.
 
-export interface AssessmentSessionRecord {
-  id: string;
-  resident_id: string;
-  status: string;
-  initiated_from: string;
-  started_by: string;
-  started_at: string;
-  finished_at: string | null;
-  // Canonical FK, additive alongside community_name_snapshot. Null is
-  // structurally valid (see
-  // supabase/migrations/20260902220000_add_community_id_to_intake_assessment_sessions.sql).
-  community_id: string | null;
-}
+export {
+  getAssessmentSession,
+  getCombinedTranscriptText,
+  getMostRecentSourceIdForSession,
+  claimSessionForProcessing,
+  recordProcessingDiagnosticStage,
+  markSessionFailed,
+  writeDraftFacts,
+  getDraftFactsForSession,
+  getOpenConflictsForSession,
+  detectAndRecordConflicts,
+  updateAssessmentSessionStatus,
+  type AssessmentSessionRecord,
+  type DraftFactRow,
+  type FactConflictRow,
+};
 
-export async function getAssessmentSession(assessmentSessionId: string): Promise<AssessmentSessionRecord | null> {
-  const supabase = createServerClient();
-  const { data, error } = await supabase
-    .from("intake_assessment_sessions")
-    .select("*")
-    .eq("id", assessmentSessionId)
-    .maybeSingle();
-  if (error) {
-    console.error("[getAssessmentSession]", { assessmentSessionId, message: error.message });
-    return null;
-  }
-  return data as AssessmentSessionRecord | null;
+function toQueueableSession(session: AssessmentSessionRecord): QueueableSession {
+  return {
+    status: session.status,
+    processingAttemptCount: session.processing_attempt_count,
+    processingClaimedAt: session.processing_claimed_at,
+  };
 }
 
 export async function getAssessmentSessionsForResident(residentId: string): Promise<AssessmentSessionRecord[]> {
@@ -50,27 +75,6 @@ export async function getAssessmentSessionsForResident(residentId: string): Prom
     return [];
   }
   return (data as AssessmentSessionRecord[] | null) ?? [];
-}
-
-/** Aggregates transcript_text across every intake_sources row for a session — the
- * source-agnostic input boundary (docs/architecture/
- * ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md §3A). Works identically whether the text came
- * from a pasted-transcript entry or (later) a transcription pipeline. */
-export async function getCombinedTranscriptText(assessmentSessionId: string): Promise<string> {
-  const supabase = createServerClient();
-  const { data, error } = await supabase
-    .from("intake_sources")
-    .select("transcript_text, created_at")
-    .eq("assessment_session_id", assessmentSessionId)
-    .order("created_at", { ascending: true });
-  if (error) {
-    console.error("[getCombinedTranscriptText]", { assessmentSessionId, message: error.message });
-    return "";
-  }
-  return ((data as { transcript_text: string | null }[] | null) ?? [])
-    .map((row) => row.transcript_text)
-    .filter((text): text is string => Boolean(text && text.trim()))
-    .join("\n\n---\n\n");
 }
 
 export async function createPastedTranscriptSource(input: {
@@ -98,145 +102,229 @@ export async function createPastedTranscriptSource(input: {
   return data as { id: string };
 }
 
-export async function updateAssessmentSessionStatus(assessmentSessionId: string, status: string): Promise<boolean> {
+// ─── Asynchronous extraction queue (2026-09-16) ──────────────────────────────────────────────
+// Every transition below uses the same conditional-update-then-check-affected-rows pattern:
+// UPDATE ... WHERE id = ? AND <the exact precondition this transition requires>, then look at
+// whether any row was actually affected. This is what makes concurrent/duplicate dispatch,
+// duplicate background-worker invocations, and a double-clicked Retry all safe — Postgres
+// guarantees only one concurrent UPDATE against the same row can see the precondition still
+// true; every loser's UPDATE affects zero rows and is a harmless no-op, never a duplicate
+// extraction run or a corrupted state. Same pattern feature/assessment-aws-transcription-
+// pipeline's claimAssessmentProcessingStage() used for its own (more elaborate) multi-stage
+// claim — proven here in its smallest form, since extraction is one bounded step.
+
+/** Operator-triggered retry: requeues a failed session, clearing its failure metadata, WITHOUT
+ * resetting processing_attempt_count — retry counts toward the same bounded attempt policy as
+ * automatic recovery, never an unlimited escape hatch. Only proceeds if the session is currently
+ * 'failed' AND under the attempt cap, checked atomically in the same update as the requeue — a
+ * double-click or concurrent retry attempt loses safely (see the module comment above) rather
+ * than requeuing twice. */
+export async function requeueSessionForRetry(
+  assessmentSessionId: string,
+  maxAttempts: number
+): Promise<boolean> {
   const supabase = createServerClient();
-  const { error } = await supabase.from("intake_assessment_sessions").update({ status }).eq("id", assessmentSessionId);
+  const { data, error } = await supabase
+    .from("intake_assessment_sessions")
+    .update({
+      status: "queued",
+      failure_reason: null,
+      failed_at: null,
+      processing_diagnostic_stage: null,
+      processing_diagnostic_stage_at: null,
+      processing_diagnostic_wrapper_fetch_status: null,
+    })
+    .eq("id", assessmentSessionId)
+    .eq("status", "failed")
+    .lt("processing_attempt_count", maxAttempts)
+    .select("id");
   if (error) {
-    console.error("[updateAssessmentSessionStatus]", { assessmentSessionId, status, message: error.message });
+    console.error("[requeueSessionForRetry]", { assessmentSessionId, message: error.message });
     return false;
   }
-  return true;
+  return (data?.length ?? 0) > 0;
 }
 
-export async function writeDraftFacts(input: {
-  assessmentSessionId: string;
-  sourceId: string | null;
-  facts: NormalizedDraftFact[];
-  extractionRunRef: string;
-  modelVersion: string;
-}): Promise<number> {
-  if (input.facts.length === 0) return 0;
+/** Finds sessions genuinely stuck at 'processing' (claimed long enough ago that the worker
+ * holding that claim is presumed dead — crashed, or killed by a platform timeout) and, per
+ * decideStaleRecovery()'s bounded policy, either requeues them for another attempt or marks
+ * them permanently failed once the attempt cap is reached. Called by the scheduled dispatcher
+ * before it looks for newly-queued work, so a stuck session gets the exact same recovery path
+ * regardless of how it got stuck.
+ *
+ * A 'processing' row with processing_claimed_at IS NULL is never eligible here — that column is
+ * written exclusively by claimSessionForProcessing(), so its absence means this row was never
+ * claimed by the new async worker at all (every session that predates the 20260916000000
+ * migration has it NULL by construction, including long-abandoned legacy sessions). Such a row
+ * is left untouched, not swept up and silently resurrected as if it were genuinely-queued new
+ * work — see isStaleProcessing()'s own comment for the incident this fixes. */
+export async function recoverStaleProcessingSessions(staleAfterMs: number, maxAttempts: number): Promise<number> {
   const supabase = createServerClient();
-  const rows = input.facts.map((f) => ({
-    assessment_session_id: input.assessmentSessionId,
-    source_id: input.sourceId,
-    domain: f.domain,
-    field_path: f.fieldPath,
-    value: f.value,
-    assertion_state: f.assertionState,
-    collection_method: f.collectionMethod,
-    reporter: f.reporter,
-    evidence: f.evidence,
-    confidence: f.confidence,
-    extraction_run_ref: input.extractionRunRef,
-    model_version: input.modelVersion,
-  }));
-  const { error } = await supabase.from("assessment_draft_facts").insert(rows);
+  const { data, error } = await supabase.from("intake_assessment_sessions").select("*").eq("status", "processing");
   if (error) {
-    console.error("[writeDraftFacts]", { message: error.message });
+    console.error("[recoverStaleProcessingSessions]", { message: error.message });
     return 0;
   }
-  return rows.length;
-}
+  const sessions = (data as AssessmentSessionRecord[] | null) ?? [];
+  const now = Date.now();
+  let recovered = 0;
 
-export interface DraftFactRow {
-  id: string;
-  assessment_session_id: string;
-  field_path: string;
-  value: unknown;
-  assertion_state: string;
-  collection_method: string | null;
-  reporter: string | null;
-  evidence: string | null;
-  confidence: string;
-}
+  for (const session of sessions) {
+    const queueable = toQueueableSession(session);
+    if (!isStaleProcessing(queueable, now, staleAfterMs)) continue;
 
-export async function getDraftFactsForSession(assessmentSessionId: string): Promise<DraftFactRow[]> {
-  const supabase = createServerClient();
-  const { data, error } = await supabase
-    .from("assessment_draft_facts")
-    .select("*")
-    .eq("assessment_session_id", assessmentSessionId)
-    .order("field_path", { ascending: true });
-  if (error) {
-    console.error("[getDraftFactsForSession]", { assessmentSessionId, message: error.message });
-    return [];
-  }
-  return (data as DraftFactRow[] | null) ?? [];
-}
-
-export interface FactConflictRow {
-  id: string;
-  field_path: string;
-  fact_a_draft_id: string;
-  fact_b_draft_id: string;
-  status: string;
-}
-
-/** Detects and persists conflicts: two draft facts for the same field_path with different
- * confirmed_yes/confirmed_no assertion states. Called after extraction writes draft facts. */
-export async function detectAndRecordConflicts(residentId: string, assessmentSessionId: string): Promise<number> {
-  const supabase = createServerClient();
-  const facts = await getDraftFactsForSession(assessmentSessionId);
-  const byFieldPath = new Map<string, DraftFactRow[]>();
-  for (const fact of facts) {
-    const list = byFieldPath.get(fact.field_path) ?? [];
-    list.push(fact);
-    byFieldPath.set(fact.field_path, list);
-  }
-
-  let created = 0;
-  for (const [fieldPath, group] of byFieldPath) {
-    const confirmedYes = group.find((f) => f.assertion_state === "confirmed_yes");
-    const confirmedNo = group.find((f) => f.assertion_state === "confirmed_no");
-    if (confirmedYes && confirmedNo) {
-      const { error } = await supabase.from("assessment_fact_conflicts").insert([
-        {
-          resident_id: residentId,
-          field_path: fieldPath,
-          fact_a_draft_id: confirmedYes.id,
-          fact_b_draft_id: confirmedNo.id,
-          status: "open",
-        },
-      ]);
-      if (!error) created++;
-      else console.error("[detectAndRecordConflicts]", { fieldPath, message: error.message });
+    const decision = decideStaleRecovery(queueable, maxAttempts);
+    if (decision.action === "fail") {
+      const { error: failError } = await supabase
+        .from("intake_assessment_sessions")
+        .update({ status: "failed", failure_reason: decision.reason, failed_at: new Date().toISOString() })
+        .eq("id", session.id)
+        .eq("status", "processing");
+      if (!failError) recovered++;
+      continue;
     }
+
+    // Requeue -- re-affirm staleness in the WHERE clause itself so a worker that finished and
+    // wrote a terminal status in the moment between the read above and this write is never
+    // clobbered back to 'queued'. isStaleProcessing() above already guarantees
+    // processing_claimed_at is non-null here, so this can compare it directly.
+    const cutoffIso = new Date(now - staleAfterMs).toISOString();
+    const { data: updated, error: requeueError } = await supabase
+      .from("intake_assessment_sessions")
+      .update({
+        status: "queued",
+        processing_claimed_at: null,
+        processing_diagnostic_stage: null,
+        processing_diagnostic_stage_at: null,
+        processing_diagnostic_wrapper_fetch_status: null,
+      })
+      .eq("id", session.id)
+      .eq("status", "processing")
+      .lt("processing_claimed_at", cutoffIso)
+      .select("id");
+    if (!requeueError && (updated?.length ?? 0) > 0) recovered++;
   }
-  return created;
+
+  return recovered;
 }
 
-export async function getOpenConflictsForSession(assessmentSessionId: string): Promise<FactConflictRow[]> {
+export async function getQueuedSessionsForDispatch(limit: number): Promise<AssessmentSessionRecord[]> {
   const supabase = createServerClient();
-  const { data: sessionRow } = await supabase
-    .from("intake_assessment_sessions")
-    .select("resident_id")
-    .eq("id", assessmentSessionId)
-    .maybeSingle();
-  if (!sessionRow) return [];
-
-  // Conflicts are resident-scoped but only meaningful for this review if their draft facts
-  // belong to this session — join through assessment_draft_facts' session id.
-  const draftFacts = await getDraftFactsForSession(assessmentSessionId);
-  const sessionDraftIds = new Set(draftFacts.map((f) => f.id));
-
   const { data, error } = await supabase
-    .from("assessment_fact_conflicts")
+    .from("intake_assessment_sessions")
     .select("*")
-    .eq("resident_id", (sessionRow as { resident_id: string }).resident_id)
-    .eq("status", "open");
+    .eq("status", "queued")
+    .order("started_at", { ascending: true })
+    .limit(limit);
   if (error) {
-    console.error("[getOpenConflictsForSession]", { assessmentSessionId, message: error.message });
+    console.error("[getQueuedSessionsForDispatch]", { message: error.message });
     return [];
   }
-  return ((data as FactConflictRow[] | null) ?? []).filter(
-    (c) => sessionDraftIds.has(c.fact_a_draft_id) || sessionDraftIds.has(c.fact_b_draft_id)
-  );
+  return (data as AssessmentSessionRecord[] | null) ?? [];
+}
+
+export interface ProcessingDiagnosticRow {
+  readonly id: string;
+  readonly residentId: string;
+  readonly residentName: string | null;
+  readonly status: string;
+  readonly processingAttemptCount: number;
+  readonly processingClaimedAt: string | null;
+  readonly processingDiagnosticStage: string | null;
+  readonly processingDiagnosticStageAt: string | null;
+  // Paired with processingDiagnosticStage==='worker_wrapper_fetch_failed' -- see
+  // AssessmentSessionRecord's own field comment. A bounded HTTP status integer only, never a
+  // message/body/URL.
+  readonly wrapperFetchStatus: number | null;
+  // Admin/diagnostic-only detail -- never the operator-facing message (SAFE_PROCESSING_FAILURE_
+  // MESSAGE), see markSessionFailed()'s comment.
+  readonly failureReason: string | null;
+  readonly startedAt: string;
+}
+
+/** Admin-only diagnostic listing (app/settings/page.tsx, gated the same as the manual dispatch
+ * trigger) -- every session currently in flight in the async queue, most recent first, so the
+ * next dispatch/claim attempt's exact stopping point is visible without Netlify log access. Not
+ * used by, and must never be wired into, the normal assessor-facing UI. */
+export async function getSessionsWithProcessingDiagnostics(limit: number): Promise<ProcessingDiagnosticRow[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("intake_assessment_sessions")
+    .select("*, residents(display_name, full_name, first_name, last_name)")
+    .in("status", ["queued", "processing", "failed"])
+    .order("started_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.error("[getSessionsWithProcessingDiagnostics]", { message: error.message });
+    return [];
+  }
+  type ResidentNameFields = {
+    display_name: string | null;
+    full_name: string | null;
+    first_name: string | null;
+    last_name: string | null;
+  };
+  const rows = (data as (AssessmentSessionRecord & { residents: ResidentNameFields | null })[] | null) ?? [];
+  return rows.map((row) => ({
+    id: row.id,
+    residentId: row.resident_id,
+    residentName:
+      row.residents?.display_name ||
+      row.residents?.full_name ||
+      [row.residents?.first_name, row.residents?.last_name].filter(Boolean).join(" ") ||
+      null,
+    status: row.status,
+    processingAttemptCount: row.processing_attempt_count,
+    processingClaimedAt: row.processing_claimed_at,
+    processingDiagnosticStage: row.processing_diagnostic_stage,
+    processingDiagnosticStageAt: row.processing_diagnostic_stage_at,
+    wrapperFetchStatus: row.processing_diagnostic_wrapper_fetch_status,
+    failureReason: row.failure_reason,
+    startedAt: row.started_at,
+  }));
+}
+
+/** Every conflict for this session regardless of status — the review screen needs to keep
+ * showing a field as "conflicting" (with its resolution, if any) even after it's been
+ * resolved, rather than having it silently vanish and its rejected value fall through to
+ * auto-accepted. */
+export async function getConflictsForSession(assessmentSessionId: string): Promise<FactConflictRow[]> {
+  return getConflictsForSessionByStatus(assessmentSessionId, "all");
+}
+
+/** Durably resolves a conflict: records which of the conflicting facts (or, for a singleton
+ * self-flagged conflict, the one fact) the reviewer confirmed as correct. Reuses the existing
+ * status/resolved_by/resolved_at columns (previously written 'open' at creation and never
+ * updated by any code path) plus resolved_fact_id (20260915020000_add_assessment_fact_conflict_
+ * resolution.sql) — never overwrites resolution_note, which stays free for a human note.
+ * Unconditional (no "must currently be open" guard): a reviewer changing their mind and picking
+ * a different value is expected, ordinary usage, not a race to guard against. */
+export async function resolveFactConflict(input: {
+  conflictId: string;
+  resolvedFactId: string;
+  resolvedBy: string;
+}): Promise<{ error?: string }> {
+  const supabase = createServerClient();
+  const { error } = await supabase
+    .from("assessment_fact_conflicts")
+    .update({
+      status: "resolved",
+      resolved_fact_id: input.resolvedFactId,
+      resolved_by: input.resolvedBy,
+      resolved_at: new Date().toISOString(),
+    })
+    .eq("id", input.conflictId);
+  if (error) {
+    console.error("[resolveFactConflict]", { conflictId: input.conflictId, message: error.message });
+    return { error: error.message };
+  }
+  return {};
 }
 
 export interface ApprovedFactRow {
   id: string;
   resident_id: string;
+  originating_assessment_session_id: string;
   field_path: string;
   value: unknown;
   assertion_state: string;
@@ -264,6 +352,27 @@ export async function getApprovedFactsForResident(residentId: string): Promise<A
   const all = (data as (ApprovedFactRow & { supersedes_fact_id: string | null })[] | null) ?? [];
   const supersededIds = new Set(all.map((f) => f.supersedes_fact_id).filter(Boolean));
   return all.filter((f) => !supersededIds.has(f.id));
+}
+
+/** Unlike getApprovedFactsForResident() above (deliberately resident-scoped, per
+ * assessment_approved_facts' own "a fact survives repeat assessments" design), this reads back
+ * exactly what ONE session's approval submitted — every row this session's approve_assessment_
+ * session() call originated, regardless of whether a later assessment has since superseded it.
+ * This is what a stored assessment snapshot must be rebuilt from when reconciling a missing one
+ * after the fact: "what this reviewer approved at this approval," not "the resident's current
+ * global fact picture," which could already include changes from an unrelated later session. */
+export async function getApprovedFactsForSession(assessmentSessionId: string): Promise<ApprovedFactRow[]> {
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("assessment_approved_facts")
+    .select("*")
+    .eq("originating_assessment_session_id", assessmentSessionId)
+    .order("approved_at", { ascending: true });
+  if (error) {
+    console.error("[getApprovedFactsForSession]", { assessmentSessionId, message: error.message });
+    return [];
+  }
+  return (data as ApprovedFactRow[] | null) ?? [];
 }
 
 export async function approveAssessmentSession(input: {
@@ -350,7 +459,7 @@ export async function getLatestDecision(
 
 export async function writeAssessmentOutput(input: {
   assessmentSessionId: string;
-  outputType: "internal_summary" | "client_email" | "proposal" | "axiscare_payload_preview" | "cinch_projection";
+  outputType: "internal_summary" | "client_email" | "proposal" | "axiscare_payload_preview" | "cinch_projection" | "assessment_document";
   content: Record<string, unknown>;
   generatedBy?: string;
 }): Promise<{ id: string } | null> {

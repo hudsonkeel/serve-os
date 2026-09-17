@@ -7,12 +7,16 @@ import {
   SlidersHorizontal,
   UserCircle,
   Users,
+  Wrench,
 } from "lucide-react";
 import { PageContainer } from "@/components/PageContainer";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { getCommunityMetrics } from "@/lib/data/communityMetrics";
 import { buildCurrentUserDisplay } from "@/lib/auth/display";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { AssessmentProcessingDispatchTrigger } from "@/components/settings/AssessmentProcessingDispatchTrigger";
+import { AssessmentProcessingDiagnostics } from "@/components/settings/AssessmentProcessingDiagnostics";
+import { getSessionsWithProcessingDiagnostics } from "@/lib/data/assessmentIntelligence";
 import { canViewManagementSettings } from "@/lib/navigation/permissions";
 import {
   buildIntegrationDefinitions,
@@ -108,6 +112,12 @@ export default async function SettingsPage() {
   // response or rendered anywhere.
   const resendConnected = Boolean(process.env.RESEND_API_KEY);
   const integrations = buildIntegrationDefinitions({ resendConnected });
+
+  // Admin/diagnostic-only — only fetched for roles that can see the Assessment Processing
+  // section at all (same gate as the manual dispatch trigger below). processingDiagnosticsFetchedAt
+  // seeds the table's own "Last updated" display before its first client-side Refresh click.
+  const processingDiagnostics = canViewManagement ? await getSessionsWithProcessingDiagnostics(25) : [];
+  const processingDiagnosticsFetchedAt = new Date().toISOString();
 
   return (
     <PageContainer title="Settings">
@@ -265,6 +275,23 @@ export default async function SettingsPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </SettingsSection>
+
+            <SettingsSection
+              icon={Wrench}
+              title="Assessment Processing (Diagnostic)"
+              description="Admin/manager tooling only, not the normal assessor workflow. Manually runs the same background dispatcher that automatically picks up queued assessments in production — useful on branch/preview deploys, where Netlify does not run the scheduled dispatcher on its own."
+            >
+              <AssessmentProcessingDispatchTrigger />
+              <div className="mt-5 border-t border-ivory-border pt-5">
+                <p className="mb-3 font-sans text-sm font-medium text-body">
+                  In-flight sessions
+                </p>
+                <AssessmentProcessingDiagnostics
+                  initialRows={processingDiagnostics}
+                  initialFetchedAt={processingDiagnosticsFetchedAt}
+                />
               </div>
             </SettingsSection>
 

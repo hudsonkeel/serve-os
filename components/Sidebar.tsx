@@ -35,7 +35,7 @@ export function Sidebar({ currentUser }: { currentUser: CurrentUserDisplay }) {
   const utilityItems = getVisibleUtilityItems(currentUser.role);
 
   return (
-    <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 flex-col bg-navy shadow-sidebar md:flex">
+    <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 flex-col bg-navy shadow-sidebar md:flex print:hidden">
       {/* ─── Logo ─── */}
       <div className="border-b border-white/8 px-6 py-4">
         <Link href="/workspace" aria-label="Go to Today's Work">

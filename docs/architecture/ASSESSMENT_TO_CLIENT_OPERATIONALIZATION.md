@@ -281,6 +281,67 @@ creation, retry states.
 
 ---
 
+## 11. Full lifecycle expansion (2026-09-17) — architecture decisions preserved for future slices
+
+Following the "Assessment Review Experience" investigation and the expanded target lifecycle
+(conversation → canonical facts → full review → approved assessment → immutable artifact →
+Current Assessment → automatic Audit Readiness evidence → responsible-party onboarding →
+PandaDoc packet → signed return → evidence mapping → existing Service Agreement enrollment →
+human Send to AxisCare / Activate Client), these decisions are locked in and must not be
+re-litigated or silently drifted from by a future session:
+
+1. **The approved canonical assessment (`assessment_approved_facts`) is the source of truth.**
+   Nothing downstream — the rendered artifact, the PDF, AxisCare, Cinch — ever becomes a second
+   place facts live. Every projection reads from it; none of them write back to it.
+2. **The professional assessment artifact is a projection, never the data model.** This slice's
+   `assessmentProjection.ts` is the precedent: it renders already-atomic canonical facts into a
+   domain-grouped, human-readable structure, with zero re-extraction or LLM narrative
+   regeneration. The old Serve Intake MVP's document-as-data-model architecture (a single
+   LLM-synthesized narrative blob with no atomic fact layer underneath) is explicitly not being
+   restored — see the "Reconciling with the prior Serve Intake MVP" investigation.
+3. **Approval will eventually create an immutable assessment snapshot** — a new
+   `assessment_outputs` row (`output_type: "assessment_document"`), written once at approval.
+   `assessment_outputs` is already create-only (no update function exists today), so this is
+   immutable by construction, not by added discipline. Not built in this slice.
+4. **Current Assessment reuses the existing `CR_ASSESSMENT_CURRENT` evidence/supersession
+   chain**, not a new concept. The most recent `lifecycle_status='active'` `person_evidence` row
+   for that requirement, `external_reference = assessment_session_id`, already IS "the current
+   assessment" — confirmed by reading `recordAssessmentEvidence()` and its
+   `supersedesEvidenceId` chaining. A future slice only needs to *surface* this, not invent it.
+5. **Formal PDF generation is downstream rendering, and must never gate assessment approval
+   succeeding.** Approval (writing approved facts, the JSON snapshot, and `CR_ASSESSMENT_CURRENT`
+   evidence) must remain independently successful even if PDF rendering fails or a rendering
+   dependency (e.g. Chromium/Playwright) is unavailable in a given environment. If/when PDF
+   generation is added to the approval flow, it must be a best-effort step whose failure is
+   surfaced, never one that rolls back or blocks the facts/evidence that already succeeded —
+   same discipline `recordAssessmentEvidence()` already uses relative to `approveAssessmentSession()`
+   (sequential, not transactional, failure reported honestly).
+6. **Assessment approval should automatically satisfy `CR_ASSESSMENT_CURRENT` with no manual
+   upload** — already true today via `recordAssessmentEvidence()`, called from
+   `approveAssessment()`. A future slice extends this call with a real `document_id` (once a
+   rendered artifact exists); it does not build a second evidence-writing path.
+7. **Canonical Responsible Party/contact promotion is a subsequent slice, not this one.** This
+   slice reads existing canonical resident columns (`family_contact_name`, `physician_name`/
+   `physician_phone`, etc.) for coverage and display, but does not create a new contact entity or
+   promote approved `important_people.*` facts into one. Investigation confirmed no canonical
+   contact/person table exists anywhere in this codebase today — it will be genuinely new work.
+8. **PandaDoc packet creation/return is a subsequent integration**, confirmed entirely absent
+   from this codebase today (no code, config, or dependency). Not started in this slice.
+9. **A returned signed Service Agreement must reuse the existing Service Agreement evidence →
+   `inactive_client` enrollment path** (`recordServiceAgreementEvidenceAction` →
+   `CR_SERVICE_AGREEMENT_AND_DISCLOSURE_SIGNED` evidence → `enrollResidentAsInactiveClient()`),
+   never a second enrollment mechanism. A future PandaDoc webhook handler is a new *trigger* for
+   this same path, not a parallel path.
+10. **One signed artifact may satisfy multiple requirements via the existing
+    `requirement_evidence_links` many-to-many mechanism** (already built, currently unused by the
+    assessment/Service Agreement flow) — no new "one document, many requirements" mechanism
+    should ever be invented; extend this one.
+11. **Send to AxisCare and Activate Client remain human-triggered actions**, unchanged from §7/§8
+    above — nothing in the expanded lifecycle changes this. Assessment intelligence continues to
+    inform business actions, never to authorize them automatically.
+
+---
+
 ## Before I start building
 
 This is a large, multi-table, multi-workflow build. Two things I'd like confirmed rather than

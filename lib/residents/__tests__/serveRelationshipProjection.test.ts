@@ -145,6 +145,113 @@ test("AxisCare match always wins over a conflicting CRM relationship signal (Axi
   assert.equal(result.relationshipSource, "axiscare");
 });
 
+// ─── Slice 1: Service Agreement -> Enrolled Inactive Client (2026-09-15) ─
+//
+// Canonical lifecycle: Assessment creates knowledge. A signed Service
+// Agreement establishes the enrolled Serve Client relationship as
+// Inactive by default (relationship_type = 'inactive_client' on the
+// existing `relationships` CRM table — see
+// convert_resident_prospect_to_inactive_client(), supabase/migrations/
+// 20260915000000_add_service_agreement_client_enrollment.sql). Activation
+// (inactive_client -> active_client) is a separate, later, explicit
+// action not built in this slice.
+
+test("a CRM relationship of type inactive_client deterministically projects as Inactive Client — no correction required for this normal state", () => {
+  const result = projectServeRelationship({
+    ...BASE,
+    activeRelationships: [{ relationshipType: "inactive_client", stage: "won", status: "active" }],
+  });
+  assert.equal(result.relationship, "inactive_client");
+  assert.equal(result.relationshipSource, "crm_relationship");
+});
+
+test("assessment approval alone (no relationship of any kind on record) never produces a client — still Prospect/No Current Relationship, exactly as before this slice", () => {
+  // Simulates a resident who has been assessed and approved but has NOT
+  // had a Service Agreement recorded — approveAssessment() and the
+  // AxisCare/Cinch preview actions never touch `relationships` at all
+  // (see lib/actions/assessmentIntelligence.ts), so there is nothing here
+  // for the projection to reflect beyond whatever existed before
+  // approval.
+  const withOnlyProspect = projectServeRelationship({
+    ...BASE,
+    activeRelationships: [{ relationshipType: "resident_prospect", stage: "assessment_completed", status: "active" }],
+  });
+  assert.equal(withOnlyProspect.relationship, "prospect");
+
+  const withNothingAtAll = projectServeRelationship(BASE);
+  assert.equal(withNothingAtAll.relationship, "no_current_relationship");
+});
+
+test("an inactive_client relationship does not become Active merely because AxisCare/Cinch preview evidence exists — those are display-only dimensions the projection never lets influence relationship status", () => {
+  // hasCinchEvidence models "a Cinch projection has been generated" —
+  // generateCinchProjection()/generateAxisCarePreview() only ever write
+  // to assessment_outputs/assessment_decisions; projectServeRelationship()
+  // has no input at all for "a preview was generated," so there is no
+  // path by which running those actions could promote inactive_client to
+  // active_client. This test proves the one input that IS shared
+  // (hasCinchEvidence) stays confined to deliverySystem and never leaks
+  // into `relationship`.
+  const result = projectServeRelationship({
+    ...BASE,
+    activeRelationships: [{ relationshipType: "inactive_client", stage: "won", status: "active" }],
+    hasCinchEvidence: true,
+  });
+  assert.equal(result.relationship, "inactive_client");
+  assert.equal(result.deliverySystem, "cinch");
+});
+
+test("active_client still takes priority over a co-existing inactive_client row — activation, once real, is never masked by the enrollment state", () => {
+  const result = projectServeRelationship({
+    ...BASE,
+    activeRelationships: [
+      { relationshipType: "inactive_client", stage: "won", status: "active" },
+      { relationshipType: "active_client", stage: "won", status: "active" },
+    ],
+  });
+  assert.equal(result.relationship, "active_client");
+  assert.equal(result.relationshipSource, "crm_relationship");
+});
+
+test("an AxisCare match still overrides a CRM-sourced inactive_client, exactly as it already overrides a CRM-sourced active_client (AxisCare is canonical external client repository)", () => {
+  const result = projectServeRelationship({
+    ...BASE,
+    axiscareMatch: { axiscareId: "9", operationalBucket: "active_client", identityStatus: "confirmed" },
+    activeRelationships: [{ relationshipType: "inactive_client", stage: "won", status: "active" }],
+  });
+  assert.equal(result.relationship, "active_client");
+  assert.equal(result.relationshipSource, "axiscare");
+});
+
+test("the existing human correction mechanism still overrides a CRM-sourced inactive_client when intentionally used, and still requires a correction record to do so", () => {
+  const natural = projectServeRelationship({
+    ...BASE,
+    activeRelationships: [{ relationshipType: "inactive_client", stage: "won", status: "active" }],
+  });
+  assert.equal(natural.relationship, "inactive_client");
+  assert.equal(natural.relationshipSource, "crm_relationship");
+
+  // No correction on record — the natural inactive_client state stands
+  // on its own, with no correction of any kind.
+  const withoutCorrection = applyServeRelationshipCorrection(natural, null);
+  assert.equal(withoutCorrection.relationship, "inactive_client");
+  assert.equal(withoutCorrection.relationshipSource, "crm_relationship");
+  assert.equal(withoutCorrection.correction, null);
+
+  // A human intentionally overrides it — the correction mechanism is
+  // preserved and still governs display when actually used.
+  const correction: ServeRelationshipCorrection = {
+    newValue: "active_client",
+    previousValue: "inactive_client",
+    actor: "Elizabeth",
+    rationale: "Family confirmed services already began; enrollment record hadn't caught up yet.",
+    createdAt: "2026-09-15T00:00:00.000Z",
+  };
+  const withCorrection = applyServeRelationshipCorrection(natural, correction);
+  assert.equal(withCorrection.relationship, "active_client");
+  assert.equal(withCorrection.relationshipSource, "human_correction");
+  assert.equal(withCorrection.hasConflict, false);
+});
+
 test("delivery system is 'cinch' when only staged CINCH evidence exists, 'none' when neither exists", () => {
   const cinchOnly = projectServeRelationship({ ...BASE, hasCinchEvidence: true });
   assert.equal(cinchOnly.deliverySystem, "cinch");

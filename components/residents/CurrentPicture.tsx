@@ -6,7 +6,9 @@ import {
 import { OpenWellnessFollowUp } from "@/lib/data/wellnessFollowUps";
 import { ResidentCurrentNeeds } from "./ResidentCurrentNeeds";
 import { ResidentWorkingNotes } from "./ResidentWorkingNotes";
+import { CurrentAssessmentCard } from "./CurrentAssessmentCard";
 import { Badge } from "@/components/ui/Badge";
+import type { CurrentAssessmentState } from "@/lib/assessmentIntelligence/currentAssessmentSelection";
 
 function compactDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -71,6 +73,7 @@ interface CurrentPictureProps {
   workingNotes: ResidentWorkingNote[];
   wellnessNotes: ResidentWellnessNote[];
   openFollowUps: OpenWellnessFollowUp[];
+  currentAssessmentState: CurrentAssessmentState;
 }
 
 // What's true right now and what's in motion — Current Needs, In Progress,
@@ -85,6 +88,7 @@ export function CurrentPicture({
   workingNotes,
   wellnessNotes,
   openFollowUps,
+  currentAssessmentState,
 }: CurrentPictureProps) {
   return (
     <div className="rounded-xl border border-ivory-border bg-surface shadow-card">
@@ -93,6 +97,15 @@ export function CurrentPicture({
       </div>
 
       <div className="divide-y divide-ivory-border">
+        {/* Full-width, above Current Needs/Working Notes — the single most
+            operationally important fact about this person's record, when
+            there's anything to show (see CurrentAssessmentCard's own
+            "kind: none" early return). */}
+        {currentAssessmentState.kind !== "none" && (
+          <div className="p-6">
+            <CurrentAssessmentCard residentId={residentId} state={currentAssessmentState} />
+          </div>
+        )}
         {/* Current Needs and Working Notes side-by-side on sufficiently
             wide desktop layouts (lg:) — a plain CSS grid within this same
             card, not a second nested card. Stacked with a horizontal

@@ -1,8 +1,7 @@
-import "server-only";
 import { BedrockRuntimeClient, ConverseCommand, type ConverseCommandOutput } from "@aws-sdk/client-bedrock-runtime";
-import { buildExtractionSystemPrompt, buildExtractionUserPrompt } from "../extractionPrompt.ts";
-import { normalizeExtractedFacts } from "../factTypes.ts";
-import type { AssessmentExtractionProvider, ExtractionResult } from "../extractionProvider.ts";
+import { buildExtractionSystemPrompt, buildExtractionUserPrompt } from "../../extractionPrompt.ts";
+import { normalizeExtractedFacts } from "../../factTypes.ts";
+import type { AssessmentExtractionProvider, ExtractionResult } from "../../extractionProvider.ts";
 
 // Amazon Bedrock / Anthropic Claude implementation of the provider-neutral extraction interface.
 // Uses the exact same provider-agnostic prompt (extractionPrompt.ts) and the exact same
@@ -15,6 +14,10 @@ import type { AssessmentExtractionProvider, ExtractionResult } from "../extracti
 // onto a different region, the Global Claude profile, or a different model. If that ever needs
 // to change, it's a deliberate code change and a new PHI-readiness review, not a runtime
 // config toggle.
+//
+// Moved here 2026-09-17 (background-safe processing core split) — no `import "server-only"` and
+// no React/Next dependency, so this is safely importable from a standalone Netlify Background
+// Function. See ../dataAccess.ts's header comment for the full rationale.
 
 const REGION = "us-east-1";
 const MODEL_ID = "us.anthropic.claude-sonnet-4-6";
@@ -70,8 +73,8 @@ export async function extractFactsViaBedrockClaude(
   } catch (err) {
     // A genuine provider-level failure (auth, network, throttling, invocation error) must never
     // be swallowed into a "no facts found" result, and must never trigger a silent fallback to
-    // another provider — the caller (providerSelection.ts / pipeline.ts) surfaces this as a
-    // real error to the operator.
+    // another provider — the caller (providerSelection.ts / processingCore.ts) surfaces this as
+    // a real error to the operator.
     throw new Error(
       `Bedrock Claude invocation failed (model=${MODEL_ID}, region=${REGION}): ${err instanceof Error ? err.message : "unknown error"}`
     );

@@ -26,9 +26,12 @@ CRITICAL RULES:
 2. assertion_state is what is being claimed: "confirmed_yes" (explicitly stated true),
    "confirmed_no" (explicitly stated false — a real "no," never an absence), "uncertain"
    (stated but hedged, or evidence is weak), "conflicting" (two people said different things
-   about the same field_path — emit both as separate facts, both assertion_state reflecting
-   what each person said), "not_applicable" (explicitly determined not to apply to this
-   person).
+   about the same field_path — prefer emitting both as separate facts, each assertion_state
+   reflecting what that person actually said [e.g. two different confirmed_yes values with
+   different text for a name, or one confirmed_yes and one confirmed_no]; only if the
+   disagreement cannot be cleanly split into two such facts, emit ONE fact with assertion_state
+   "conflicting" summarizing that people disagreed), "not_applicable" (explicitly determined not
+   to apply to this person).
 3. collection_method is independent of assertion_state: "observed" (the assessor personally
    witnessed it, was not told), "reported" (someone said it, including the person's own
    self-report). Never conflate these — a fact can be confirmed_yes AND observed, or

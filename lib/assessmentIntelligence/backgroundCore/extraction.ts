@@ -1,14 +1,17 @@
-import "server-only";
 import OpenAI from "openai";
-import { buildExtractionSystemPrompt, buildExtractionUserPrompt } from "./extractionPrompt.ts";
-import { normalizeExtractedFacts } from "./factTypes.ts";
-import type { AssessmentExtractionProvider, ExtractionResult } from "./extractionProvider.ts";
+import { buildExtractionSystemPrompt, buildExtractionUserPrompt } from "../extractionPrompt.ts";
+import { normalizeExtractedFacts } from "../factTypes.ts";
+import type { AssessmentExtractionProvider, ExtractionResult } from "../extractionProvider.ts";
 
 // The OpenAI implementation of the provider-neutral extraction interface (extractionProvider.ts).
 // Takes plain transcript text — it does not know or care whether that text came from a
 // pasted-transcript dev/validation entry or the transcription pipeline's assembled segments;
 // see docs/architecture/ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md §3A. Never called directly
-// from a UI component — only through providerSelection.ts, which pipeline.ts uses.
+// from a UI component — only through providerSelection.ts, which processingCore.ts uses.
+//
+// Moved here 2026-09-17 (background-safe processing core split) — no `import "server-only"` and
+// no React/Next dependency, so this is safely importable from a standalone Netlify Background
+// Function. See dataAccess.ts's header comment for the full rationale.
 
 export type { ExtractionResult };
 

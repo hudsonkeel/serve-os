@@ -26,7 +26,7 @@ export function MobileHeader({ title, currentUser, communitySwitcher }: MobileHe
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-white/10 bg-navy px-3 md:hidden">
+      <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-white/10 bg-navy px-3 md:hidden print:hidden">
         <button
           type="button"
           onClick={() => setIsDrawerOpen(true)}
