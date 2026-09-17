@@ -88,7 +88,8 @@ function EvidenceHistoryRow({ evidence }: { evidence: PersonEvidence }) {
 export function RequirementResolutionCard({
   evaluation,
   workforceMemberId,
-  canManage,
+  canManageDocuments,
+  canManageComplianceEvidence,
   rosterOptions,
   lifecycleStatus,
   history,
@@ -96,7 +97,11 @@ export function RequirementResolutionCard({
 }: {
   evaluation: RequirementEvaluation;
   workforceMemberId: string;
-  canManage: boolean;
+  // Ordinary document work (view/upload/replace) vs. compliance judgment
+  // (verify/reject/attest/mark-entered-in-error) — see
+  // lib/workforce/permissions.ts.
+  canManageDocuments: boolean;
+  canManageComplianceEvidence: boolean;
   history: PersonEvidence[];
   lifecycleStatus: WorkforceLifecycleStatus;
   rosterOptions: Array<{ workforceMemberId: string; displayName: string }>;
@@ -245,7 +250,7 @@ export function RequirementResolutionCard({
             <span>Effect: {playbook.expectedCompletionEffect}</span>
           </div>
 
-          {canManage && (
+          {canManageComplianceEvidence && (
             <div className="border-t border-ivory-border pt-4">
               <HumanAttestationDialog
                 workforceMemberId={workforceMemberId}
@@ -283,7 +288,8 @@ export function RequirementResolutionCard({
                 <RegistryEvidenceCard
                   evaluation={evaluation}
                   workforceMemberId={workforceMemberId}
-                  canManage={canManage}
+                  canManageDocuments={canManageDocuments}
+                  canManageComplianceEvidence={canManageComplianceEvidence}
                   rosterOptions={rosterOptions}
                   lifecycleStatus={lifecycleStatus}
                   history={history}

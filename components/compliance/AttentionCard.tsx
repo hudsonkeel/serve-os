@@ -19,10 +19,18 @@ export function AttentionCard({
   name,
   itemCount,
   href,
+  // Scoped Workforce Audit Readiness for office_staff — "Review & Resolve"
+  // implies resolution authority office_staff doesn't have (verify/reject
+  // are explicitly excluded; only upload/replace). Left as the unchanged
+  // default for every existing caller (the full Governance dashboard);
+  // the office_staff-scoped view is the one place that overrides it, via
+  // this prop rather than a role check inside the component itself.
+  actionLabel = "Review & Resolve →",
 }: {
   name: string;
   itemCount: number;
   href: string;
+  actionLabel?: string;
 }) {
   return (
     <Link href={href} className={`${CARD_BASE} border-ivory-border bg-white hover:border-navy/30`}>
@@ -36,7 +44,7 @@ export function AttentionCard({
       <span className="font-sans text-xs text-muted">
         {itemCount} item{itemCount === 1 ? "" : "s"}
       </span>
-      <span className="font-sans text-xs font-medium text-navy">Review &amp; Resolve →</span>
+      <span className="font-sans text-xs font-medium text-navy">{actionLabel}</span>
     </Link>
   );
 }

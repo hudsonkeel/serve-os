@@ -4,6 +4,14 @@
 // mobile shell reuses the exact same destinations/permissions/labels rather
 // than hard-coding a second navigation tree — see DECISION_LOG.md ("Serve OS
 // navigation shell") for why this destination set/grouping was chosen.
+//
+// This file is the UI-facing layer only: it attaches icons to the pure,
+// icon-free destination data in ./navData.ts (which holds the actual
+// label/href/roles facts and the role-visibility filtering logic — see
+// its own header comment for why it's kept separate and UI-import-free).
+// Exports here are unchanged in name/shape from before that split, so
+// nothing consuming this file (Sidebar.tsx, MobileNavDrawer.tsx) needed
+// to change.
 import type { LucideIcon } from "lucide-react";
 import {
   Briefcase,
@@ -17,11 +25,17 @@ import {
   ClipboardCheck,
   Activity,
 } from "lucide-react";
+import type { AuthRole } from "../auth/constants.ts";
+import {
+  NAV_SECTIONS_DATA,
+  NAV_UTILITY_DATA,
+  getVisibleNavSectionsData,
+  getVisibleUtilityItemsData,
+  type NavDestination,
+} from "./navData.ts";
 
-export interface NavItem {
+export interface NavItem extends NavDestination {
   icon: LucideIcon;
-  label: string;
-  href: string;
 }
 
 // A "Coming Soon" item deliberately has no href at all — it has nowhere to
@@ -37,52 +51,28 @@ export interface NavSection {
   items: NavItem[];
 }
 
-export const NAV_SECTIONS: NavSection[] = [
-  {
-    heading: "Today",
-    items: [{ icon: Briefcase, label: "Today's Work", href: "/workspace" }],
-  },
-  {
-    heading: "Serve",
-    items: [
-      { icon: Users, label: "The People We Serve", href: "/residents" },
-      { icon: ShieldCheck, label: "Workforce", href: "/workforce" },
-    ],
-  },
-  // Governance is the organizational realm — the cross-domain systems that
-  // define, evaluate, document, and demonstrate how Serve operates, as
-  // distinct from Serve's operational people/domains above. Audit
-  // Readiness is the first product to live here; the product itself keeps
-  // its own name (Governance is the realm, not a rename). Quality (QAPI)
-  // is the second (2026-08-25) — a distinct leadership view over the same
-  // underlying readiness/compliance data ("what are we learning / what
-  // needs attention" vs. Audit Readiness's "can we prove it right now"),
-  // never a duplicate evaluator — see lib/qapi/dashboard.ts. Emergency
-  // Preparedness is deliberately NOT a third top-level item here: it stays
-  // a capability reached from within Audit Readiness (its dashboard's own
-  // Start Audit Drill / View Past Audits actions), same as Audit Drills.
-  {
-    heading: "Governance",
-    items: [
-      // Desktop-only for v0.1 — MobileNavDrawer.tsx renders its own
-      // hard-coded, narrow item list (The People We Serve + NAV_UTILITY
-      // only) rather than mapping NAV_SECTIONS directly, so adding these
-      // entries here does not put them in the phone-width drawer. See the
-      // Audit Readiness Phase 1 report for why this stays desktop-only —
-      // the Aug 26 drill workflow is a tablet/desktop task; QAPI inherits
-      // the same reasoning as a peer Governance destination.
-      { icon: ClipboardCheck, label: "Audit Readiness", href: "/audit-readiness" },
-      { icon: Activity, label: "Quality (QAPI)", href: "/qapi" },
-    ],
-  },
-  {
-    heading: "Understand",
-    items: [
-      { icon: LayoutDashboard, label: "How We're Doing", href: "/dashboard" },
-      { icon: BarChart2, label: "Community Outlook", href: "/community-intelligence" },
-    ],
-  },
-];
+// Keyed by href — every destination in navData.ts must have an entry
+// here, or it renders with no icon.
+const ICONS_BY_HREF: Record<string, LucideIcon> = {
+  "/workspace": Briefcase,
+  "/residents": Users,
+  "/workforce": ShieldCheck,
+  "/audit-readiness": ClipboardCheck,
+  "/qapi": Activity,
+  "/dashboard": LayoutDashboard,
+  "/community-intelligence": BarChart2,
+  "/ask-serve": Sparkles,
+  "/settings": Settings,
+};
+
+function withIcon(item: NavDestination): NavItem {
+  return { ...item, icon: ICONS_BY_HREF[item.href] };
+}
+
+export const NAV_SECTIONS: NavSection[] = NAV_SECTIONS_DATA.map((section) => ({
+  heading: section.heading,
+  items: section.items.map(withIcon),
+}));
 
 // Communications is the only "Coming Soon" item — Scheduling and Care Plans
 // have no dedicated route yet.
@@ -90,7 +80,19 @@ export const NAV_COMING_SOON: NavComingSoonItem[] = [{ icon: MessageSquare, labe
 
 // Utility area — Ask Serve + Settings, deliberately outside the
 // Today/Serve/Understand work hierarchy above.
-export const NAV_UTILITY: NavItem[] = [
-  { icon: Sparkles, label: "Ask Serve", href: "/ask-serve" },
-  { icon: Settings, label: "Settings", href: "/settings" },
-];
+export const NAV_UTILITY: NavItem[] = NAV_UTILITY_DATA.map(withIcon);
+
+// Role-aware filtering, consumed by both Sidebar.tsx and
+// MobileNavDrawer.tsx so neither hand-rolls its own role check against
+// this data. Delegates the actual filtering to navData.ts (see its tests
+// for the role-visibility matrix) and only adds icons on top.
+export function getVisibleNavSections(role: AuthRole | null | undefined): NavSection[] {
+  return getVisibleNavSectionsData(role).map((section) => ({
+    heading: section.heading,
+    items: section.items.map(withIcon),
+  }));
+}
+
+export function getVisibleUtilityItems(role: AuthRole | null | undefined): NavItem[] {
+  return getVisibleUtilityItemsData(role).map(withIcon);
+}

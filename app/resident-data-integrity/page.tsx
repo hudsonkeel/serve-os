@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canPerformReconciliationActions } from "@/lib/auth/permissions";
 import { getIntegrityIssues, getIssueMemberResidentIds } from "@/lib/data/residentDataIntegrity";
 import { getResidentsForComparison } from "@/lib/data/residentIdentity";
 import { ResidentDataIntegrityQueue } from "@/components/residentDataIntegrity/ResidentDataIntegrityQueue";
@@ -7,7 +9,29 @@ import { ResidentDataIntegrityQueue } from "@/components/residentDataIntegrity/R
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Security hotfix (fix/resident-identity-authorization) — this page and
+// its detail route previously had NO server-side authorization check at
+// all: any authenticated role, including office_staff, could view a
+// cross-resident PII comparison queue merely by knowing the URL, and the
+// mutating actions it links to (lib/actions/residentDataIntegrity.ts)
+// checked only that a session existed, not the role. Gated here to the
+// same canPerformReconciliationActions boundary /reconciliation already
+// uses for its own actions (admin/manager/executive) — checked BEFORE any
+// data fetch, so an unauthorized viewer never causes a single row of
+// resident data to be read, not merely hidden behind a client-side
+// control. Enforced again, independently, inside every exported action in
+// lib/actions/residentDataIntegrity.ts — this page-level check is not the
+// real authorization boundary, only the first one.
 export default async function ResidentDataIntegrityPage() {
+  const profile = await getCurrentAuthorizedUser();
+  if (!canPerformReconciliationActions(profile?.role ?? null)) {
+    return (
+      <PageContainer title="Resident Data Integrity">
+        <p className="font-sans text-sm text-muted">You do not have permission to view Resident Data Integrity.</p>
+      </PageContainer>
+    );
+  }
+
   const issues = await getIntegrityIssues();
 
   const memberIdsByIssue = Object.fromEntries(

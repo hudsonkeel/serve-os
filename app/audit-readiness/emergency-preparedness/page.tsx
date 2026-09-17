@@ -3,7 +3,12 @@ import { PageContainer } from "@/components/PageContainer";
 import { LinkButton } from "@/components/ui/Button";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canManageCorrectiveActions, canRunAuditDrill, canViewAuditReadiness } from "@/lib/compliance/permissions";
-import { canAccessWorkforceDocuments } from "@/lib/workforce/permissions";
+// Reused for its admin+manager gate, unrelated to caregiver document
+// work — User Roles & Permissions v0.1 split the old
+// canAccessWorkforceDocuments and deliberately did not extend
+// office_staff into emergency-preparedness evidence, which is out of
+// this slice's scope.
+import { canVerifyWorkforceEvidence } from "@/lib/workforce/permissions";
 import { getEmergencyPreparednessReadinessEvaluation } from "@/lib/emergencyPreparedness/emergencyPreparednessReadiness";
 import { EP_PLAN_MAINTAINED } from "@/lib/emergencyPreparedness/constants";
 import { listEmergencyPreparednessReviews } from "@/lib/data/emergencyPreparednessReviews";
@@ -63,7 +68,7 @@ export default async function EmergencyPreparednessPage({
     getOpenCorrectiveActionsForSubject("agency", evaluation.agency.id),
   ]);
 
-  const canViewDocuments = canAccessWorkforceDocuments(profile?.role ?? null);
+  const canViewDocuments = canVerifyWorkforceEvidence(profile?.role ?? null);
   const canRun = canRunAuditDrill(profile?.role ?? null);
   const canManage = canManageCorrectiveActions(profile?.role ?? null);
   const inProgressReview = reviews.find((r) => r.status === "in_progress") ?? null;

@@ -38,6 +38,21 @@ export const BESPOKE_COMPOSITION_CODES: ReadonlySet<string> = new Set([
   EP_CLIENT_TRIAGE_CLASSIFIED,
 ]);
 
+// Attestation/governed requirements — a direct human confirmation or a
+// clinical classification, never a document upload. Gated by
+// canAccessResidentEvidence (office_staff excluded), not
+// canManageResidentDocuments. Shared by ClientReadinessBoard.tsx (the
+// per-requirement CTA/remediation-form tier) and PeopleReadinessView.tsx
+// (whether a Needs Attention card reads "Review & Update" or is rendered
+// read-only for office_staff) so the two views can never disagree about
+// which tier a requirement belongs to.
+export const CLIENT_READINESS_ATTESTATION_REQUIREMENT_CODES: ReadonlySet<string> = new Set([
+  CR_CLIENT_PROFILE_ON_FILE,
+  EP_CLIENT_TRIAGE_CLASSIFIED,
+  CR_MEDICATION_LIST_ON_FILE,
+  CR_CARE_DOCUMENTATION_CURRENT,
+]);
+
 // Cadence-gated requirements (expiration_date set at write time) — every
 // other requirement in the set is event-triggered/non-expiring, satisfied
 // by continued existence until a real replacement/attestation event, same

@@ -18,9 +18,29 @@ export function canViewAuditReadiness(role: string | null | undefined): boolean 
   return Boolean(role && (AUDIT_READINESS_VIEW_ROLES as readonly string[]).includes(role));
 }
 
+// Scoped People Readiness (Client + Workforce) for office_staff —
+// deliberately NOT an addition to AUDIT_READINESS_VIEW_ROLES/
+// canViewAuditReadiness, which would also grant Emergency Preparedness,
+// corrective-action management, and audit drills — everything this role
+// must not get. Narrow single-role predicate (matches this file's existing
+// canSupersedeRequirement/canVoidEffectivenessReviewOutcome precedent for
+// admin-only) governs exactly one thing: whether /audit-readiness renders
+// the People Readiness scoped view (app/audit-readiness/page.tsx's early
+// branch, before the full-dashboard data fetch) instead of the full
+// Governance dashboard. Originally workforce-only (canViewWorkforceReadiness);
+// renamed when Client Readiness joined the same scoped view — the role
+// logic itself (office_staff only) is unchanged. office_staff's underlying
+// document capabilities (view/upload/replace, never verify/reject) are
+// unchanged by this — see lib/workforce/permissions.ts and
+// lib/auth/permissions.ts's canManageResidentDocuments/canVerifyResidentEvidence.
+export function canViewPeopleReadiness(role: string | null | undefined): boolean {
+  return role === "office_staff";
+}
+
 // Creating/resolving/dismissing a corrective action — consequential
 // operational work, narrower than viewing. Mirrors
-// canAccessWorkforceDocuments's admin+manager tier.
+// lib/workforce/permissions.ts's admin+manager tier (e.g.
+// canVerifyWorkforceEvidence).
 const CORRECTIVE_ACTION_MANAGE_ROLES: readonly AuthRole[] = ["admin", "manager"];
 
 export function canManageCorrectiveActions(role: string | null | undefined): boolean {

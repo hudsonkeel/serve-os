@@ -26,7 +26,14 @@ import { getCurrentAssessmentSummary } from "@/lib/actions/assessmentIntelligenc
 import { Badge } from "@/components/ui/Badge";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
-import { canAccessResidentEvidence, canEditResidentProfile, canPerformReconciliationActions } from "@/lib/auth/permissions";
+import {
+  canAccessResidentEvidence,
+  canCaptureResidentAssessment,
+  canEditResidentProfile,
+  canManageResidentDocuments,
+  canPerformReconciliationActions,
+  canVerifyResidentEvidence,
+} from "@/lib/auth/permissions";
 import { ResidentEvidenceSection } from "@/components/residents/ResidentEvidenceSection";
 import { ServeRelationshipCorrectionControl } from "@/components/residents/ServeRelationshipCorrectionControl";
 import { ClientReadinessBoard, type ClientReadinessBoardItem } from "@/components/clientReadiness/ClientReadinessBoard";
@@ -129,8 +136,25 @@ export default async function ResidentDetailPage({
   if (!record) notFound();
 
   const canEditProfile = canEditResidentProfile(profile?.role);
-  const canManageEvidence = canAccessResidentEvidence(profile?.role);
+  // Office Staff Client Readiness v0.1 — the resident evidence tier is
+  // now split. canManageDocuments (canManageResidentDocuments) governs
+  // ordinary document work and now includes office_staff.
+  // canManageAttestations (canAccessResidentEvidence, unchanged) still
+  // governs "Verify From Source" attestations, triage classification,
+  // and every other compliance determination — office_staff excluded.
+  // canVerify (canVerifyResidentEvidence) governs the new verify/reject
+  // resolution path for evidence an office_staff upload left Awaiting
+  // Verification — also excludes office_staff.
+  const canManageDocuments = canManageResidentDocuments(profile?.role);
+  const canManageAttestations = canAccessResidentEvidence(profile?.role);
+  const canVerify = canVerifyResidentEvidence(profile?.role);
   const canResolveIdentity = canPerformReconciliationActions(profile?.role);
+  // office_staff may capture ordinary operational notes/updates on this
+  // page (Add Note, Wellbeing Observation, Current Needs, follow-ups,
+  // prospect/lead creation — all already unrestricted) but must not be
+  // able to initiate an Assessment — that's care-plan territory, not
+  // ordinary personnel/resident-note administration.
+  const canCaptureAssessment = canCaptureResidentAssessment(profile?.role);
   const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
 
   const connections = await getResidentConnections(id);
@@ -142,9 +166,9 @@ export default async function ResidentDetailPage({
   const relationships = await getRelationshipsByResident(id);
   const assessmentSessions = await getAssessmentSessionsForResident(id);
   const currentAssessmentState = await getCurrentAssessmentSummary(id);
-  const residentDocuments = canManageEvidence ? await getPersonDocumentsForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
-  const residentEvidence = canManageEvidence ? await getPersonEvidenceForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
-  const canSeeRelationshipDetail = canManageEvidence || canEditProfile;
+  const residentDocuments = canManageDocuments ? await getPersonDocumentsForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
+  const residentEvidence = canManageDocuments ? await getPersonEvidenceForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
+  const canSeeRelationshipDetail = canManageDocuments || canEditProfile;
   const residentRelationshipDetail = canSeeRelationshipDetail
     ? await getResidentServeRelationshipDetail(id, communityFilter)
     : null;
@@ -156,10 +180,10 @@ export default async function ResidentDetailPage({
   // BEFORE getClientReadinessEvaluation so it can be passed straight in —
   // this page is the one caller that supplies it, getting the atomicity
   // guarantee documented on evaluateTriageClassification().
-  const triageHistory = canManageEvidence ? await getResidentTriageClassificationHistory(id) : [];
-  const currentTriageClassification = canManageEvidence ? await getCurrentResidentTriageClassification(id) : null;
+  const triageHistory = canManageDocuments ? await getResidentTriageClassificationHistory(id) : [];
+  const currentTriageClassification = canManageDocuments ? await getCurrentResidentTriageClassification(id) : null;
   const axiscareTriageSnapshot =
-    canManageEvidence && residentRelationshipDetail?.axiscareMatch?.identityStatus === "confirmed"
+    canManageDocuments && residentRelationshipDetail?.axiscareMatch?.identityStatus === "confirmed"
       ? await getAxisCareClientCanonicalSnapshot(residentRelationshipDetail.axiscareMatch.axiscareId)
       : null;
   const triageDetail = buildTriageClassificationDetail({
@@ -181,7 +205,7 @@ export default async function ResidentDetailPage({
     (getAxisCareLifecycleSignal(residentRelationshipDetail.axiscareMatch?.classes ?? []) === "inactive_client" ||
       !!residentRelationshipDetail.projection.correction?.rationale.includes(STANDBY_INACTIVE_CORRECTION_MARKER));
 
-  const clientReadiness = canManageEvidence
+  const clientReadiness = canManageDocuments
     ? await getClientReadinessEvaluation(
         id,
         residentRelationshipDetail?.projection.relationship ?? "no_current_relationship",
@@ -203,6 +227,7 @@ export default async function ResidentDetailPage({
     explanation: r.explanation,
     evidenceSummary: evidenceSummary(r.latestEvidence),
     evidenceDocumentId: r.latestEvidence?.document_id ?? null,
+    evidenceId: r.latestEvidence?.id ?? null,
   }));
   const clientReadinessApplicable = clientReadinessBoardItems.filter((r) => r.status !== "not_applicable");
   const clientReadinessSatisfiedCount = clientReadinessApplicable.filter(
@@ -343,6 +368,7 @@ export default async function ResidentDetailPage({
             residentDisplayName={record.residentDisplayName}
             relationshipId={primaryRelationship?.id ?? null}
             hasCompletedAssessment={hasCompletedAssessment}
+            canCaptureAssessment={canCaptureAssessment}
             canAddToProspectPipeline={activeProspectRelationship === null}
             communityName={resident.community_name}
             contactName={contactName}
@@ -405,7 +431,7 @@ export default async function ResidentDetailPage({
               working-memory profile first) — the requirement cards ARE
               the work queue once opened, no separate Needs Attention
               checklist duplicating them. */}
-          {canManageEvidence && clientReadiness && (
+          {canManageDocuments && clientReadiness && (
             <ClientReadinessSection
               isOutsidePopulation={clientReadinessOutsidePopulation}
               applicableCount={clientReadinessApplicable.length}
@@ -415,8 +441,10 @@ export default async function ResidentDetailPage({
               <ClientReadinessBoard
                 residentId={id}
                 items={clientReadinessBoardItems}
-                canManage={canManageEvidence}
-                canViewDocuments={canManageEvidence}
+                canManageDocuments={canManageDocuments}
+                canManageAttestations={canManageAttestations}
+                canVerify={canVerify}
+                canViewDocuments={canManageDocuments}
                 initialSelectedCode={selectedRequirementCode}
                 careContacts={{
                   physicianName: resident.physician_name ?? "",
@@ -474,10 +502,10 @@ export default async function ResidentDetailPage({
 
             <WellnessNotes residentId={id} notes={wellnessNotes} openFollowUps={openFollowUps} />
 
-            {canManageEvidence && (
+            {canManageDocuments && (
               <div>
                 <p className="mb-3 font-sans text-label font-semibold uppercase tracking-widest text-subtle">Documents &amp; Evidence</p>
-                <ResidentEvidenceSection residentId={id} canManage={canManageEvidence} documents={residentDocuments} evidence={residentEvidence} />
+                <ResidentEvidenceSection residentId={id} canManage={canManageDocuments} documents={residentDocuments} evidence={residentEvidence} />
               </div>
             )}
 

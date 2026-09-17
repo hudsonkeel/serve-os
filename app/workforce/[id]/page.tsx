@@ -4,11 +4,14 @@ import { PageContainer } from "@/components/PageContainer";
 import { getWorkforceMemberProfile, getWorkforceRoster } from "@/lib/workforce/roster";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import {
-  canAccessWorkforceDocuments,
   canCorrectWorkforceIdentityLinks,
   canEditWorkforceCanonicalProfile,
   canEditWorkforceLegalIdentity,
   canManageWorkforceCommunityMemberships,
+  canManageWorkforceComplianceActions,
+  canManageWorkforceDocuments,
+  canVerifyWorkforceEvidence,
+  canViewWorkforceTechnicalDetails,
 } from "@/lib/workforce/permissions";
 import { resolveWorkforceEmail, resolveWorkforcePhone } from "@/lib/workforce/resolvers";
 import { listCommunities } from "@/lib/data/communities";
@@ -98,11 +101,23 @@ export default async function WorkforceMemberDetailPage({
     openComplianceActions,
     nextAction,
   } = profile;
-  const canManage = canAccessWorkforceDocuments(currentUser?.role ?? null);
+  // Ordinary document work (view/upload/replace/open) vs. compliance
+  // judgment (verify/reject/attest/mark-entered-in-error/reassign/delete)
+  // are two different permission tiers as of User Roles & Permissions
+  // v0.1 — office_staff has the former, not the latter. See
+  // lib/workforce/permissions.ts.
+  const canManageDocuments = canManageWorkforceDocuments(currentUser?.role ?? null);
+  const canManageComplianceEvidence = canVerifyWorkforceEvidence(currentUser?.role ?? null);
+  const canManageComplianceActions = canManageWorkforceComplianceActions(currentUser?.role ?? null);
   const canCorrectIdentities = canCorrectWorkforceIdentityLinks(currentUser?.role ?? null);
   const canEditProfile = canEditWorkforceCanonicalProfile(currentUser?.role ?? null);
   const canEditLegalIdentity = canEditWorkforceLegalIdentity(currentUser?.role ?? null);
   const canManageCommunities = canManageWorkforceCommunityMemberships(currentUser?.role ?? null);
+  // Office Staff Visibility v0.1 — Open Actions, Source Identities,
+  // Workforce Activity Timeline, and Profile Change History are
+  // read-only audit-trail/data-integrity information, not needed for
+  // ordinary document work. See lib/workforce/permissions.ts.
+  const canViewTechnicalDetails = canViewWorkforceTechnicalDetails(currentUser?.role ?? null);
   const rosterOptions = roster.map((r) => ({ workforceMemberId: r.workforceMemberId, displayName: r.displayName }));
   const canonicalEmail = resolveWorkforceEmail(member, axiscareLink);
   const canonicalPhone = resolveWorkforcePhone(member, axiscareLink);
@@ -217,20 +232,23 @@ export default async function WorkforceMemberDetailPage({
             </p>
           </Section>
 
-          <Section title="Source Identities">
-            <SourceIdentitiesSection identities={sourceIdentities} canCorrect={canCorrectIdentities} />
-            <p className="mt-4 font-sans text-xs text-subtle">
-              A caregiver may have more than one AxisCare record (e.g. a prior duplicate). The primary record drives
-              the fields above; duplicate and retired records are kept here for history and are never deleted.
-            </p>
-          </Section>
+          {canViewTechnicalDetails && (
+            <Section title="Source Identities">
+              <SourceIdentitiesSection identities={sourceIdentities} canCorrect={canCorrectIdentities} />
+              <p className="mt-4 font-sans text-xs text-subtle">
+                A caregiver may have more than one AxisCare record (e.g. a prior duplicate). The primary record drives
+                the fields above; duplicate and retired records are kept here for history and are never deleted.
+              </p>
+            </Section>
+          )}
 
           <div id="employee-record-audit">
             <Section title="Employee Record Audit">
               <EmployeeRecordAuditSection
                 registry={employeeRecordAudit.registry}
                 workforceMemberId={id}
-                canManage={canManage}
+                canManageDocuments={canManageDocuments}
+                canManageComplianceEvidence={canManageComplianceEvidence}
                 rosterOptions={rosterOptions}
                 lifecycleStatus={lifecycle.status}
                 history={evidence}
@@ -239,7 +257,7 @@ export default async function WorkforceMemberDetailPage({
             </Section>
           </div>
 
-          {canManage && (
+          {canManageDocuments && (
             <Section title="Documents">
               {documents.length > 0 ? (
                 <ul className="divide-y divide-ivory-border">
@@ -263,15 +281,19 @@ export default async function WorkforceMemberDetailPage({
         </div>
 
         <div className="space-y-6">
-          <Section title={`Open Actions (${openComplianceActions.length})`}>
-            <WorkforceComplianceActionsList
-              actions={openComplianceActions}
-              workforceMemberId={id}
-              canManage={canManage}
-            />
-          </Section>
-          <WorkforceActivityTimeline events={activity} />
-          <ProfileChangeHistory changes={profileChangeHistory} />
+          {canViewTechnicalDetails && (
+            <>
+              <Section title={`Open Actions (${openComplianceActions.length})`}>
+                <WorkforceComplianceActionsList
+                  actions={openComplianceActions}
+                  workforceMemberId={id}
+                  canManage={canManageComplianceActions}
+                />
+              </Section>
+              <WorkforceActivityTimeline events={activity} />
+              <ProfileChangeHistory changes={profileChangeHistory} />
+            </>
+          )}
         </div>
       </div>
     </PageContainer>

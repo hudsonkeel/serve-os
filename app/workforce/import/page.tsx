@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/PageContainer";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
-import { canAccessWorkforceDocuments } from "@/lib/workforce/permissions";
+import { canBulkImportWorkforceRoster } from "@/lib/workforce/permissions";
 import { getWorkforceRoster } from "@/lib/workforce/roster";
 import { BulkImportWizard } from "@/components/workforce/BulkImportWizard";
 
@@ -10,7 +10,7 @@ export const revalidate = 0;
 
 export default async function WorkforceBulkImportPage() {
   const profile = await getCurrentAuthorizedUser();
-  if (!canAccessWorkforceDocuments(profile?.role ?? null)) {
+  if (!canBulkImportWorkforceRoster(profile?.role ?? null)) {
     notFound();
   }
 

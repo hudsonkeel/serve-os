@@ -5,7 +5,12 @@ import { Badge } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canRunAuditDrill, canViewAuditReadiness } from "@/lib/compliance/permissions";
-import { canAccessWorkforceDocuments } from "@/lib/workforce/permissions";
+// Reused for its admin+manager gate, unrelated to caregiver document
+// work — User Roles & Permissions v0.1 split the old
+// canAccessWorkforceDocuments and deliberately did not extend
+// office_staff into audit-readiness drill evidence, which is out of
+// this slice's scope.
+import { canVerifyWorkforceEvidence } from "@/lib/workforce/permissions";
 import { getAuditSessionById, getAuditSessionItems } from "@/lib/data/auditSessions";
 import {
   composeAuditSessionItemView,
@@ -73,7 +78,7 @@ export default async function AuditDrillDetailPage({
   const isCompleted = session.status === "completed";
   const canOperateDrill = canRunAuditDrill(profile?.role ?? null);
   const canRun = !isCompleted && canOperateDrill;
-  const canViewDocuments = canAccessWorkforceDocuments(profile?.role ?? null);
+  const canViewDocuments = canVerifyWorkforceEvidence(profile?.role ?? null);
 
   return (
     <PageContainer title={session.name}>

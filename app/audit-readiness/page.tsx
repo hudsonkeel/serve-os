@@ -3,9 +3,12 @@ import { LinkButton } from "@/components/ui/Button";
 import { AllClearAttentionCard, AttentionCard, AwaitingFirstSubjectAttentionCard, ComingSoonAttentionCard } from "@/components/compliance/AttentionCard";
 import { DomainReadinessCard } from "@/components/compliance/DomainReadinessCard";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
-import { canViewAuditReadiness } from "@/lib/compliance/permissions";
+import { canViewAuditReadiness, canViewPeopleReadiness } from "@/lib/compliance/permissions";
+import { PeopleReadinessView } from "@/components/compliance/PeopleReadinessView";
 import {
   getAuditReadinessDashboardData,
+  getClientReadinessDomainRollup,
+  getWorkforceDomainRollup,
   groupIssuesBySubject,
   rankIssues,
   type AuditReadinessDomainId,
@@ -43,6 +46,38 @@ function statusHref(domain: AuditReadinessDomainId | "all", status: AuditReadine
 
 export default async function AuditReadinessPage() {
   const profile = await getCurrentAuthorizedUser();
+
+  // Scoped People Readiness (Client + Workforce) for office_staff — this
+  // branch must run BEFORE any other check or fetch on this page. It calls
+  // exactly getClientReadinessDomainRollup() and getWorkforceDomainRollup()
+  // — no getAuditReadinessDashboardData (which would internally fetch
+  // Emergency Preparedness, corrective-action composition, and recent
+  // documents even if unrendered). office_staff never reaches
+  // canViewAuditReadiness's check below, and canViewAuditReadiness itself
+  // is not widened to include office_staff — see
+  // lib/compliance/permissions.ts's canViewPeopleReadiness. Client
+  // Readiness's population is resolved the same way the full dashboard
+  // resolves it below (community-scoped, canonical Active Client set) —
+  // no separate/duplicated eligibility logic for this branch.
+  if (canViewPeopleReadiness(profile?.role ?? null)) {
+    const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+    const auditEligibleActiveClients = await getAuditEligibleActiveClientResidents(communityFilter);
+    const [clientDomain, workforceDomain] = await Promise.all([
+      getClientReadinessDomainRollup(auditEligibleActiveClients),
+      getWorkforceDomainRollup(),
+    ]);
+    return (
+      <PageContainer title="Audit Readiness">
+        <div className="mb-6">
+          <h1 className="font-serif text-3xl font-light text-body">Audit Readiness</h1>
+          <p className="mt-1 font-sans text-sm text-muted">
+            People Readiness — how the client and personnel documents you manage affect audit readiness.
+          </p>
+        </div>
+        <PeopleReadinessView clientDomain={clientDomain} workforceDomain={workforceDomain} />
+      </PageContainer>
+    );
+  }
 
   if (!canViewAuditReadiness(profile?.role ?? null)) {
     return (

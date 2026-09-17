@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canViewCommunityOutlook } from "@/lib/navigation/permissions";
 import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
 import { buildAskServeContext } from "@/lib/askServe/buildContext";
 import { COMMUNITY_OUTLOOK_CONTEXT } from "@/lib/askServe/areaContexts";
@@ -57,6 +58,15 @@ const insightCategories = [
 
 export default async function CommunityIntelligencePage() {
   const profile = await getCurrentAuthorizedUser();
+
+  if (!canViewCommunityOutlook(profile?.role ?? null)) {
+    return (
+      <PageContainer title="Community Outlook">
+        <p className="font-sans text-sm text-muted">You do not have permission to view Community Outlook.</p>
+      </PageContainer>
+    );
+  }
+
   const askServeEnabled = isContextualAskServeEnabled(profile?.role ?? null);
 
   return (

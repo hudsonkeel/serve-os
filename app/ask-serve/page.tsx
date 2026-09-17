@@ -1,5 +1,10 @@
 import { PageContainer } from "@/components/PageContainer";
 import { Sparkles } from "lucide-react";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canViewAskServe } from "@/lib/navigation/permissions";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const suggestedPrompts = [
   "Which residents may benefit from companionship?",
@@ -12,7 +17,17 @@ const suggestedPrompts = [
   "Which residents have family members asking for follow-up?",
 ];
 
-export default function AskServePage() {
+export default async function AskServePage() {
+  const profile = await getCurrentAuthorizedUser();
+
+  if (!canViewAskServe(profile?.role ?? null)) {
+    return (
+      <PageContainer title="Ask Serve">
+        <p className="font-sans text-sm text-muted">You do not have permission to view Ask Serve.</p>
+      </PageContainer>
+    );
+  }
+
   return (
     <PageContainer title="Ask Serve">
       <div className="mx-auto max-w-2xl">

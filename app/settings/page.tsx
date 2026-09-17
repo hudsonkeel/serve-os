@@ -17,6 +17,7 @@ import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { AssessmentProcessingDispatchTrigger } from "@/components/settings/AssessmentProcessingDispatchTrigger";
 import { AssessmentProcessingDiagnostics } from "@/components/settings/AssessmentProcessingDiagnostics";
 import { getSessionsWithProcessingDiagnostics } from "@/lib/data/assessmentIntelligence";
+import { canViewManagementSettings } from "@/lib/navigation/permissions";
 import {
   buildIntegrationDefinitions,
   INTEGRATION_STATUS_LABELS,
@@ -98,10 +99,14 @@ export default async function SettingsPage() {
   const currentUser = buildCurrentUserDisplay(profile);
 
   // Users & Roles, Organization & Communities, Workflow Configuration,
-  // Integrations, and Governance & Audit are management-tier sections.
-  // "Operations" is the frontline role — everything else in AUTH_ROLES
-  // (admin, manager, executive) sees them. My Account is visible to everyone.
-  const canViewManagement = profile?.role !== "operations" && profile?.role !== undefined;
+  // Integrations, and Governance & Audit are management-tier sections —
+  // admin, manager, and executive only (Office Staff Visibility v0.1:
+  // explicit positive allow-list via canViewManagementSettings, not a
+  // role !== "operations" exclusion — that check predates office_staff
+  // and would otherwise have silently let it through too, the exact
+  // failure mode an allow-list avoids). My Account is visible to
+  // everyone authenticated, regardless of this check.
+  const canViewManagement = canViewManagementSettings(profile?.role ?? null);
 
   // Presence-only check — the key itself is never read into a client
   // response or rendered anywhere.

@@ -26,7 +26,8 @@ function groupByCategory(requirements: RequirementEvaluation[]): Array<{ categor
 export function EmployeeRecordAuditSection({
   registry,
   workforceMemberId,
-  canManage,
+  canManageDocuments,
+  canManageComplianceEvidence,
   rosterOptions,
   lifecycleStatus,
   history,
@@ -34,7 +35,11 @@ export function EmployeeRecordAuditSection({
 }: {
   registry: RequirementSetEvaluation;
   workforceMemberId: string;
-  canManage: boolean;
+  // Ordinary document work (view/upload/replace) vs. compliance judgment
+  // (verify/reject/attest/mark-entered-in-error) — see
+  // lib/workforce/permissions.ts.
+  canManageDocuments: boolean;
+  canManageComplianceEvidence: boolean;
   rosterOptions: Array<{ workforceMemberId: string; displayName: string }>;
   lifecycleStatus: WorkforceLifecycleStatus;
   history: PersonEvidence[];
@@ -59,7 +64,8 @@ export function EmployeeRecordAuditSection({
                 key={evaluation.requirement.id}
                 evaluation={evaluation}
                 workforceMemberId={workforceMemberId}
-                canManage={canManage}
+                canManageDocuments={canManageDocuments}
+                canManageComplianceEvidence={canManageComplianceEvidence}
                 rosterOptions={rosterOptions}
                 lifecycleStatus={lifecycleStatus}
                 history={history.filter(

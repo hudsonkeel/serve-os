@@ -6,7 +6,12 @@ export const AUTH_USER_EMAIL_COOKIE = "serve_os_user_email";
 // sameSite/secure discipline as the real auth cookies.
 export const CURRENT_COMMUNITY_COOKIE = "serve_os_current_community";
 
-export const AUTH_ROLES = ["admin", "manager", "executive", "operations"] as const;
+// office_staff (v0.1, "Serve OS User Roles & Permissions"): ordinary
+// personnel-document administration (view caregiver profiles, view/upload/
+// replace caregiver documents) without compliance decision authority or
+// any admin capability. See lib/workforce/permissions.ts for exactly what
+// it can and cannot do.
+export const AUTH_ROLES = ["admin", "manager", "executive", "operations", "office_staff"] as const;
 export type AuthRole = (typeof AUTH_ROLES)[number];
 
 export function isAuthRole(role: string | null | undefined): role is AuthRole {

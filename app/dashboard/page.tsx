@@ -12,6 +12,7 @@ import {
 } from "@/lib/utils/date";
 import { buildCurrentUserDisplay } from "@/lib/auth/display";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canViewOrganizationalDashboard } from "@/lib/navigation/permissions";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { isContextualAskServeEnabled } from "@/lib/askServe/featureFlag";
 import { buildAskServeContext } from "@/lib/askServe/buildContext";
@@ -21,13 +22,22 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function DashboardPage() {
+  const profile = await getCurrentAuthorizedUser();
+
+  if (!canViewOrganizationalDashboard(profile?.role ?? null)) {
+    return (
+      <PageContainer title="How We're Doing">
+        <p className="font-sans text-sm text-muted">You do not have permission to view How We're Doing.</p>
+      </PageContainer>
+    );
+  }
+
   // Org-wide executive dashboard, not the community-scoped People We Serve
   // surface — deliberately all_communities regardless of current selection
   // (Phase E/F, section 25: aggregate views work where intended). Preserves
   // this page's pre-existing behavior; not adjusted to respect community
   // context in this phase.
-  const [profile, community, canonicalRelationships, recruiting, activeProspectRelationships, intakeQueueCounts] = await Promise.all([
-    getCurrentAuthorizedUser(),
+  const [community, canonicalRelationships, recruiting, activeProspectRelationships, intakeQueueCounts] = await Promise.all([
     getCommunityMetrics({ mode: "all" }),
     getResidentServeRelationships({ mode: "all" }),
     getRecruitingLeads(),

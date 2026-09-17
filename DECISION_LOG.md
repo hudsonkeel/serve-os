@@ -298,3 +298,36 @@ The Dashboard and the new Audit Drill screens (`app/audit-readiness/drills/*`) b
 
 ### Result
 `lib/assessmentIntelligence/extractionProvider.ts` defines the canonical `AssessmentExtractionProvider` interface and `ExtractionResult` shape both `extraction.ts` (OpenAI) and `lib/assessmentIntelligence/providers/bedrockClaudeProvider.ts` (Bedrock Claude, region `us-east-1`, inference profile `us.anthropic.claude-sonnet-4-6`, Converse API) implement identically — no provider-specific fields leak past either module, no separate Claude schema exists. `providerSelection.ts` reads `ASSESSMENT_EXTRACTION_PROVIDER` (default `openai`), throws on an unrecognized value, and never catches a provider failure to reroute to the other provider. The Bedrock adapter has not been exercised against real AWS (no credentials exist in the development environment) — its parsing, epistemic-status preservation, and failure handling are fully unit tested via an injectable mock client instead. Full design, security review, cost model, benchmark results, and the PHI production-readiness checklist (currently **NO** — a live Bedrock call has never succeeded from this codebase) are recorded in `docs/architecture/BEDROCK_CLAUDE_PROVIDER.md`.
+
+---
+
+### Decision
+`/residents` and `/residents/[id]` (The People We Serve) are unrestricted for every role, including `office_staff` — revised from Office Staff Visibility v0.1's initial "hidden and blocked" treatment. `office_staff` gained the existing, previously-unrestricted operational-capture actions on that page (working notes, wellness observations/significant-change notes, current-needs updates, wellness follow-ups, relationship next-actions, prospect/lead creation) but not canonical-identity edits, resident evidence/client-readiness management, reconciliation/data-integrity actions, or Assessment capture (the last of these gated by a new predicate, `canCaptureResidentAssessment` — see `lib/auth/permissions.ts`).
+
+### Reason
+Office staff routinely field calls or receive updates about residents/clients and need to capture that information directly in Serve OS rather than via sticky notes, email, or informal handoff. Investigation (see this branch's own resident-access design report) found every one of the operational-capture actions above already had no role check beyond authentication — `office_staff` gaining page access grants them nothing any other role didn't already have on those specific actions. The one action that would have inappropriately become newly reachable — `startAssessmentCapture`, previously also unguarded — got its own explicit predicate rather than being silently swept in.
+
+### Result
+`lib/navigation/navData.ts` no longer restricts The People We Serve by role. `lib/auth/permissions.ts` gained `canCaptureResidentAssessment` (admin/manager/executive/operations — every role that already had this capability before the predicate existed; office_staff is the only exclusion), enforced both in `WorkWithThisPersonStrip.tsx` (hides the Assessment/Reassessment button) and server-side in `lib/actions/assessmentCapture.ts`'s `startAssessmentCapture`. Two items are recorded as explicit follow-up work, not undertaken here — see the two decisions immediately below.
+
+---
+
+### Decision
+Future resident/client operational-note and observation capture (the working notes, wellness notes, and similar mechanisms `office_staff` was just given access to, and any future "intelligence" surface built on top of them) must be designed with immutable provenance: who recorded it (`recorded_by`), when, which subject it's about, the information source where known (e.g. "phone call from family member" vs. "observed directly"), surrounding context, and an explicit correction/addendum lineage rather than in-place edits that lose the original record.
+
+### Reason
+Restoring `office_staff` access to resident note-capture (this branch) surfaced that today's capture mechanisms (`createWorkingNote`, `addWellnessNote`, etc.) record only an actor label and a timestamp — sufficient for today's "who typed this" need, but not a foundation for any future system that needs to reason about *how confident* Serve should be in a given note, distinguish a firsthand observation from a secondhand report, or preserve an original record when it's later corrected. Building that model now, as a side effect of a navigation-visibility slice, was explicitly out of scope and would have risked a rushed, under-designed data model for something that deserves its own design pass — matching this repo's own "workflow-first," "deterministic before AI," and "evidence and provenance" principles already recorded above (2026-06-28, Phase 2 entry).
+
+### Result
+No new data model, table, or schema was created in this branch. This entry exists so a future session designing resident/client observation or operational-intelligence capture starts from this requirement instead of re-deriving it, and does not silently ship a note-taking mechanism without provenance.
+
+---
+
+### Decision
+Three server actions remain reachable with no server-side role check beyond (or, in one case, including) authentication, discovered while auditing `/residents/[id]`'s mutation surface for the `office_staff` resident-access revision: `lib/actions/connections.ts` (interests/milestones/relationship-profile — no `getCurrentAuthorizedUser()` call at all, not even a signed-in requirement), `lib/actions/residentIdentity.ts` (`mergeResidents` and identity-candidate resolution), and `lib/actions/residentDataIntegrity.ts` (malformed-field correction and related actions). The latter two have their corresponding UI buttons correctly hidden via `canPerformReconciliationActions`, but the server actions themselves accept the call from any authenticated role regardless.
+
+### Reason
+This is a pre-existing gap that predates `office_staff` and affects every role equally (any authenticated user, including `operations` today, can already reach these actions directly regardless of what their UI shows them) — it is not introduced or worsened by restoring `office_staff`'s page access, since Next.js Server Actions are callable independent of whether the page containing their trigger button is reachable via navigation. Fixing it was explicitly out of scope for this branch and risked expanding a navigation-visibility slice into an unrelated security-hardening effort without its own review.
+
+### Result
+No change made to any of the three files in this branch. Recorded here as explicit security debt: a future pass must add `canPerformReconciliationActions` (or equivalent) checks to `residentIdentity.ts` and `residentDataIntegrity.ts`, and at minimum an authentication check to `connections.ts`, before treating resident identity-merge, data-integrity correction, and connections/interests capture as properly authorized.

@@ -109,6 +109,7 @@ async function main() {
       effectiveDate,
       expirationDate: addDays(new Date(effectiveDate), 365),
       actor: ACTOR,
+      verifyImmediately: true,
       notes: "Combined Assessment/Care Plan fixture.",
     });
     check("combined artifact: Assessment evidence created", !assessmentEvidence.error && !!assessmentEvidence.evidence, assessmentEvidence.error);
@@ -122,6 +123,7 @@ async function main() {
       expirationDate: addDays(new Date(effectiveDate), ISP_VALIDITY_DAYS),
       supersedesEvidenceId: null,
       actor: ACTOR,
+      verifyImmediately: true,
       notes: null,
     });
     check("combined artifact: ISP evidence composed from the SAME document, no error", !ispFromAssessment.error && !!ispFromAssessment.evidence, ispFromAssessment.error);
@@ -151,6 +153,7 @@ async function main() {
       effectiveDate,
       expirationDate: addDays(new Date(effectiveDate), 365),
       actor: ACTOR,
+      verifyImmediately: true,
       notes: "Assessment-only fixture — recordDocumentEvidence() called directly, bypassing the action-layer ISP composition.",
     });
     const assessmentOnlyEval = await getClientReadinessEvaluation(assessmentOnlyResidentId, "active_client");
@@ -179,6 +182,7 @@ async function main() {
       effectiveDate,
       expirationDate: addDays(new Date(effectiveDate), ISP_VALIDITY_DAYS),
       actor: ACTOR,
+      verifyImmediately: true,
       notes: "ISP-only fixture (e.g. a real pre-Serve ISP with no combined Assessment).",
     });
     const ispOnlyEval = await getClientReadinessEvaluation(ispOnlyResidentId, "active_client");
@@ -200,6 +204,7 @@ async function main() {
       expirationDate: addDays(new Date(replacementDate), 365),
       supersedesEvidenceId: assessmentEvidence.evidence!.id,
       actor: ACTOR,
+      verifyImmediately: true,
       notes: "Replacement combined Assessment/Care Plan fixture.",
     });
     check("replacement: new Assessment evidence created and supersedes the prior one", !newAssessmentEvidence.error && !!newAssessmentEvidence.evidence);
@@ -213,6 +218,7 @@ async function main() {
       expirationDate: addDays(new Date(replacementDate), ISP_VALIDITY_DAYS),
       supersedesEvidenceId: ispFromAssessment.evidence!.id,
       actor: ACTOR,
+      verifyImmediately: true,
       notes: null,
     });
     check("replacement: new ISP evidence created and supersedes the prior ISP evidence", !newIspEvidence.error && !!newIspEvidence.evidence);

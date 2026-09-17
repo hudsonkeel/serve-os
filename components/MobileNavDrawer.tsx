@@ -7,20 +7,18 @@ import { usePathname } from "next/navigation";
 import { X, LogOut } from "lucide-react";
 import { Logo } from "./Logo";
 import type { CurrentUserDisplay } from "@/lib/auth/display";
-import { NAV_SECTIONS, NAV_UTILITY } from "@/lib/navigation/primaryNav";
+import { getVisibleNavSections, getVisibleUtilityItems } from "@/lib/navigation/primaryNav";
 import { logoutAction } from "@/lib/auth/actions";
 
 // Mobile release scope: the mobile product is intentionally narrower than
 // desktop right now — "The People We Serve" is the only operational
 // destination that has been designed/tested for mobile, so it's the only
 // one offered here ("do not offer a door until the room behind it is
-// ready"). Derived from NAV_SECTIONS (never hardcoded) so this can never
-// silently drift from the real destination's label/icon/href — desktop's
-// Sidebar still shows the complete set unchanged, since NAV_SECTIONS
-// itself isn't touched, only filtered at render time, here only.
-const PEOPLE_WE_SERVE_NAV_ITEM = NAV_SECTIONS.flatMap((section) => section.items).find(
-  (item) => item.href === "/residents"
-);
+// ready"). Looked up via the same role-filtered helper Sidebar.tsx uses
+// (Office Staff Visibility v0.1) rather than NAV_SECTIONS directly, so a
+// role this item is hidden from (office_staff) doesn't see it here
+// either — desktop's Sidebar is otherwise unaffected, since this is a
+// per-render lookup, not a shared mutation.
 
 const FOCUSABLE_SELECTOR =
   'button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -43,6 +41,10 @@ export function MobileNavDrawer({ isOpen, onClose, currentUser }: MobileNavDrawe
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const pathname = usePathname();
   const isActive = (href: string) => pathname.startsWith(href);
+  const peopleWeServeNavItem = getVisibleNavSections(currentUser.role)
+    .flatMap((section) => section.items)
+    .find((item) => item.href === "/residents");
+  const utilityItems = getVisibleUtilityItems(currentUser.role);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -112,7 +114,7 @@ export function MobileNavDrawer({ isOpen, onClose, currentUser }: MobileNavDrawe
 
         <nav className="flex-1 overflow-y-auto px-4 py-6" aria-label="Primary">
           {/* Deliberately narrow for this mobile release — see the
-              PEOPLE_WE_SERVE_NAV_ITEM comment above. Today's Work,
+              peopleWeServeNavItem comment above. Today's Work,
               Workforce, How We're Doing, Community Outlook, Ask Serve, and
               Coming Soon are all withheld from mobile navigation, not
               removed: every one of them is still a full destination on
@@ -121,26 +123,26 @@ export function MobileNavDrawer({ isOpen, onClose, currentUser }: MobileNavDrawe
               direct URL still loads if someone types one in on their
               phone (deliberately not blocked — see the completion
               report). */}
-          {PEOPLE_WE_SERVE_NAV_ITEM && (
+          {peopleWeServeNavItem && (
             <div className="mb-5">
               <ul className="space-y-1">
                 <li>
                   <Link
-                    href={PEOPLE_WE_SERVE_NAV_ITEM.href}
+                    href={peopleWeServeNavItem.href}
                     onClick={onClose}
-                    aria-current={isActive(PEOPLE_WE_SERVE_NAV_ITEM.href) ? "page" : undefined}
+                    aria-current={isActive(peopleWeServeNavItem.href) ? "page" : undefined}
                     className={`flex min-h-[44px] items-center gap-3 rounded-lg border-l-[3px] px-4 py-3 font-sans text-button tracking-wide transition-all duration-150 ${
-                      isActive(PEOPLE_WE_SERVE_NAV_ITEM.href)
+                      isActive(peopleWeServeNavItem.href)
                         ? "border-l-gold bg-gold/15 font-semibold text-gold-light"
                         : "border-l-transparent text-white/70 hover:bg-white/8 hover:text-white/95"
                     }`}
                   >
-                    <PEOPLE_WE_SERVE_NAV_ITEM.icon
+                    <peopleWeServeNavItem.icon
                       size={17}
-                      strokeWidth={isActive(PEOPLE_WE_SERVE_NAV_ITEM.href) ? 2 : 1.5}
+                      strokeWidth={isActive(peopleWeServeNavItem.href) ? 2 : 1.5}
                       className="shrink-0"
                     />
-                    <span>{PEOPLE_WE_SERVE_NAV_ITEM.label}</span>
+                    <span>{peopleWeServeNavItem.label}</span>
                   </Link>
                 </li>
               </ul>
@@ -152,7 +154,7 @@ export function MobileNavDrawer({ isOpen, onClose, currentUser }: MobileNavDrawe
                 Serve is excluded here too (matches AskServeTrigger.tsx's
                 own mobile suppression), NAV_UTILITY itself untouched so
                 desktop is unaffected. */}
-            {NAV_UTILITY.filter((item) => item.href !== "/ask-serve").map((item) => {
+            {utilityItems.filter((item) => item.href !== "/ask-serve").map((item) => {
               const active = isActive(item.href);
               return (
                 <Link
