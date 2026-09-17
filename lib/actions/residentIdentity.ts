@@ -1,6 +1,7 @@
 "use server";
 
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { resolveReconciliationActor } from "@/lib/auth/reconciliationActor";
 import {
   completeResidentConsolidation as completeResidentConsolidationRecord,
   dismissIdentityCandidate as dismissIdentityCandidateRecord,
@@ -10,9 +11,22 @@ import {
   resolveCandidateProfileCorrected as resolveCandidateProfileCorrectedRecord,
 } from "@/lib/data/residentIdentity";
 
-async function currentActorLabel(): Promise<string | null> {
+// Security hotfix (fix/resident-identity-authorization) — every export in
+// this file used to accept any signed-in user, regardless of role.
+// mergeResidents in particular merges two canonical resident records, a
+// hard-to-reverse identity mutation; the others correct resident PII
+// fields or resolve/dismiss identity findings. All now require
+// canPerformReconciliationActions (admin/manager/executive), via the
+// shared resolveReconciliationActor() (lib/auth/reconciliationActor.ts) —
+// the exact boundary lib/actions/reconciliation.ts already enforces for
+// the sibling /reconciliation workflow, reused here rather than a second
+// predicate so the two authorization tiers can never drift apart. This is
+// the real authorization boundary; the page-level checks in
+// app/resident-identities/**/page.tsx are the first line, not the only
+// one.
+async function requireReconciliationActor(): Promise<{ actor: string } | { error: string }> {
   const profile = await getCurrentAuthorizedUser();
-  return profile?.full_name || profile?.email || null;
+  return resolveReconciliationActor(profile);
 }
 
 // Confirming "same person" — always immediate alias + redirect +
@@ -30,10 +44,10 @@ export async function mergeResidents(data: {
   fieldResolutions?: Record<string, unknown>;
   rationale?: string;
 }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to merge residents." };
-  }
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+  const { actor } = actorResult;
+
   if (!data.canonicalResidentId || !data.duplicateResidentId) {
     return { error: "Select both a canonical and a duplicate resident." };
   }
@@ -55,46 +69,41 @@ export async function mergeResidents(data: {
 }
 
 export async function completeResidentConsolidation(data: { mergeEventId: string }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to complete consolidation." };
-  }
-  const result = await completeResidentConsolidationRecord(data.mergeEventId, actor);
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+
+  const result = await completeResidentConsolidationRecord(data.mergeEventId, actorResult.actor);
   return result.error ? { error: result.error } : {};
 }
 
 export async function resolveIdentityCandidateNotDuplicate(data: { candidateId: string; reason?: string }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to resolve a candidate." };
-  }
-  const result = await resolveCandidateNotDuplicateRecord(data.candidateId, actor, data.reason?.trim() || null);
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+
+  const result = await resolveCandidateNotDuplicateRecord(data.candidateId, actorResult.actor, data.reason?.trim() || null);
   return result.error ? { error: result.error } : {};
 }
 
 export async function resolveIdentityCandidateProfileCorrected(data: { candidateId: string; note?: string }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to resolve a candidate." };
-  }
-  const result = await resolveCandidateProfileCorrectedRecord(data.candidateId, actor, data.note?.trim() || null);
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+
+  const result = await resolveCandidateProfileCorrectedRecord(data.candidateId, actorResult.actor, data.note?.trim() || null);
   return result.error ? { error: result.error } : {};
 }
 
 export async function resolveIdentityCandidateInvestigate(data: { candidateId: string; note?: string }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to update a candidate." };
-  }
-  const result = await resolveCandidateInvestigateRecord(data.candidateId, actor, data.note?.trim() || null);
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+
+  const result = await resolveCandidateInvestigateRecord(data.candidateId, actorResult.actor, data.note?.trim() || null);
   return result.error ? { error: result.error } : {};
 }
 
 export async function dismissIdentityCandidate(data: { candidateId: string; reason?: string }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to dismiss a candidate." };
-  }
-  const result = await dismissIdentityCandidateRecord(data.candidateId, actor, data.reason?.trim() || null);
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+
+  const result = await dismissIdentityCandidateRecord(data.candidateId, actorResult.actor, data.reason?.trim() || null);
   return result.error ? { error: result.error } : {};
 }

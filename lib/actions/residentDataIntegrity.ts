@@ -1,6 +1,7 @@
 "use server";
 
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { resolveReconciliationActor } from "@/lib/auth/reconciliationActor";
 import {
   correctMalformedField as correctMalformedFieldRecord,
   dismissIssueNotAnIssue as dismissIssueNotAnIssueRecord,
@@ -15,9 +16,18 @@ import { generateHouseholdSignals } from "@/lib/residents/identity/householdSign
 import { generateIdentitySignals } from "@/lib/residents/identity/identitySignals";
 import { MATCHING_RULE_VERSION } from "@/lib/residents/identity/candidateDetection";
 
-async function currentActorLabel(): Promise<string | null> {
+// Security hotfix (fix/resident-identity-authorization) — see
+// lib/actions/residentIdentity.ts's own comment; this file had the exact
+// same gap (confirmDuplicateImportRecord in particular merges two
+// residents via mergeResidentsRecord, and correctIntegrityIssueMalformedField
+// overwrites resident PII fields directly). Same fix: every export now
+// requires canPerformReconciliationActions via the shared
+// resolveReconciliationActor() (lib/auth/reconciliationActor.ts), so all
+// three surfaces (/reconciliation, /resident-identities,
+// /resident-data-integrity) share one authorization tier that can't drift.
+async function requireReconciliationActor(): Promise<{ actor: string } | { error: string }> {
   const profile = await getCurrentAuthorizedUser();
-  return profile?.full_name || profile?.email || null;
+  return resolveReconciliationActor(profile);
 }
 
 // "Confirm Duplicate Import Record" — reuses the EXISTING merge/
@@ -33,10 +43,10 @@ export async function confirmDuplicateImportRecord(data: {
   fieldResolutions?: Record<string, unknown>;
   rationale?: string;
 }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to confirm a duplicate import record." };
-  }
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+  const { actor } = actorResult;
+
   if (!data.canonicalResidentId || !data.duplicateResidentId) {
     return { error: "Select both a canonical and a duplicate resident." };
   }
@@ -69,16 +79,15 @@ export async function correctIntegrityIssueMalformedField(data: {
   field: "phone" | "first_name" | "last_name" | "middle_name";
   newValue: string;
 }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to correct a field." };
-  }
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+
   if (!data.newValue?.trim()) {
     return { error: "A corrected value is required." };
   }
   const result = await correctMalformedFieldRecord(
     { issueId: data.issueId, residentId: data.residentId, field: data.field, newValue: data.newValue.trim() },
-    actor,
+    actorResult.actor,
   );
   return result.error ? { error: result.error } : {};
 }
@@ -93,10 +102,9 @@ export async function returnIntegrityIssueToIdentityReview(data: {
   residentIds: [string, string];
   note?: string;
 }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to return an issue to identity review." };
-  }
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+  const { actor } = actorResult;
 
   const residents = await loadResidentsForIdentityReevaluation(data.residentIds);
   const [a, b] = residents;
@@ -124,19 +132,17 @@ export async function returnIntegrityIssueToIdentityReview(data: {
 }
 
 export async function dismissIntegrityIssueNotAnIssue(data: { issueId: string; reason?: string }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to dismiss an issue." };
-  }
-  const result = await dismissIssueNotAnIssueRecord(data.issueId, actor, data.reason?.trim() || null);
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+
+  const result = await dismissIssueNotAnIssueRecord(data.issueId, actorResult.actor, data.reason?.trim() || null);
   return result.error ? { error: result.error } : {};
 }
 
 export async function markIntegrityIssueInvestigating(data: { issueId: string; note?: string }): Promise<{ error?: string }> {
-  const actor = await currentActorLabel();
-  if (!actor) {
-    return { error: "You must be signed in to update an issue." };
-  }
-  const result = await markIssueInvestigatingRecord(data.issueId, actor, data.note?.trim() || null);
+  const actorResult = await requireReconciliationActor();
+  if ("error" in actorResult) return actorResult;
+
+  const result = await markIssueInvestigatingRecord(data.issueId, actorResult.actor, data.note?.trim() || null);
   return result.error ? { error: result.error } : {};
 }

@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/PageContainer";
+import { getCurrentAuthorizedUser } from "@/lib/auth/session";
+import { canPerformReconciliationActions } from "@/lib/auth/permissions";
 import {
   getCandidateMemberResidentIds,
   getIdentityCandidateById,
@@ -15,11 +17,24 @@ import { ResidentIdentityComparison } from "@/components/residentIdentity/Reside
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Security hotfix (fix/resident-identity-authorization) — see
+// app/resident-identities/page.tsx's own comment. Same gate, checked
+// before this specific candidate's resident-comparison data is ever
+// fetched.
 export default async function ResidentIdentityCandidatePage({
   params,
 }: {
   params: Promise<{ candidateId: string }>;
 }) {
+  const profile = await getCurrentAuthorizedUser();
+  if (!canPerformReconciliationActions(profile?.role ?? null)) {
+    return (
+      <PageContainer title="Resident Identity Review">
+        <p className="font-sans text-sm text-muted">You do not have permission to view Resident Identities.</p>
+      </PageContainer>
+    );
+  }
+
   const { candidateId } = await params;
   const candidate = await getIdentityCandidateById(candidateId);
   if (!candidate) notFound();
