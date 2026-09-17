@@ -40,7 +40,6 @@ export interface ReviewException {
 export interface ReviewSummary {
   exceptions: ReviewException[];
   clearFacts: DraftFactForReview[]; // confirmed_yes/confirmed_no/not_applicable with real confidence — not shown for individual sign-off
-  readyForApproval: boolean;
 }
 
 export function computeReviewExceptions(
@@ -109,13 +108,7 @@ export function computeReviewExceptions(
     }
   }
 
-  const hasOpenConflicts = conflicts.some((c) => c.status === "open");
-
-  return {
-    exceptions,
-    clearFacts,
-    readyForApproval: !hasOpenConflicts && draftFacts.length > 0,
-  };
+  return { exceptions, clearFacts };
 }
 
 export interface DistinctFactValue {
@@ -162,6 +155,27 @@ export function isExceptionDispositioned(
     resolution === "leave_uncertain" ||
     resolution.startsWith("fact:")
   );
+}
+
+/** Which exceptions require an explicit reviewer disposition before approval -- conflicting and
+ * uncertain kinds only. A "missing_required" exception is surfaced for visibility but has never
+ * itself blocked approval (pre-existing behavior, unchanged here). */
+export function getDispositionableExceptions(exceptions: readonly ReviewException[]): ReviewException[] {
+  return exceptions.filter((e) => e.kind === "conflicting" || e.kind === "uncertain");
+}
+
+/** The exact approval-gate decision AssessmentReviewPanel.tsx's Approve button uses -- the one
+ * place this decision is computed, so it is directly testable rather than only provable through
+ * its building blocks (isExceptionDispositioned) or a rendered component. There must be no
+ * second, independently-maintained copy of this decision anywhere else. */
+export function isReviewReadyForApproval(
+  clearFacts: readonly DraftFactForReview[],
+  exceptions: readonly ReviewException[],
+  resolutions: Readonly<Record<string, string | undefined>>
+): boolean {
+  const hasAnyDraftFacts = clearFacts.length > 0 || exceptions.length > 0;
+  if (!hasAnyDraftFacts) return false;
+  return getDispositionableExceptions(exceptions).every((exception) => isExceptionDispositioned(exception, resolutions));
 }
 
 export interface ApprovedFactInput {

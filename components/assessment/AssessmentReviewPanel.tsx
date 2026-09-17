@@ -11,7 +11,8 @@ import {
 } from "@/lib/actions/assessmentIntelligence";
 import {
   distinctFactValues,
-  isExceptionDispositioned,
+  getDispositionableExceptions,
+  isReviewReadyForApproval,
   buildApprovedFactsForReview,
   type ApprovedFactInput,
   type DraftFactForReview,
@@ -53,7 +54,6 @@ interface AssessmentReviewPanelProps {
   sessionStatus: string;
   exceptions: ReviewException[];
   clearFacts: DraftFactForReview[];
-  readyForApproval: boolean;
   coverage: AssessmentCoverageSummary;
   /** Reliable canonical resident/profile facts (DOB, phone, physician, family contact, address)
    * — established before this conversation, never something the resident said today. Rendered
@@ -98,6 +98,7 @@ const STATE_STYLES: Record<FieldDisplayState, { label: string; className: string
   no: { label: "No", className: "bg-ivory-warm text-body" },
   value: { label: "", className: "bg-blue-pale text-blue" },
   uncertain: { label: "Uncertain", className: "bg-warning-surface text-warning-text" },
+  needs_follow_up: { label: "Needs follow-up", className: "bg-warning-surface text-warning-text" },
   not_discussed: { label: "Not discussed", className: "bg-ivory text-subtle" },
 };
 
@@ -155,7 +156,26 @@ export function AssessmentReviewPanel({
     [assessmentEffectiveFacts, canonicalProfileFacts]
   );
 
-  const projection = useMemo(() => buildAssessmentProjection(mergedFacts), [mergedFacts]);
+  // Exceptions requiring a reviewer disposition before approval (conflicting + uncertain kinds
+  // only -- see getDispositionableExceptions()'s own comment). A field_path lands in
+  // needsFollowUpFieldPaths when its disposition is "leave_uncertain" ("Neither / needs
+  // follow-up" for a conflict, "Leave Unknown" for an uncertain field) -- it produces no
+  // approved fact (buildApprovedFactsForReview() above still skips it, unchanged), so
+  // buildAssessmentProjection needs this set to render it "Needs follow-up" instead of
+  // indistinguishably "Not discussed".
+  const exceptionsNeedingDisposition = useMemo(() => getDispositionableExceptions(exceptions), [exceptions]);
+  const needsFollowUpFieldPaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const exception of exceptionsNeedingDisposition) {
+      if (resolutions[exception.fieldPath] === "leave_uncertain") paths.add(exception.fieldPath);
+    }
+    return paths;
+  }, [exceptionsNeedingDisposition, resolutions]);
+
+  const projection = useMemo(
+    () => buildAssessmentProjection(mergedFacts, needsFollowUpFieldPaths),
+    [mergedFacts, needsFollowUpFieldPaths]
+  );
 
   const assessmentFactDetails = useMemo(() => {
     const map = new Map<string, ApprovedFactInput>();
@@ -163,23 +183,13 @@ export function AssessmentReviewPanel({
     return map;
   }, [approvedFactsPreview]);
 
-  const hasAnyDraftFacts = clearFacts.length > 0 || exceptions.length > 0;
-  // Every rendered conflicting/uncertain exception must have SOME explicit reviewer disposition
-  // -- "Neither / needs follow-up" and "Leave Unknown" count exactly like a definitive pick;
-  // only an exception no one has looked at yet blocks approval. See isExceptionDispositioned()'s
-  // own comment for why this is deliberately a different question than "does this exception
-  // contribute an approved fact" (buildApprovedFactsForReview(), unaffected by this gate).
-  const dispositionableExceptions = useMemo(
-    () => [...conflictingExceptions, ...uncertainExceptions],
-    [conflictingExceptions, uncertainExceptions]
-  );
-  const allExceptionsDispositioned = useMemo(
-    () => dispositionableExceptions.every((exception) => isExceptionDispositioned(exception, resolutions)),
-    [dispositionableExceptions, resolutions]
-  );
+  // The one place this decision is computed (isReviewReadyForApproval, reviewExceptions.ts) --
+  // every rendered conflicting/uncertain exception must have SOME explicit reviewer disposition;
+  // "Neither / needs follow-up" and "Leave Unknown" count exactly like a definitive pick, only an
+  // exception no one has looked at yet blocks approval.
   const canApprove = useMemo(
-    () => hasAnyDraftFacts && allExceptionsDispositioned,
-    [hasAnyDraftFacts, allExceptionsDispositioned]
+    () => isReviewReadyForApproval(clearFacts, exceptions, resolutions),
+    [clearFacts, exceptions, resolutions]
   );
 
   function handleResolveConflict(fieldPath: string, factId: string) {
@@ -197,7 +207,11 @@ export function AssessmentReviewPanel({
   function handleApprove() {
     setError(null);
     startTransition(async () => {
-      const result = await approveAssessment({ assessmentSessionId, approvedFacts: approvedFactsPreview });
+      const result = await approveAssessment({
+        assessmentSessionId,
+        approvedFacts: approvedFactsPreview,
+        needsFollowUpFieldPaths: [...needsFollowUpFieldPaths],
+      });
       if (result.error) {
         setError(result.error);
         return;
@@ -341,7 +355,7 @@ export function AssessmentReviewPanel({
             >
               {isPending ? "Approving…" : "Approve Assessment"}
             </button>
-            {!allExceptionsDispositioned && dispositionableExceptions.length > 0 && (
+            {!canApprove && exceptionsNeedingDisposition.length > 0 && (
               <p className="mt-2 font-sans text-xs text-danger-text">
                 Review each flagged item before approving the assessment — see the Needs Attention tab.
               </p>

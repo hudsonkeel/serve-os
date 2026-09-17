@@ -101,6 +101,46 @@ test("assessment facts still take precedence over profile facts within the snaps
   assert.equal(phoneField?.source, "assessment");
 });
 
+test("IMMUTABLE SNAPSHOT PRESERVES 'NEEDS FOLLOW-UP' DISTINCTLY FROM 'NOT DISCUSSED': a field explicitly dispositioned 'Neither / needs follow-up' or 'Leave Unknown' at approval time freezes as needs_follow_up, never collapsed into not_discussed", () => {
+  const snapshot = buildApprovedAssessmentSnapshot({
+    ...BASE_INPUT,
+    assessmentFacts: [],
+    canonicalProfileFacts: [],
+    needsFollowUpFieldPaths: ["cognition.short_term_memory_change"],
+  });
+  const cognitionSection = snapshot.sections.find((s) => s.domain === "cognition");
+  const memoryField = cognitionSection?.fields.find((f) => f.fieldPath === "cognition.short_term_memory_change");
+  assert.equal(memoryField?.state, "needs_follow_up");
+
+  // A sibling field in the same domain that was genuinely never raised must still read
+  // "not_discussed" -- the distinction is per-field-path, not a domain-wide toggle.
+  const untouchedSibling = cognitionSection?.fields.find((f) => f.fieldPath !== "cognition.short_term_memory_change");
+  assert.equal(untouchedSibling?.state, "not_discussed");
+});
+
+test("NEEDS FOLLOW-UP NEVER BECOMES AN APPROVED FACT IN THE SNAPSHOT: listing a field path in needsFollowUpFieldPaths with no corresponding assessmentFacts entry produces no fabricated value -- only the display state changes", () => {
+  const snapshot = buildApprovedAssessmentSnapshot({
+    ...BASE_INPUT,
+    assessmentFacts: [], // deliberately no approved fact for this field -- leave_uncertain contributes nothing
+    canonicalProfileFacts: [],
+    needsFollowUpFieldPaths: ["daily_life.laundry"],
+  });
+  const laundryField = snapshot.sections
+    .find((s) => s.domain === "daily_life")
+    ?.fields.find((f) => f.fieldPath === "daily_life.laundry");
+  assert.equal(laundryField?.state, "needs_follow_up");
+  assert.equal(laundryField?.displayValue, null);
+  assert.equal(laundryField?.source, null);
+});
+
+test("defaults to no needs-follow-up fields when the caller has no disposition context (e.g. reconciling from durably-stored approved facts alone)", () => {
+  const snapshot = buildApprovedAssessmentSnapshot({ ...BASE_INPUT, assessmentFacts: [], canonicalProfileFacts: [] });
+  assert.ok(
+    !snapshot.sections.some((s) => s.fields.some((f) => f.state === "needs_follow_up")),
+    "with no needsFollowUpFieldPaths supplied, nothing should render as needs_follow_up"
+  );
+});
+
 test("serve_relationship_intelligence never enters the snapshot, even when facts are supplied for it", () => {
   const serveRelFields = FIELD_REGISTRY.filter((f) => f.domain === "serve_relationship_intelligence").map((f) => f.fieldPath);
   assert.ok(serveRelFields.length > 0, "sanity check");

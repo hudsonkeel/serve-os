@@ -422,6 +422,7 @@ async function ensureApprovedAssessmentSnapshot(input: {
   approvedAt: string;
   approvedBy: string;
   assessmentFacts: readonly Pick<ApprovedFactInput, "field_path" | "value" | "assertion_state">[];
+  needsFollowUpFieldPaths: readonly string[];
 }): Promise<{ error?: string }> {
   const existingOutputs = await getOutputsForSession(input.session.id);
   if (existingOutputs.some((o) => o.output_type === "assessment_document")) return {};
@@ -439,6 +440,7 @@ async function ensureApprovedAssessmentSnapshot(input: {
     approvedBy: input.approvedBy,
     assessmentFacts: approvedFactInputsToEffectiveFacts(input.assessmentFacts),
     canonicalProfileFacts,
+    needsFollowUpFieldPaths: input.needsFollowUpFieldPaths,
   });
 
   const result = await writeAssessmentOutput({
@@ -461,6 +463,13 @@ export async function approveAssessment(input: {
   assessmentSessionId: string;
   approvedFacts: ApprovedFactInput[];
   rationale?: string;
+  /** Field paths the reviewer explicitly dispositioned "Neither / needs follow-up" or "Leave
+   * Unknown" -- carried alongside approvedFacts purely so the immutable snapshot below can
+   * render them "Needs follow-up" rather than "Not discussed". Never becomes an approved fact,
+   * never reaches assessment_approved_facts, and is not durably persisted anywhere on its own
+   * (see ensureApprovedAssessmentSnapshot's own comment on the resulting reconciliation-path
+   * limitation). */
+  needsFollowUpFieldPaths?: string[];
 }): Promise<{ error?: string; pricingStatus?: string }> {
   const authResult = await requireActor();
   if ("error" in authResult) return { error: authResult.error };
@@ -488,6 +497,7 @@ export async function approveAssessment(input: {
     approvedAt: new Date().toISOString(),
     approvedBy: authResult.actor,
     assessmentFacts: input.approvedFacts,
+    needsFollowUpFieldPaths: input.needsFollowUpFieldPaths ?? [],
   });
   const snapshotError = snapshotResult.error;
 
@@ -602,11 +612,19 @@ export async function reconcileApprovedAssessmentArtifacts(
     (latest, f) => (f.approved_at > latest ? f.approved_at : latest),
     sessionFactRows[0]?.approved_at ?? new Date().toISOString()
   );
+  // No durable record of which fields were dispositioned "Neither / needs follow-up" survives
+  // once the original approveAssessment() request ends -- see that action's own comment. This
+  // reconciliation path only runs at all when ensureApprovedAssessmentSnapshot()'s existing-row
+  // check found nothing (the original approval's snapshot write itself failed), so in that rare
+  // case a deferred field is reconciled as "Not discussed" rather than "Needs follow-up" -- a
+  // known, accepted gap, tracked alongside the broader pre-approval persistence limitation
+  // (backlog, not in scope for this fix: no table exists to recover this from).
   const snapshotResult = await ensureApprovedAssessmentSnapshot({
     session,
     approvedAt,
     approvedBy: sessionFactRows[0]?.approved_by ?? authResult.actor,
     assessmentFacts: sessionFactRows,
+    needsFollowUpFieldPaths: [],
   });
   if (snapshotResult.error) return { error: snapshotResult.error };
 

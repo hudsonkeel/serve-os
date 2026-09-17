@@ -46,7 +46,6 @@ export default async function AssessmentReviewPage({
         sessionStatus={reviewData.session.status}
         exceptions={reviewData.reviewSummary.exceptions}
         clearFacts={reviewData.reviewSummary.clearFacts}
-        readyForApproval={reviewData.reviewSummary.readyForApproval}
         coverage={reviewData.coverage}
         canonicalProfileFacts={reviewData.canonicalProfileFacts}
         approvedSnapshot={reviewData.approvedSnapshot}

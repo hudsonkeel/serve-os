@@ -27,7 +27,7 @@ export interface AssessmentDocumentSnapshot {
   readonly approvedBy: string;
   /** Domain-grouped, professional structure -- the exact same shape and rules
    * buildAssessmentProjection() produces for the live pre-approval preview
-   * (serve_relationship_intelligence excluded, five display states, per-field provenance). */
+   * (serve_relationship_intelligence excluded, six display states, per-field provenance). */
   readonly sections: readonly ProjectedDomainSection[];
 }
 
@@ -39,9 +39,16 @@ export function buildApprovedAssessmentSnapshot(input: {
   readonly approvedBy: string;
   readonly assessmentFacts: readonly EffectiveFact[];
   readonly canonicalProfileFacts: readonly EffectiveFact[];
+  /** Field paths explicitly dispositioned "Neither / needs follow-up" or "Leave Unknown" at
+   * approval time -- frozen into this snapshot as state "needs_follow_up" rather than
+   * "not_discussed", so the historical record doesn't erase that a human reviewed real evidence
+   * and chose not to assert a value. Defaults to none: a caller with no disposition context
+   * (e.g. reconciling a snapshot from durably-stored assessment_approved_facts rows alone, which
+   * never recorded this) gets the honest "not_discussed" fallback rather than a guess. */
+  readonly needsFollowUpFieldPaths?: readonly string[];
 }): AssessmentDocumentSnapshot {
   const merged = mergeEffectiveFacts(input.assessmentFacts, input.canonicalProfileFacts);
-  const sections = buildAssessmentProjection(merged);
+  const sections = buildAssessmentProjection(merged, new Set(input.needsFollowUpFieldPaths ?? []));
   return {
     schemaVersion: ASSESSMENT_SNAPSHOT_SCHEMA_VERSION,
     assessmentSessionId: input.assessmentSessionId,

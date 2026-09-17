@@ -104,17 +104,20 @@ export function buildCanonicalProfileEffectiveFacts(resident: CanonicalResidentP
   return facts;
 }
 
-export type FieldDisplayState = "yes" | "no" | "value" | "uncertain" | "not_discussed";
+export type FieldDisplayState = "yes" | "no" | "value" | "uncertain" | "needs_follow_up" | "not_discussed";
 
 export interface ProjectedField {
   readonly fieldPath: string;
   readonly label: string;
   readonly state: FieldDisplayState;
   /** Only meaningful for state "value" or "uncertain" -- the actual text/value to show. Null for
-   * "yes"/"no" (the state itself is the whole answer) and "not_discussed" (nothing to show). */
+   * "yes"/"no", "needs_follow_up", and "not_discussed" (nothing to show). */
   readonly displayValue: string | null;
-  /** Null only for "not_discussed" -- there is no source because nothing establishes this field
-   * yet. */
+  /** Null for "not_discussed" and "needs_follow_up" -- neither has an approved/profile fact
+   * backing it. "needs_follow_up" exists only because a reviewer explicitly dispositioned a
+   * conflicting/uncertain exception as "Neither / needs follow-up" or "Leave Unknown"
+   * (reviewExceptions.ts's isExceptionDispositioned()) -- a deliberate human decision not to
+   * assert a value, never a fact establishing one. */
   readonly source: EffectiveFactSource | null;
 }
 
@@ -124,8 +127,21 @@ export interface ProjectedDomainSection {
   readonly fields: readonly ProjectedField[];
 }
 
-function projectField(fieldPath: string, label: string, fact: EffectiveFact | undefined): ProjectedField {
-  if (!fact) return { fieldPath, label, state: "not_discussed", displayValue: null, source: null };
+function projectField(
+  fieldPath: string,
+  label: string,
+  fact: EffectiveFact | undefined,
+  needsFollowUp: boolean
+): ProjectedField {
+  if (!fact) {
+    // No approved/profile fact means either the topic was genuinely never raised, or it WAS
+    // raised (possibly with real, conflicting evidence) and a human reviewer explicitly chose
+    // not to assert a definitive value for it. Collapsing those two into one "Not discussed"
+    // state would erase that a review actually happened -- see needsFollowUp's caller
+    // (buildAssessmentProjection) for where that distinction comes from.
+    const state = needsFollowUp ? "needs_follow_up" : "not_discussed";
+    return { fieldPath, label, state, displayValue: null, source: null };
+  }
 
   if (fact.assertionState === "uncertain") {
     const displayValue = fact.value === null || fact.value === undefined ? null : String(fact.value);
@@ -151,17 +167,27 @@ function projectField(fieldPath: string, label: string, fact: EffectiveFact | un
 /** A domain section is included only if at least one of its fields has real content -- a domain
  * genuinely never touched (e.g. Advance Planning, often skipped entirely in a routine
  * assessment) collapses away rather than showing a wall of "not discussed" rows. Within an
- * included section, individual "not discussed" fields still show -- that's one of the five
+ * included section, individual "not discussed" fields still show -- that's one of the six
  * states this view is required to distinguish, and it's useful to see what's still open within
- * an otherwise-substantive domain. */
-export function buildAssessmentProjection(effectiveFacts: readonly EffectiveFact[]): ProjectedDomainSection[] {
+ * an otherwise-substantive domain.
+ *
+ * needsFollowUpFieldPaths -- field paths for a conflicting/uncertain exception the reviewer
+ * explicitly dispositioned "Neither / needs follow-up" or "Leave Unknown" (reviewExceptions.ts's
+ * isExceptionDispositioned()). These never produce an EffectiveFact (buildApprovedFactsForReview()
+ * still contributes nothing for them, unchanged), so without this they'd be indistinguishable
+ * from a field genuinely never discussed. Defaults to empty for every existing caller that has
+ * no notion of reviewer disposition (e.g. rendering a resident's plain canonical profile facts). */
+export function buildAssessmentProjection(
+  effectiveFacts: readonly EffectiveFact[],
+  needsFollowUpFieldPaths: ReadonlySet<string> = new Set()
+): ProjectedDomainSection[] {
   const byFieldPath = new Map<string, EffectiveFact>();
   for (const fact of effectiveFacts) byFieldPath.set(fact.fieldPath, fact);
 
   const sections: ProjectedDomainSection[] = [];
   for (const domain of CLIENT_FACING_DOMAIN_ORDER) {
     const fields = FIELD_REGISTRY.filter((f) => f.domain === domain).map((f) =>
-      projectField(f.fieldPath, f.label, byFieldPath.get(f.fieldPath))
+      projectField(f.fieldPath, f.label, byFieldPath.get(f.fieldPath), needsFollowUpFieldPaths.has(f.fieldPath))
     );
     if (fields.some((field) => field.state !== "not_discussed")) {
       sections.push({ domain, label: DOMAIN_LABELS[domain], fields });
