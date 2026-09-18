@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:contacts": "node --experimental-strip-types --conditions=react-server lib/contacts/__tests__/normalization.test.ts && node --experimental-strip-types --conditions=react-server lib/contacts/__tests__/identityMatch.test.ts && node --experimental-strip-types --conditions=react-server lib/contacts/__tests__/suppression.test.ts && node --experimental-strip-types --conditions=react-server lib/contacts/__tests__/provenance.test.ts && node --experimental-strip-types --conditions=react-server lib/contacts/__tests__/roleTypes.test.ts",
     "dev": "next dev",
     "build": "node scripts/generate-deploy-context.mjs && next build",
     "start": "next start",
