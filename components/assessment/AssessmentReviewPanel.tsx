@@ -31,6 +31,10 @@ import {
 } from "@/lib/assessmentIntelligence/assessmentProjection";
 import type { AssessmentDocumentSnapshot } from "@/lib/assessmentIntelligence/assessmentSnapshot";
 import { formatCentralTimestamp } from "@/lib/utils/date";
+import { describeAxisCareClientCreatePayload } from "@/lib/integrations/axiscare/clientCreateSummary";
+import { Badge } from "@/components/ui/Badge";
+import { SECONDARY_BUTTON_SMALL_CLASS } from "@/components/ui/actionButtonStyles";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 // Client operationalization deliberately does NOT live here (Slice 1: Service Agreement ->
 // Enrolled Inactive Client, 2026-09-15). Assessment approval must never be able to activate a
@@ -599,91 +603,181 @@ function AssessmentTab({
   );
 }
 
-// The real AxisCare client-create request preview (Slice B.1, 2026-09-18) -- replaces the old
-// single "AxisCare readiness: <enum>" label with the four distinct, never-collapsed categories
-// evaluateAxisCareClientCreate() computes (see that function's own doc comment): API hard
-// blockers, Serve's separate identity-duplicate process blocker, non-blocking recommended
-// information, and known AxisCare-integration gaps (e.g. Responsible Party has no create-time
-// field at all). The rendered JSON is the literal object a future Send-to-AxisCare action would
-// submit -- never a re-derived or re-interpreted summary of it.
+// axiscareReadiness.ts's evaluateAxisCareClientCreate() computes `integrationGaps` as full
+// technical sentences (see that function's own doc comment) -- aimed at a developer reading raw
+// output, not an office operator. This maps each KNOWN gap to a short, accurate, operator-facing
+// summary line while keeping the original technical sentence available in "Integration details"
+// for troubleshooting. Deliberately does NOT invent a future capability ("will be added
+// separately") that doesn't exist yet -- only states what this request does and doesn't include.
+// This is presentation only: the underlying gap list/wording/trigger conditions in
+// axiscareReadiness.ts are unchanged. If that module's exact wording for either gap ever changes,
+// update the match strings below to match.
+function describeIntegrationGap(gap: string): { summary: string; detail: string } {
+  if (gap.includes("Responsible Party")) {
+    return { summary: "Primary contact — not included in this initial AxisCare client-create request.", detail: gap };
+  }
+  if (gap.toLowerCase().includes("community")) {
+    return { summary: "Partner community — not included in this initial AxisCare client-create request.", detail: gap };
+  }
+  return { summary: gap, detail: gap };
+}
+
+// The real AxisCare client-create request preview (Slice B.1, 2026-09-18; UX polish
+// 2026-09-19) -- surfaces the four distinct, never-collapsed categories
+// evaluateAxisCareClientCreate() computes (API hard blockers, Serve's separate identity-
+// duplicate process blocker, non-blocking recommended information, and known AxisCare-
+// integration gaps), but leads with what an office operator actually needs in ~5 seconds: who's
+// being created, the safety-critical Inactive status, and whether anything blocks it. The human
+// summary (describeAxisCareClientCreatePayload()) reads only from `preview.payload` -- the exact
+// same object rendered as JSON below it -- so the two views can never disagree; this component
+// never re-derives client data from anywhere else. The rendered JSON is the literal object a
+// future Send-to-AxisCare action would submit, never a re-derived or re-interpreted summary.
 function AxisCareClientCreatePreviewPanel({ preview }: { preview: AxisCareClientCreatePreviewResult }) {
-  const [showPayload, setShowPayload] = useState(false);
+  const [isJsonExpanded, setIsJsonExpanded] = useState(false);
+  const [isIntegrationDetailsExpanded, setIsIntegrationDetailsExpanded] = useState(false);
+
   const apiHardBlockers = preview.apiHardBlockers ?? [];
   const processHardBlockers = preview.processHardBlockers ?? [];
   const recommendedMissing = preview.recommendedMissing ?? [];
   const integrationGaps = preview.integrationGaps ?? [];
   const hasHardBlockers = apiHardBlockers.length > 0 || processHardBlockers.length > 0;
+  const summary = preview.payload ? describeAxisCareClientCreatePayload(preview.payload) : null;
 
   return (
     <div className="mt-4 rounded-lg border border-ivory-border bg-ivory px-4 py-3">
-      <p className="mb-2 font-sans text-sm font-semibold text-body">AxisCare Client Create Preview</p>
-      <p className="mb-2 font-sans text-sm text-body">
-        Technical readiness:{" "}
-        {preview.technicallyReady ? (
-          <span className="font-semibold text-success-text">Ready</span>
-        ) : (
-          <span className="font-semibold text-danger-text">Blocked</span>
-        )}
-      </p>
-
-      {hasHardBlockers && (
-        <div className="mb-2">
-          <p className="font-sans text-xs font-semibold uppercase tracking-wide text-danger-text">Hard blockers</p>
-          <ul className="ml-4 list-disc font-sans text-sm text-body">
-            {apiHardBlockers.map((f) => (
-              <li key={f.fieldPath}>{f.label}</li>
-            ))}
-            {processHardBlockers.map((reason, i) => (
-              <li key={i}>{reason}</li>
-            ))}
-          </ul>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="font-sans text-sm font-semibold text-body">AxisCare Client Create Preview</p>
+        <div className="flex items-center gap-2">
+          <span className="font-sans text-xs font-medium text-muted">Technical readiness</span>
+          <Badge tone={preview.technicallyReady ? "success" : "danger"}>{preview.technicallyReady ? "Ready" : "Blocked"}</Badge>
         </div>
-      )}
+      </div>
 
-      {recommendedMissing.length > 0 && (
-        <div className="mb-2">
-          <p className="font-sans text-xs font-semibold uppercase tracking-wide text-warning-text">
-            Recommended information still missing
-          </p>
-          <ul className="ml-4 list-disc font-sans text-sm text-body">
-            {recommendedMissing.map((f) => (
-              <li key={f.fieldPath}>{f.label}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <div className={isJsonExpanded ? "grid gap-4 md:grid-cols-2" : ""}>
+        <div className="min-w-0 space-y-3">
+          {summary && (
+            <div>
+              <p className="mb-1 font-sans text-label font-semibold uppercase tracking-widest text-muted">
+                Client to be created
+              </p>
+              <p className="font-sans text-base font-semibold text-body">{summary.fullName}</p>
+              {summary.clientRows.length > 0 && (
+                <dl className="mt-1 space-y-0.5">
+                  {summary.clientRows.map((row) => (
+                    <div key={row.label} className="flex flex-wrap gap-1 font-sans text-sm text-body">
+                      <dt className="text-muted">{row.label}:</dt>
+                      <dd>{row.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
 
-      {integrationGaps.length > 0 && (
-        <div className="mb-2">
-          <p className="font-sans text-xs font-semibold uppercase tracking-wide text-muted">Integration notes</p>
-          <ul className="ml-4 list-disc font-sans text-sm text-muted">
-            {integrationGaps.map((gap, i) => (
-              <li key={i}>{gap}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+              <div className="mt-3 flex items-center gap-2">
+                <span className="font-sans text-xs font-medium text-muted">AxisCare Status</span>
+                <Badge tone={summary.statusActive ? "danger" : "success"}>
+                  {summary.statusActive ? "ACTIVE" : "INACTIVE"}
+                </Badge>
+              </div>
 
-      {preview.payload && (
-        <div className="mt-2">
-          <button
-            type="button"
-            onClick={() => setShowPayload((prev) => !prev)}
-            className="font-sans text-xs text-navy hover:text-navy-light"
-          >
-            {showPayload ? "Hide request payload" : "Show request payload"}
-          </button>
-          {showPayload && (
-            <pre className="mt-2 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-xs text-body">
-              {JSON.stringify(preview.payload, null, 2)}
-            </pre>
+              {summary.assessmentDateDisplay && (
+                <p className="mt-2 font-sans text-sm text-body">
+                  <span className="text-muted">Assessment date:</span> {summary.assessmentDateDisplay}
+                </p>
+              )}
+            </div>
+          )}
+
+          {hasHardBlockers && (
+            <div>
+              <p className="font-sans text-xs font-semibold uppercase tracking-wide text-danger-text">Blocking issues</p>
+              <ul className="ml-4 list-disc font-sans text-sm text-body">
+                {apiHardBlockers.map((f) => (
+                  <li key={f.fieldPath}>Missing: {f.label}</li>
+                ))}
+                {processHardBlockers.map((reason, i) => (
+                  <li key={i}>{reason}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {recommendedMissing.length > 0 && (
+            <div>
+              <p className="font-sans text-xs font-semibold uppercase tracking-wide text-warning-text">
+                Recommended information still missing
+              </p>
+              <ul className="ml-4 list-disc font-sans text-sm text-body">
+                {recommendedMissing.map((f) => (
+                  <li key={f.fieldPath}>{f.label}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {integrationGaps.length > 0 && (
+            <div>
+              <ul className="ml-4 list-disc font-sans text-sm text-muted">
+                {integrationGaps.map((gap, i) => (
+                  <li key={i}>{describeIntegrationGap(gap).summary}</li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => setIsIntegrationDetailsExpanded((prev) => !prev)}
+                aria-expanded={isIntegrationDetailsExpanded}
+                aria-controls="axiscare-integration-details"
+                className="mt-1 ml-4 inline-flex items-center gap-1 rounded font-sans text-xs text-navy transition-colors hover:text-navy-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy/40"
+              >
+                {isIntegrationDetailsExpanded ? (
+                  <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
+                ) : (
+                  <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
+                )}
+                Integration details
+              </button>
+              {isIntegrationDetailsExpanded && (
+                <ul id="axiscare-integration-details" className="ml-8 list-disc font-sans text-xs text-muted">
+                  {integrationGaps.map((gap, i) => (
+                    <li key={i}>{describeIntegrationGap(gap).detail}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
+
+        {isJsonExpanded && preview.payload && (
+          <div id="axiscare-technical-json" className="min-w-0">
+            <p className="mb-1 font-sans text-label font-semibold uppercase tracking-widest text-muted">
+              Technical request JSON
+            </p>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border border-ivory-border bg-white px-3 py-2 font-mono text-xs leading-relaxed text-body">
+              {JSON.stringify(preview.payload, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
+
+      {preview.payload && (
+        <button
+          type="button"
+          onClick={() => setIsJsonExpanded((prev) => !prev)}
+          aria-expanded={isJsonExpanded}
+          aria-controls="axiscare-technical-json"
+          className={`${SECONDARY_BUTTON_SMALL_CLASS} mt-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy/40`}
+        >
+          Technical request JSON
+          {isJsonExpanded ? (
+            <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
+          ) : (
+            <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
+          )}
+        </button>
       )}
 
-      <p className="mt-2 font-sans text-xs text-muted">
-        Preview only — nothing has been sent to AxisCare. Send to AxisCare is a separate,
-        human-triggered action, not yet built.
+      <p className="mt-3 font-sans text-xs text-muted">
+        Preview only — nothing has been sent to AxisCare. Sending to AxisCare will require a
+        separate human action.
       </p>
     </div>
   );
