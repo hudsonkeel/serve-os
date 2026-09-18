@@ -26,11 +26,18 @@ production UI or data model is built on top of it.
 - does **not** persist anything to Supabase
 - does **not** write to AxisCare in any way
 
-No AxisCare OpenAPI specification file exists in this repository. The
+**Update (Slice B.1, 2026-09-18): an AxisCare OpenAPI specification file now IS checked into
+this repository** — `docs/integrations/axiscare/AxisCare-Customer-API-OpenAPI.yaml` — and is the
+canonical technical contract for the `POST /api/clients` client-create payload described in
+`docs/integrations/axiscare/CLIENT_CREATE_PAYLOAD.md`. The paragraph below describes this
+integration's original (pre-spec-file) history and is retained for that context; it no longer
+describes the current state of "is there a spec file in this repo."
+
+Historically, no AxisCare OpenAPI specification file existed in this repository. The
 initial version of this integration was built without one and flagged
 every path/header/envelope choice as an unverified guess. Hud then
 supplied the authoritative contract from AxisCare's OpenAPI specification
-(available to him outside this filesystem context), and subsequently ran
+(available to him outside this filesystem context at the time), and subsequently ran
 `npm run axiscare:discover` against the live API. Status as of this
 reconciliation pass:
 

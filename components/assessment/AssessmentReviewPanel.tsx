@@ -8,6 +8,7 @@ import {
   generateAxisCarePreview,
   generateCinchProjection,
   resolveAssessmentConflict,
+  type AxisCareClientCreatePreviewResult,
 } from "@/lib/actions/assessmentIntelligence";
 import {
   distinctFactValues,
@@ -122,7 +123,7 @@ export function AssessmentReviewPanel({
   );
   const [approved, setApproved] = useState(sessionStatus === "approved" || sessionStatus === "operationalized");
   const [pricingStatus, setPricingStatus] = useState<string | null>(null);
-  const [axiscareReadiness, setAxiscareReadiness] = useState<string | null>(null);
+  const [axiscarePreview, setAxiscarePreview] = useState<AxisCareClientCreatePreviewResult | null>(null);
   const [cinchGenerated, setCinchGenerated] = useState(false);
   const [expandedFieldPath, setExpandedFieldPath] = useState<string | null>(null);
 
@@ -234,7 +235,7 @@ export function AssessmentReviewPanel({
         setError(result.error);
         return;
       }
-      setAxiscareReadiness(result.readiness ?? null);
+      setAxiscarePreview(result);
     });
   }
 
@@ -416,9 +417,7 @@ export function AssessmentReviewPanel({
               Print / Save as PDF
             </button>
           </div>
-          {axiscareReadiness && (
-            <p className="mt-3 font-sans text-sm text-body">AxisCare readiness: {axiscareReadiness.replace(/_/g, " ")}</p>
-          )}
+          {axiscarePreview && <AxisCareClientCreatePreviewPanel preview={axiscarePreview} />}
           {cinchGenerated && <p className="mt-3 font-sans text-sm text-success-text">Cinch projection generated (draft — not sent).</p>}
           <p className="mt-3 font-sans text-xs text-muted">
             Client enrollment happens when a signed Service Agreement is recorded on{" "}
@@ -596,6 +595,96 @@ function AssessmentTab({
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// The real AxisCare client-create request preview (Slice B.1, 2026-09-18) -- replaces the old
+// single "AxisCare readiness: <enum>" label with the four distinct, never-collapsed categories
+// evaluateAxisCareClientCreate() computes (see that function's own doc comment): API hard
+// blockers, Serve's separate identity-duplicate process blocker, non-blocking recommended
+// information, and known AxisCare-integration gaps (e.g. Responsible Party has no create-time
+// field at all). The rendered JSON is the literal object a future Send-to-AxisCare action would
+// submit -- never a re-derived or re-interpreted summary of it.
+function AxisCareClientCreatePreviewPanel({ preview }: { preview: AxisCareClientCreatePreviewResult }) {
+  const [showPayload, setShowPayload] = useState(false);
+  const apiHardBlockers = preview.apiHardBlockers ?? [];
+  const processHardBlockers = preview.processHardBlockers ?? [];
+  const recommendedMissing = preview.recommendedMissing ?? [];
+  const integrationGaps = preview.integrationGaps ?? [];
+  const hasHardBlockers = apiHardBlockers.length > 0 || processHardBlockers.length > 0;
+
+  return (
+    <div className="mt-4 rounded-lg border border-ivory-border bg-ivory px-4 py-3">
+      <p className="mb-2 font-sans text-sm font-semibold text-body">AxisCare Client Create Preview</p>
+      <p className="mb-2 font-sans text-sm text-body">
+        Technical readiness:{" "}
+        {preview.technicallyReady ? (
+          <span className="font-semibold text-success-text">Ready</span>
+        ) : (
+          <span className="font-semibold text-danger-text">Blocked</span>
+        )}
+      </p>
+
+      {hasHardBlockers && (
+        <div className="mb-2">
+          <p className="font-sans text-xs font-semibold uppercase tracking-wide text-danger-text">Hard blockers</p>
+          <ul className="ml-4 list-disc font-sans text-sm text-body">
+            {apiHardBlockers.map((f) => (
+              <li key={f.fieldPath}>{f.label}</li>
+            ))}
+            {processHardBlockers.map((reason, i) => (
+              <li key={i}>{reason}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {recommendedMissing.length > 0 && (
+        <div className="mb-2">
+          <p className="font-sans text-xs font-semibold uppercase tracking-wide text-warning-text">
+            Recommended information still missing
+          </p>
+          <ul className="ml-4 list-disc font-sans text-sm text-body">
+            {recommendedMissing.map((f) => (
+              <li key={f.fieldPath}>{f.label}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {integrationGaps.length > 0 && (
+        <div className="mb-2">
+          <p className="font-sans text-xs font-semibold uppercase tracking-wide text-muted">Integration notes</p>
+          <ul className="ml-4 list-disc font-sans text-sm text-muted">
+            {integrationGaps.map((gap, i) => (
+              <li key={i}>{gap}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {preview.payload && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowPayload((prev) => !prev)}
+            className="font-sans text-xs text-navy hover:text-navy-light"
+          >
+            {showPayload ? "Hide request payload" : "Show request payload"}
+          </button>
+          {showPayload && (
+            <pre className="mt-2 overflow-x-auto rounded-md bg-white px-3 py-2 font-mono text-xs text-body">
+              {JSON.stringify(preview.payload, null, 2)}
+            </pre>
+          )}
+        </div>
+      )}
+
+      <p className="mt-2 font-sans text-xs text-muted">
+        Preview only — nothing has been sent to AxisCare. Send to AxisCare is a separate,
+        human-triggered action, not yet built.
+      </p>
     </div>
   );
 }

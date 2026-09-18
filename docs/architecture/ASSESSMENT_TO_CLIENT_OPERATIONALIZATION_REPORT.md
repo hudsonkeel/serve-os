@@ -1,5 +1,15 @@
 # Assessment-to-Client Operationalization — Final Report
 
+> **HISTORICAL, PARTIALLY SUPERSEDED (2026-09-18):** this report documents the August 2026
+> feature as originally delivered, including a "Make Active Client" step directly from assessment
+> approval. That design was superseded first by Slice 1 (Service Agreement → `inactive_client`,
+> `docs/assessment/ASSESSMENT_TO_CLIENT_V0.1_HANDOFF.md`) and again by Slice B.1
+> (`docs/integrations/axiscare/CLIENT_CREATE_PAYLOAD.md`), which replaced the AxisCare
+> readiness/payload logic entirely. **No "Make Active Client" button exists in the current code.**
+> This file is retained as a historical test-report snapshot, not as current behavior — see
+> `docs/architecture/ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md` §7/§8 for the current, corrected
+> state and pointers to what actually replaced each superseded piece.
+
 Branch: `feature/assessment-to-client-operationalization` — **not merged to `main`, per
 instruction.** Delivered for review.
 

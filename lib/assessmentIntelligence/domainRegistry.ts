@@ -36,8 +36,14 @@ export interface FieldDefinition {
    * own `missing_required` exceptions, which stay computed but unrendered here). Revisit after
    * the Watermere pilot validates the new coverage behavior. */
   requiredForReview?: boolean;
-  /** Required before "Make Active Client" / AxisCare preview may be offered. */
-  requiredForOperationalization?: boolean;
+  /** Recommended (never a hard blocker) before proposing an AxisCare client-create payload —
+   * Slice B.1 (2026-09-18) reclassified this from a hard "requiredForOperationalization" gate
+   * after tracing AxisCare's own checked-in OpenAPI contract (docs/integrations/axiscare/
+   * AxisCare-Customer-API-OpenAPI.yaml): POST /api/clients requires only firstName/lastName —
+   * neither date_of_birth nor primary_contact_phone is an AxisCare technical requirement, and no
+   * documented current Serve business/regulatory rule was found to justify hard-blocking on
+   * them either. See lib/assessmentIntelligence/axiscareReadiness.ts's `recommendedMissing`. */
+  recommendedForAxisCare?: boolean;
   /** True for a plain yes/no fact; false for a free-text/structured value. */
   isBoolean?: boolean;
 }
@@ -60,7 +66,7 @@ export const DOMAIN_LABELS: Record<AssessmentDomain, string> = {
 export const FIELD_REGISTRY: FieldDefinition[] = [
   // Identity
   { fieldPath: "identity.preferred_name", domain: "identity", label: "Preferred name" },
-  { fieldPath: "identity.date_of_birth", domain: "identity", label: "Date of birth", requiredForOperationalization: true },
+  { fieldPath: "identity.date_of_birth", domain: "identity", label: "Date of birth", recommendedForAxisCare: true },
   { fieldPath: "identity.phone", domain: "identity", label: "Phone" },
   { fieldPath: "identity.email", domain: "identity", label: "Email" },
 
@@ -81,7 +87,7 @@ export const FIELD_REGISTRY: FieldDefinition[] = [
   // Important People
   { fieldPath: "important_people.primary_contact_name", domain: "important_people", label: "Primary contact", requiredForReview: true },
   { fieldPath: "important_people.primary_contact_relationship", domain: "important_people", label: "Relationship to person" },
-  { fieldPath: "important_people.primary_contact_phone", domain: "important_people", label: "Primary contact phone", requiredForOperationalization: true },
+  { fieldPath: "important_people.primary_contact_phone", domain: "important_people", label: "Primary contact phone", recommendedForAxisCare: true },
   { fieldPath: "important_people.decision_maker", domain: "important_people", label: "Decision maker" },
   // Conditional on a POA being mentioned, as an all-of group with
   // decision_maker above (name AND relationship AND phone, not any one
@@ -227,6 +233,6 @@ export function requiredForReviewFields(): FieldDefinition[] {
   return FIELD_REGISTRY.filter((f) => f.requiredForReview);
 }
 
-export function requiredForOperationalizationFields(): FieldDefinition[] {
-  return FIELD_REGISTRY.filter((f) => f.requiredForOperationalization);
+export function recommendedForAxisCareFields(): FieldDefinition[] {
+  return FIELD_REGISTRY.filter((f) => f.recommendedForAxisCare);
 }

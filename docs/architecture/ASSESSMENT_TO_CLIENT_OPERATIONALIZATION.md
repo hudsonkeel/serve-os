@@ -238,26 +238,63 @@ already used by `resident_serve_relationship_corrections` elsewhere in this repo
 
 ---
 
-## 7. Client operationalization
+## 7. Client operationalization — SUPERSEDED (2026-09-15 / Slice B.1, 2026-09-18)
 
-Approval offers "Make Active Client" only when the person already has (or the reviewer creates)
-a `resident_prospect`-type `relationships` row — calling the **existing**
-`convert_resident_prospect_to_active_client()` RPC, not a new one. No new person is ever
-created here; this only changes a relationship's type, exactly matching "Resident and Client
-are not mutually exclusive identities."
+> **This section describes the ORIGINAL (August 2026) design and is no longer what the code
+> does.** It is kept for historical context only — do not treat it as current behavior.
+>
+> Assessment approval offering "Make Active Client" directly, by calling
+> `convert_resident_prospect_to_active_client()`, would let assessment completeness authorize an
+> AxisCare-billable Active client — exactly the governance failure mode the later work below was
+> written to prevent. **No such button exists in `AssessmentReviewPanel.tsx`, and
+> `lib/actions/assessmentIntelligence.ts` never calls that RPC.**
+>
+> The actual, current lifecycle (see `docs/assessment/ASSESSMENT_TO_CLIENT_V0.1_HANDOFF.md` for
+> Slice 1, and Slice B.1 below for the AxisCare client-create payload):
+> assessment knowledge → approved Current Assessment → **signed Service Agreement** establishes
+> `inactive_client` (`lib/actions/clientEnrollment.ts`'s `enrollResidentAsInactiveClient()`,
+> triggered from `recordServiceAgreementEvidenceAction()`, never from assessment approval) →
+> **human** Send to AxisCare (not yet built — see §8 below) → **later, separate human** Activate
+> Client (`convert_resident_prospect_to_active_client()`, reachable only through the general
+> CRM `ConvertRelationshipPanel.tsx`, independent of assessment/pricing/Cinch completeness).
+> Assessment/pricing/Cinch completeness authorizes none of these transitions.
+
+~~Approval offers "Make Active Client" only when the person already has (or the reviewer
+creates) a `resident_prospect`-type `relationships` row — calling the **existing**
+`convert_resident_prospect_to_active_client()` RPC, not a new one. No new person is ever created
+here; this only changes a relationship's type, exactly matching "Resident and Client are not
+mutually exclusive identities."~~ *(struck through — superseded, see notice above)*
 
 ---
 
-## 8. AxisCare adapter (preview only, per explicit instruction)
+## 8. AxisCare adapter (preview only, per explicit instruction) — updated by Slice B.1 (2026-09-18)
 
-Approved facts → field mapping → readiness check against `person_vendor_identity_links`
+Approved facts + canonical resident profile → a REAL, typed AxisCare `POST /api/clients`
+client-create request → readiness check against `person_vendor_identity_links`
 (subject_type='resident'): no link → proposed CREATE preview; confirmed link → proposed UPDATE
 preview; ambiguous → routed to the existing Reconciliation surface, never resolved
-automatically. Active/Inactive/class determination reuses
-`classifyAxisCareClientLifecycle()`'s existing rules, not a new heuristic. **No write adapter is
-implemented** — the payload/validation/preview/audit-trail scaffolding is, so a real write can
-be connected later without redesigning anything, per the explicit instruction not to fake a
-capability that isn't there.
+automatically.
+
+Slice B.1 replaced the original hand-wavy "field mapping" and the single vague
+`missing_required_fields` readiness enum with a real contract traced against the checked-in
+AxisCare OpenAPI spec (`docs/integrations/axiscare/AxisCare-Customer-API-OpenAPI.yaml`) — see
+`lib/integrations/axiscare/clientCreateRequest.ts` (the typed contract) and
+`lib/assessmentIntelligence/axiscareReadiness.ts` (`evaluateAxisCareClientCreate()`, the
+mapper/readiness computation, now distinguishing API hard blockers, Serve's own process hard
+blocker, non-blocking recommended fields, and known integration gaps — see that module's own
+header comment). Every payload this mapper builds explicitly creates the client **Inactive**
+(`AXISCARE_INACTIVE_STATUS`) — AxisCare's own spec states a client is created **Active** by
+default if `status` is omitted, so this is never left to a default.
+
+**No write adapter is implemented** — the payload/validation/preview/audit-trail scaffolding is,
+so a real write (an actual, human-triggered "Send to AxisCare" action) can be connected later
+without redesigning anything. `lib/integrations/axiscare/client.ts` remains GET-only; no
+POST/PUT/PATCH exists anywhere in this codebase's AxisCare integration. Human authorization for
+an actual send remains a future, separate, explicit action — never automated from assessment,
+pricing, or Cinch completeness. `classifyAxisCareClientLifecycle()`'s existing rules remain the
+governed mechanism for any Active/Inactive determination Serve makes about an *existing* AxisCare
+client from inbound sync data — a separate concern from what this new client-create payload
+proposes for a client that doesn't exist in AxisCare yet.
 
 ---
 
