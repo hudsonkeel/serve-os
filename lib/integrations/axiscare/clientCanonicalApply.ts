@@ -46,7 +46,13 @@ import {
   recordSnapshotTriageEvidenceResult,
   type CanonicalizationStatus,
 } from "../../data/axiscareClientCanonicalSnapshot.ts";
-import { recordAxisCareTriageEvidence } from "../../clientReadiness/evidence.ts";
+import { recordAxisCareTriageEvidence, syncCurrentTriageClassificationEvidence } from "../../clientReadiness/evidence.ts";
+import {
+  hasAnyResidentTriageClassification,
+  recordResidentTriageClassification,
+} from "../../data/residentTriageClassifications.ts";
+import { mapAxisCareTriageDescriptionToCode } from "./triageMapping.ts";
+import type { TriageLevelCode } from "../../clientReadiness/triageClassification.ts";
 // Type-only — erased at build/strip time, so this never pulls
 // residentServeRelationships.ts's live-AxisCare-fetching import chain
 // into this file's module graph. See applyAxisCareTriageEvidenceToResident()'s
@@ -210,20 +216,110 @@ export async function applyAxisCareCanonicalSnapshotToResident(
   return { residentId, axiscareClientId, fieldOutcomes, fieldsApplied, overallStatus, openConflictFields };
 }
 
+export interface TriageClassificationInitializeResult {
+  residentId: string;
+  axiscareClientId: string;
+  status: "initialized" | "skipped_governed_row_exists" | "skipped_unrecognized_value" | "skipped_no_source_value" | "error";
+  levelCode?: TriageLevelCode;
+  error?: string;
+}
+
+// Establishes the GOVERNED resident_triage_classifications row when one has
+// never existed for this resident — the actual fix for the triage
+// canonical-source gap. recordAxisCareTriageEvidence() below only ever
+// wrote a person_evidence row, never this table, so a resident whose
+// triage came in purely through AxisCare sync could show "No current
+// triage classification is on file" (evaluateTriageClassification in
+// clientReadinessReadiness.ts reads ONLY this table) while the evidence
+// panel simultaneously showed "verified".
+//
+// hasAnyResidentTriageClassification() (lib/data/residentTriageClassifications.ts)
+// checks whether one has EVER existed, not merely whether a CURRENT one
+// exists — a future-dated row already establishes Serve ownership and must
+// block this from ever running, exactly like an already-current row does.
+//
+// Ownership precedence (approved 2026-09-18):
+//   zero governed rows ever + recognized AxisCare value -> initialize
+//   any governed row (any effective date) + any AxisCare value -> no-op
+//   zero governed rows + unrecognized AxisCare value -> no-op, surfaced via status
+//
+// Uses the exact same recordResidentTriageClassification() +
+// syncCurrentTriageClassificationEvidence() pair the Serve-native manual
+// recording action uses (recordTriageClassificationAction in
+// lib/actions/clientReadiness.ts) — an AxisCare-initialized classification
+// is a real governed recording, not a second write path. The evidence sync
+// is best-effort (same discipline documented on
+// syncCurrentTriageClassificationEvidence itself): its failure is logged,
+// never allowed to undo or fail the classification write that already
+// succeeded.
+export async function initializeMissingTriageClassificationFromAxisCare(input: {
+  residentId: string;
+  axiscareClientId: string;
+  triageRequirementId: string;
+  triageLevelDescription: string | null;
+  fetchedAt: string;
+  actor: string;
+}): Promise<TriageClassificationInitializeResult> {
+  const { residentId, axiscareClientId } = input;
+
+  const alreadyOwned = await hasAnyResidentTriageClassification(residentId);
+  if (alreadyOwned) {
+    return { residentId, axiscareClientId, status: "skipped_governed_row_exists" };
+  }
+
+  const levelCode = mapAxisCareTriageDescriptionToCode(input.triageLevelDescription);
+  if (!levelCode) {
+    return {
+      residentId,
+      axiscareClientId,
+      status: input.triageLevelDescription ? "skipped_unrecognized_value" : "skipped_no_source_value",
+    };
+  }
+
+  const recorded = await recordResidentTriageClassification({
+    residentId,
+    levelCode,
+    effectiveDate: input.fetchedAt.slice(0, 10),
+    notes: `Initialized from AxisCare Triage Level: ${input.triageLevelDescription} (AxisCare client ${axiscareClientId}, fetched ${input.fetchedAt}).`,
+    actor: input.actor,
+  });
+  if (recorded.error || !recorded.classification) {
+    return { residentId, axiscareClientId, status: "error", error: recorded.error };
+  }
+
+  const synced = await syncCurrentTriageClassificationEvidence({
+    residentId,
+    requirementId: input.triageRequirementId,
+    actor: input.actor,
+  });
+  if (synced.error) {
+    console.error("[initializeMissingTriageClassificationFromAxisCare] evidence sync failed after a successful classification write", {
+      residentId,
+      axiscareClientId,
+      error: synced.error,
+    });
+  }
+
+  return { residentId, axiscareClientId, status: "initialized", levelCode };
+}
+
 export interface TriageApplyResult {
   residentId: string;
   axiscareClientId: string;
   status: "evidence_created" | "skipped_serve_already_owns" | "skipped_no_source_value" | "skipped_not_active_client";
   evidenceId?: string;
   error?: string;
+  classificationInitialization?: TriageClassificationInitializeResult;
 }
 
 // Triage's own apply step — deliberately separate from the residents-
 // column loop above, since EP_CLIENT_TRIAGE_CLASSIFIED is an evidence
-// fact, not a residents column. Ownership is decided entirely by
-// recordAxisCareTriageEvidence()'s own existing-evidence check; this
-// function only resolves the requirement id and snapshot, then defers to
-// it.
+// fact, not a residents column. The person_evidence audit-trail mirror
+// below is owned entirely by recordAxisCareTriageEvidence()'s own
+// existing-evidence check; the GOVERNED classification is owned by
+// initializeMissingTriageClassificationFromAxisCare() above, called first
+// so the governed fact and its evidence mirror are consistent by the time
+// the legacy evidence write below runs.
 //
 // Scoped to active clients only (2026-08-17 leadership decision): a
 // prospect or needs_review resident may have a real AxisCare triage
@@ -266,6 +362,17 @@ export async function applyAxisCareTriageEvidenceToResident(
     return { residentId, axiscareClientId, status: "skipped_no_source_value" };
   }
 
+  // Governed classification first — see this function's own header comment
+  // for why it must run before the legacy evidence write below.
+  const classificationInitialization = await initializeMissingTriageClassificationFromAxisCare({
+    residentId,
+    axiscareClientId,
+    triageRequirementId,
+    triageLevelDescription: snapshot.triage_level_description,
+    fetchedAt: snapshot.fetched_at,
+    actor,
+  });
+
   const result = await recordAxisCareTriageEvidence({
     residentId,
     requirementId: triageRequirementId,
@@ -277,11 +384,11 @@ export async function applyAxisCareTriageEvidenceToResident(
   });
 
   if (result.error) {
-    return { residentId, axiscareClientId, status: "skipped_no_source_value", error: result.error };
+    return { residentId, axiscareClientId, status: "skipped_no_source_value", error: result.error, classificationInitialization };
   }
 
   const status = result.alreadyOwnedByServe ? "skipped_serve_already_owns" : "evidence_created";
   await recordSnapshotTriageEvidenceResult(snapshot.id, { status, evidenceId: result.evidence?.id ?? null });
 
-  return { residentId, axiscareClientId, status, evidenceId: result.evidence?.id };
+  return { residentId, axiscareClientId, status, evidenceId: result.evidence?.id, classificationInitialization };
 }

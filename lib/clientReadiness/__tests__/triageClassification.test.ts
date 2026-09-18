@@ -93,12 +93,10 @@ function evidence(overrides: Partial<PersonEvidence> = {}): PersonEvidence {
 
 // ─── Label exactness ────────────────────────────────────────────────────
 
-test("TRIAGE_LEVEL_LABELS renders the exact three AxisCare-matching strings, including the em dash", () => {
-  assert.equal(TRIAGE_LEVEL_LABELS.P1, "PRIORITY 1 — HIGH CONTINUITY NEED");
-  assert.equal(TRIAGE_LEVEL_LABELS.P2, "PRIORITY 2 — MODERATE CONTINUITY NEED");
-  assert.equal(TRIAGE_LEVEL_LABELS.P3, "PRIORITY 3 — LOW CONTINUITY NEED");
-  // Confirm it's a real em dash (U+2014), not a hyphen or en dash.
-  assert.equal(TRIAGE_LEVEL_LABELS.P1.includes("—"), true);
+test("TRIAGE_LEVEL_LABELS renders the exact three current AxisCare-matching strings (confirmed 2026-09-18 against the 7 affected residents' production data)", () => {
+  assert.equal(TRIAGE_LEVEL_LABELS.P1, "Enhanced Support");
+  assert.equal(TRIAGE_LEVEL_LABELS.P2, "Moderate Support");
+  assert.equal(TRIAGE_LEVEL_LABELS.P3, "Lower Support / Independent");
 });
 
 test("isTriageLevelCode accepts exactly P1/P2/P3 and rejects everything else", () => {
@@ -113,13 +111,20 @@ test("isTriageLevelCode accepts exactly P1/P2/P3 and rejects everything else", (
 
 // ─── AxisCare description allowlist ─────────────────────────────────────
 
-test("mapAxisCareTriageDescriptionToCode recognizes all three real Priority descriptions", () => {
+test("mapAxisCareTriageDescriptionToCode recognizes all three CURRENT Priority descriptions", () => {
+  assert.equal(mapAxisCareTriageDescriptionToCode("Enhanced Support"), "P1");
+  assert.equal(mapAxisCareTriageDescriptionToCode("Moderate Support"), "P2");
+  assert.equal(mapAxisCareTriageDescriptionToCode("Lower Support / Independent"), "P3");
+});
+
+test("REGRESSION: mapAxisCareTriageDescriptionToCode still recognizes the SUPERSEDED Priority N -- Continuity Need vocabulary (a not-yet-re-synced snapshot or historical evidence row must never suddenly read as unrecognized)", () => {
   assert.equal(mapAxisCareTriageDescriptionToCode("PRIORITY 1 — HIGH CONTINUITY NEED"), "P1");
   assert.equal(mapAxisCareTriageDescriptionToCode("PRIORITY 2 — MODERATE CONTINUITY NEED"), "P2");
   assert.equal(mapAxisCareTriageDescriptionToCode("PRIORITY 3 — LOW CONTINUITY NEED"), "P3");
 });
 
-test("mapAxisCareTriageDescriptionToCode tolerates surrounding whitespace", () => {
+test("mapAxisCareTriageDescriptionToCode tolerates surrounding whitespace, current and superseded vocabulary alike", () => {
+  assert.equal(mapAxisCareTriageDescriptionToCode("  Enhanced Support  "), "P1");
   assert.equal(mapAxisCareTriageDescriptionToCode("  PRIORITY 1 — HIGH CONTINUITY NEED  "), "P1");
 });
 
@@ -146,11 +151,11 @@ test("no_data: neither Serve nor AxisCare has a value", () => {
 test("axiscare_only_recognized: AxisCare has a real Priority value, Serve hasn't recorded yet", () => {
   const result = buildTriageClassificationDetail({
     serveCurrent: null,
-    axiscareRawDescription: "PRIORITY 2 — MODERATE CONTINUITY NEED",
+    axiscareRawDescription: "Moderate Support",
   });
   assert.equal(result.state, "axiscare_only_recognized");
   assert.equal(result.axiscare?.code, "P2");
-  assert.equal(result.axiscare?.rawDescription, "PRIORITY 2 — MODERATE CONTINUITY NEED");
+  assert.equal(result.axiscare?.rawDescription, "Moderate Support");
 });
 
 test("axiscare_only_unrecognized: AxisCare has a legacy value, Serve hasn't recorded yet -- never coerced or dropped", () => {
@@ -169,7 +174,7 @@ test("serve_only: Serve has recorded, AxisCare has no triage value at all", () =
 test("agree: both exist and match", () => {
   const result = buildTriageClassificationDetail({
     serveCurrent: classification({ levelCode: "P1" }),
-    axiscareRawDescription: "PRIORITY 1 — HIGH CONTINUITY NEED",
+    axiscareRawDescription: "Enhanced Support",
   });
   assert.equal(result.state, "agree");
 });
@@ -177,11 +182,19 @@ test("agree: both exist and match", () => {
 test("REGRESSION: disagree -- both exist (Serve + a recognized AxisCare value) and differ, the only real conflict state", () => {
   const result = buildTriageClassificationDetail({
     serveCurrent: classification({ levelCode: "P1" }),
-    axiscareRawDescription: "PRIORITY 3 — LOW CONTINUITY NEED",
+    axiscareRawDescription: "Lower Support / Independent",
   });
   assert.equal(result.state, "disagree");
   assert.equal(result.serve?.code, "P1");
   assert.equal(result.axiscare?.code, "P3");
+});
+
+test("REGRESSION: agree still holds when AxisCare's snapshot is frozen on the SUPERSEDED vocabulary (not yet re-synced since the 2026-09-18 relabel)", () => {
+  const result = buildTriageClassificationDetail({
+    serveCurrent: classification({ levelCode: "P1" }),
+    axiscareRawDescription: "PRIORITY 1 — HIGH CONTINUITY NEED",
+  });
+  assert.equal(result.state, "agree");
 });
 
 test("serve_with_unrecognized_axiscare: Serve has recorded; AxisCare's value is legacy/unrecognized -- noted, not a conflict", () => {

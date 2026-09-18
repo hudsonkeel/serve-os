@@ -14,7 +14,11 @@
 // primitives above, unchanged.
 import "server-only";
 import { syncOneAxisCareClientCanonicalSnapshot } from "./clientCanonicalSync.ts";
-import { applyAxisCareCanonicalSnapshotToResident, applyAxisCareTriageEvidenceToResident } from "./clientCanonicalApply.ts";
+import {
+  applyAxisCareCanonicalSnapshotToResident,
+  applyAxisCareTriageEvidenceToResident,
+  type TriageClassificationInitializeResult,
+} from "./clientCanonicalApply.ts";
 import { classifyFieldForPreview, combinedAddress, normalizeBootstrapFieldForComparison, type BootstrapFieldName } from "./clientCanonicalReconciliation.ts";
 import { getAxisCareClientCanonicalSnapshot } from "../../data/axiscareClientCanonicalSnapshot.ts";
 import { createServerClient } from "../../supabase/server.ts";
@@ -32,6 +36,11 @@ export interface ResidentSyncResult {
   conflicts: string[];
   triageEvidence: "created" | "already_current" | "no_source_value" | "not_eligible_not_active_client" | "not_attempted";
   triageEvidenceId?: string;
+  // The governed resident_triage_classifications write — separate from
+  // triageEvidence above (the person_evidence audit-trail mirror). See
+  // initializeMissingTriageClassificationFromAxisCare()'s own header
+  // comment (clientCanonicalApply.ts) for the ownership precedence.
+  triageClassificationInitialization?: TriageClassificationInitializeResult;
   error?: string;
 }
 
@@ -159,6 +168,7 @@ export async function syncAxisCareCanonicalResident(
 
   let triageEvidence: ResidentSyncResult["triageEvidence"] = "not_attempted";
   let triageEvidenceId: string | undefined;
+  let triageClassificationInitialization: TriageClassificationInitializeResult | undefined;
 
   if (!triageRequirementId) {
     triageEvidence = "not_attempted";
@@ -173,6 +183,7 @@ export async function syncAxisCareCanonicalResident(
             ? "not_eligible_not_active_client"
             : "no_source_value";
     triageEvidenceId = triageResult.evidenceId;
+    triageClassificationInitialization = triageResult.classificationInitialization;
   }
 
   return {
@@ -185,5 +196,6 @@ export async function syncAxisCareCanonicalResident(
     conflicts,
     triageEvidence,
     triageEvidenceId,
+    triageClassificationInitialization,
   };
 }

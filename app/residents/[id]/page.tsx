@@ -42,6 +42,7 @@ import { getClientReadinessEvaluation, isOutsideClientReadinessPopulation } from
 import { getAxisCareLifecycleSignal } from "@/lib/integrations/axiscare/lifecycleSignals";
 import { STANDBY_INACTIVE_CORRECTION_MARKER } from "@/lib/integrations/axiscare/clientLifecycle";
 import { buildTriageClassificationDetail } from "@/lib/clientReadiness/triageClassificationDetail";
+import { EP_CLIENT_TRIAGE_CLASSIFIED } from "@/lib/clientReadiness/constants";
 import {
   getCurrentResidentTriageClassification,
   getResidentTriageClassificationHistory,
@@ -97,6 +98,27 @@ function evidenceSummary(evidence: { created_at: string; verification_status: st
   parts.push(evidence.verification_status === "verified" ? "verified" : evidence.verification_status.replace(/_/g, " "));
   if (evidence.expiration_date) parts.push(`expires ${new Date(evidence.expiration_date).toLocaleDateString()}`);
   return parts.join(" — ");
+}
+
+// EP_CLIENT_TRIAGE_CLASSIFIED's satisfaction is read from the governed
+// resident_triage_classifications table alone (evaluateTriageClassification
+// in lib/clientReadiness/clientReadinessReadiness.ts), never from evidence
+// existence -- but legacy, AxisCare-sync-written evidence (satisfaction_context
+// = 'triage_classification_axiscare_sourced') can still be present for a
+// resident who hasn't been re-synced since the canonical-source-gap fix
+// landed. Showing the generic "Recorded ... — verified" line for that
+// evidence while the requirement itself reads as missing/needs-review would
+// repeat the exact conflicting display the gap caused, so this requirement
+// gets its own, honest wording whenever it isn't actually compliant yet.
+function evidenceSummaryForRequirement(
+  requirementCode: string,
+  status: string,
+  evidence: { created_at: string; verification_status: string; expiration_date: string | null } | null
+) {
+  if (requirementCode === EP_CLIENT_TRIAGE_CLASSIFIED && status !== "compliant" && evidence) {
+    return "A legacy AxisCare-sourced record exists but has not established a governed Serve triage classification yet.";
+  }
+  return evidenceSummary(evidence);
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -225,7 +247,7 @@ export default async function ResidentDetailPage({
     regulatoryAuthority: r.requirement.regulatory_authority,
     status: r.status,
     explanation: r.explanation,
-    evidenceSummary: evidenceSummary(r.latestEvidence),
+    evidenceSummary: evidenceSummaryForRequirement(r.requirement.requirement_code, r.status, r.latestEvidence),
     evidenceDocumentId: r.latestEvidence?.document_id ?? null,
     evidenceId: r.latestEvidence?.id ?? null,
   }));

@@ -97,6 +97,33 @@ export async function getCurrentResidentTriageClassification(residentId: string)
   return toResidentTriageClassification(data as RawTriageClassificationRow);
 }
 
+// Existence check only -- deliberately NOT "does a CURRENT row exist"
+// (getCurrentResidentTriageClassification above excludes future-dated rows
+// by design, for satisfaction purposes). A future-dated row still
+// establishes Serve ownership of this resident's triage classification and
+// must block automated AxisCare initialization from ever writing here --
+// see initializeMissingTriageClassificationFromAxisCare() in
+// lib/integrations/axiscare/clientCanonicalApply.ts, the only caller. Fails
+// closed: a query error returns true (assume a row exists) rather than
+// risk an automated write over a state this call couldn't actually confirm
+// was empty.
+export async function hasAnyResidentTriageClassification(residentId: string): Promise<boolean> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .from("resident_triage_classifications")
+    .select("id")
+    .eq("resident_id", residentId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[hasAnyResidentTriageClassification]", { residentId, message: error.message });
+    return true;
+  }
+  return data !== null;
+}
+
 export async function recordResidentTriageClassification(input: {
   residentId: string;
   levelCode: TriageLevelCode;
