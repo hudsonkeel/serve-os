@@ -29,7 +29,11 @@ import { isReviewReadyStatus, selectCurrentAssessmentState, type CurrentAssessme
 import { decideRetryEligibility, MAX_PROCESSING_ATTEMPTS } from "@/lib/assessmentIntelligence/processingQueue";
 import { recommendPricing, PRICING_RULES_VERSION, type FactForPricing } from "@/lib/assessmentIntelligence/pricingEngine";
 import { PRICING_CATALOG_VERSION } from "@/lib/assessmentIntelligence/pricingCatalog";
-import { computeAxisCareReadiness, buildAxisCarePayloadPreview } from "@/lib/assessmentIntelligence/axiscareReadiness";
+import {
+  evaluateAxisCareClientCreate,
+  type ResidentIdentityForAxisCare,
+} from "@/lib/assessmentIntelligence/axiscareReadiness";
+import type { AxisCareClientCreateRequest } from "@/lib/integrations/axiscare/clientCreateRequest";
 import { buildCinchProjection } from "@/lib/assessmentIntelligence/cinchProjection";
 import type { AssertionState } from "@/lib/assessmentIntelligence/factTypes";
 import { getRequirementByCode } from "@/lib/data/personRequirements";
@@ -662,15 +666,39 @@ export async function reconcileApprovedAssessmentArtifacts(
   return { alreadyRecorded: result.alreadyRecorded };
 }
 
-/** AxisCare readiness + payload PREVIEW only — no write adapter exists, and none is invoked
- * here. Reuses the existing person_vendor_identity_links mechanism; never resolves an
- * ambiguous match itself. */
-export async function generateAxisCarePreview(assessmentSessionId: string): Promise<{ error?: string; readiness?: string }> {
+export interface AxisCareClientCreatePreviewResult {
+  error?: string;
+  technicallyReady?: boolean;
+  proposedAction?: "create" | "update" | null;
+  existingAxisCareClientId?: string | null;
+  apiHardBlockers?: { fieldPath: string; label: string }[];
+  processHardBlockers?: string[];
+  recommendedMissing?: { fieldPath: string; label: string }[];
+  integrationGaps?: string[];
+  /** The exact AxisCare client-create request this evaluation would submit — null unless
+   * technicallyReady. Never sent anywhere; see evaluateAxisCareClientCreate()'s own doc comment. */
+  payload?: AxisCareClientCreateRequest | null;
+}
+
+/** AxisCare client-create readiness + real payload PREVIEW only (Slice B.1, 2026-09-18) — no
+ * write adapter exists, and none is invoked here. Reuses the existing
+ * person_vendor_identity_links mechanism; never resolves an ambiguous match itself. Generating a
+ * preview is not operationalization — this deliberately does NOT transition the session's status
+ * (a prior version did, unconditionally, even on a blocked preview; removed as an outright bug,
+ * not replaced with any other lifecycle transition). */
+export async function generateAxisCarePreview(assessmentSessionId: string): Promise<AxisCareClientCreatePreviewResult> {
   const authResult = await requireActor();
   if ("error" in authResult) return { error: authResult.error };
 
   const session = await getAssessmentSession(assessmentSessionId);
   if (!session) return { error: "Assessment session not found." };
+
+  const resident = await getResidentById(session.resident_id);
+  const residentIdentity: ResidentIdentityForAxisCare = {
+    firstName: resident?.first_name ?? null,
+    lastName: resident?.last_name ?? null,
+  };
+  const canonicalProfileFacts = resident ? residentToCanonicalProfileFacts(resident) : null;
 
   const approvedFactRows = await getApprovedFactsForResident(session.resident_id);
   const facts = approvedFactRows.map((f) => ({
@@ -680,28 +708,39 @@ export async function generateAxisCarePreview(assessmentSessionId: string): Prom
   }));
 
   const identityLink = await getAxisCareIdentityLinkState(session.resident_id);
-  const readiness = computeAxisCareReadiness(facts, identityLink);
-
-  const payload =
-    readiness.proposedAction != null ? buildAxisCarePayloadPreview(facts, readiness.proposedAction) : null;
+  const evaluation = evaluateAxisCareClientCreate({
+    residentId: session.resident_id,
+    resident: residentIdentity,
+    approvedFacts: facts,
+    canonicalProfileFacts,
+    identityLink,
+    assessmentDate: session.finished_at ?? session.started_at,
+  });
 
   await writeAssessmentDecision({
     assessmentSessionId,
     decisionType: "axiscare_readiness",
     inputFactIds: approvedFactRows.map((f) => f.id),
-    output: { readiness },
+    output: { evaluation },
   });
 
   await writeAssessmentOutput({
     assessmentSessionId,
     outputType: "axiscare_payload_preview",
-    content: { readiness, payload },
+    content: { evaluation },
     generatedBy: authResult.actor,
   });
 
-  await updateAssessmentSessionStatus(assessmentSessionId, "operationalized");
-
-  return { readiness: readiness.readiness };
+  return {
+    technicallyReady: evaluation.technicallyReady,
+    proposedAction: evaluation.proposedAction,
+    existingAxisCareClientId: evaluation.existingAxisCareClientId,
+    apiHardBlockers: [...evaluation.apiHardBlockers],
+    processHardBlockers: [...evaluation.processHardBlockers],
+    recommendedMissing: [...evaluation.recommendedMissing],
+    integrationGaps: [...evaluation.integrationGaps],
+    payload: evaluation.payload,
+  };
 }
 
 export async function generateCinchProjection(assessmentSessionId: string): Promise<{ error?: string }> {
