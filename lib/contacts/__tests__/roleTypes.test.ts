@@ -3,6 +3,7 @@ import {
   isRoleAuthorityVerified,
   isValidContactRoleAssignment,
   CONTACT_ROLE_TYPES,
+  ASSESSMENT_DERIVED_ROLE_STATUS,
   type ContactRoleAssignment,
 } from "../roleTypes.ts";
 
@@ -79,6 +80,13 @@ test("effective_end on or after effective_start (or null, still active) is valid
     isValidContactRoleAssignment(assignment({ effectiveStart: "2026-01-01", effectiveEnd: "2026-09-19" })),
     true
   );
+});
+
+// ─── J. Assessment-derived roles (including POA/authority claims) are never auto-verified ──────
+
+test("J: ASSESSMENT_DERIVED_ROLE_STATUS is 'claimed', not 'verified' -- a role reported by an assessment (including medical_poa/financial_poa/guardian) never becomes authoritative just because the assessment says so", () => {
+  assert.equal(ASSESSMENT_DERIVED_ROLE_STATUS, "claimed");
+  assert.equal(isRoleAuthorityVerified(ASSESSMENT_DERIVED_ROLE_STATUS), false);
 });
 
 let passed = 0;

@@ -36,6 +36,15 @@ export const CONTACT_ROLE_STATUSES = ["claimed", "verified", "revoked"] as const
 
 export type ContactRoleStatus = (typeof CONTACT_ROLE_STATUSES)[number];
 
+/** The one status any assessment-derived role is ever written with (Slice C.3,
+ * lib/actions/importantPeople.ts's confirmImportantPersonProposal()) — a role an assessment
+ * conversation reports is a claim, never proof, regardless of which role_type it is (including
+ * medical_poa/financial_poa/guardian). Exported as a named constant, not a literal string
+ * scattered inline, specifically so this guarantee is directly testable: see
+ * lib/contacts/__tests__/roleTypes.test.ts's assertion that
+ * isRoleAuthorityVerified(ASSESSMENT_DERIVED_ROLE_STATUS) is false. */
+export const ASSESSMENT_DERIVED_ROLE_STATUS: ContactRoleStatus = "claimed";
+
 /** Whether a role's authority is actually evidenced, as opposed to merely claimed or
  * revoked. Exists so "is this role verified" is asked the same way everywhere, rather
  * than every caller re-deriving `status === "verified"` for itself. */
