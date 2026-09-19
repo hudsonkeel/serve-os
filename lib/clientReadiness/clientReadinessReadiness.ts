@@ -27,6 +27,10 @@ import {
 // classification is always passed in by the caller — see
 // getClientReadinessEvaluation() below.
 import type { ResidentTriageClassification } from "../data/residentTriageClassifications.ts";
+// A plain, dependency-free constants module (no server-only/live-fetching
+// import chain of its own) — safe to import as a value here, unlike
+// residentTriageClassifications.ts above.
+import { TRIAGE_LEVEL_LABELS } from "./triageClassification.ts";
 import type { PersonEvidence, PersonRequirement, Resident } from "../supabase/types.ts";
 // Type-only — erased at build/strip time, so this never pulls
 // residentServeRelationships.ts's live AxisCare-fetching import chain into
@@ -259,7 +263,12 @@ export function evaluateTriageClassification(
 
   return {
     status: "compliant",
-    explanation: `Triage classification on file: ${currentClassification.levelCode}.`,
+    // Human-facing text renders the canonical label (Enhanced Support /
+    // Moderate Support / Lower Support / Independent), never the raw
+    // persisted P1/P2/P3 code -- see TRIAGE_LEVEL_LABELS's own header for
+    // why the label, not the code, is what Serve OS users are expected to
+    // recognize. The governed level_code column itself is unaffected.
+    explanation: `Triage classification on file: ${TRIAGE_LEVEL_LABELS[currentClassification.levelCode]}.`,
     requirement,
     latestEvidence,
   };

@@ -177,8 +177,10 @@ async function main() {
     const afterFuture = await getClientReadinessEvaluation(residentId, "active_client", currentAfterFuture);
     const afterFutureItem = afterFuture?.requirements.find((r) => r.requirement.requirement_code === EP_CLIENT_TRIAGE_CLASSIFIED);
     check(
-      "REGRESSION: the requirement still reflects P2 (the current classification), not the future P3",
-      afterFutureItem?.explanation.includes("P2") ?? false,
+      "REGRESSION: the requirement still reflects P2/Moderate Support (the current classification), not the future P3, and never exposes the raw code",
+      (afterFutureItem?.explanation.includes("Moderate Support") ?? false) &&
+        !afterFutureItem?.explanation.includes("P2") &&
+        !afterFutureItem?.explanation.includes("P3"),
       afterFutureItem
     );
 

@@ -223,6 +223,40 @@ test("REGRESSION: evaluateTriageClassification is compliant purely from the gove
   assert.equal(result.status, "compliant");
 });
 
+// ─── Human-facing presentation: the canonical label, never the raw code ──
+// (2026-09-18 production-acceptance follow-up) — evaluateTriageClassification()'s
+// explanation is rendered directly on the Client Readiness board
+// (app/residents/[id]/page.tsx -> components/clientReadiness/ClientReadinessBoard.tsx).
+// Serve OS users must never need to know or remember the internal P1/P2/P3
+// mapping -- the persisted level_code itself is untouched by this, only the
+// human-facing text.
+
+test("REGRESSION: P1 displays as 'Enhanced Support' in the human-facing explanation, never the raw code", () => {
+  const req = requirement();
+  const result = evaluateTriageClassification(classification({ levelCode: "P1" }), req, []);
+  assert.equal(result.explanation, "Triage classification on file: Enhanced Support.");
+});
+
+test("REGRESSION: P2 displays as 'Moderate Support' in the human-facing explanation, never the raw code", () => {
+  const req = requirement();
+  const result = evaluateTriageClassification(classification({ levelCode: "P2" }), req, []);
+  assert.equal(result.explanation, "Triage classification on file: Moderate Support.");
+});
+
+test("REGRESSION: P3 displays as 'Lower Support / Independent' in the human-facing explanation, never the raw code", () => {
+  const req = requirement();
+  const result = evaluateTriageClassification(classification({ levelCode: "P3" }), req, []);
+  assert.equal(result.explanation, "Triage classification on file: Lower Support / Independent.");
+});
+
+test("REGRESSION: the human-facing explanation never exposes the raw P1/P2/P3 code as a standalone token, for any level", () => {
+  const req = requirement();
+  for (const levelCode of ["P1", "P2", "P3"] as const) {
+    const result = evaluateTriageClassification(classification({ levelCode }), req, []);
+    assert.equal(/\bP[123]\b/.test(result.explanation), false, `leaked raw code in: ${result.explanation}`);
+  }
+});
+
 test("evaluateTriageClassification still surfaces the latest active evidence for display, when one exists", () => {
   const req = requirement();
   const ev = evidence({ requirement_id: req.id, id: "ev-latest" });
