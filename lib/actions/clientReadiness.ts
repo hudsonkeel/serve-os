@@ -4,7 +4,8 @@ import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canAccessResidentEvidence, canManageResidentDocuments, canVerifyResidentEvidence } from "@/lib/auth/permissions";
 import type { AuthRole } from "@/lib/auth/constants";
 import { getRequirementByCode } from "@/lib/data/personRequirements";
-import { getPersonEvidenceForSubject, verifyPersonEvidence, rejectPersonEvidence } from "@/lib/data/personEvidence";
+import { getPersonEvidenceById, getPersonEvidenceForSubject, verifyPersonEvidence, rejectPersonEvidence } from "@/lib/data/personEvidence";
+import { composeRejectionNotes } from "@/lib/clientReadiness/rejectionNotes";
 import type { PersonEvidence } from "@/lib/supabase/types";
 import { createPersonDocument } from "@/lib/data/personDocuments";
 import { linkEvidenceToRequirement } from "@/lib/data/requirementEvidenceLinks";
@@ -525,6 +526,18 @@ export async function verifyResidentEvidenceAction(input: {
   return {};
 }
 
+// Rejection provenance — Office Staff Client Readiness UX v0.2 (refined
+// 2026-09-19). Fetches the evidence row's own CURRENT notes (the original
+// contributor's own text, if any) before rejecting, and composes a single
+// notes string that preserves the contributor's original notes with the
+// reviewer's feedback clearly delimited beneath it (see
+// composeRejectionNotes's own header for why this is the smallest
+// backward-compatible fix — no schema change). Reviewer identity/time are
+// NOT embedded in that text — verifiedBy/verifiedAt (columns
+// rejectPersonEvidence already supports but this call site never populated
+// before) are the authoritative, structured record of who/when reviewed;
+// the free-text notes exist only to carry the contributor's original
+// content and the reviewer's substantive feedback.
 export async function rejectResidentEvidenceAction(input: {
   evidenceId: string;
   residentId: string;
@@ -539,10 +552,18 @@ export async function rejectResidentEvidenceAction(input: {
     return { error: "A reason is required to reject evidence." };
   }
 
+  const existing = await getPersonEvidenceById(input.evidenceId);
+  const composedNotes = composeRejectionNotes({
+    originalNotes: existing?.notes ?? null,
+    reason: input.notes,
+  });
+
   const result = await rejectPersonEvidence({
     evidenceId: input.evidenceId,
     rejectedBy: actor.label,
-    notes: input.notes,
+    notes: composedNotes,
+    verifiedBy: actor.label,
+    verifiedAt: new Date().toISOString(),
   });
   if (result.error) return { error: result.error };
 

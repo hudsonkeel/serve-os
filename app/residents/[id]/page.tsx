@@ -250,6 +250,10 @@ export default async function ResidentDetailPage({
     evidenceSummary: evidenceSummaryForRequirement(r.requirement.requirement_code, r.status, r.latestEvidence),
     evidenceDocumentId: r.latestEvidence?.document_id ?? null,
     evidenceId: r.latestEvidence?.id ?? null,
+    verificationStatus: r.latestEvidence?.verification_status ?? null,
+    evidenceNotes: r.latestEvidence?.notes ?? null,
+    reviewedBy: r.latestEvidence?.verified_by ?? null,
+    reviewedAt: r.latestEvidence?.verified_at ?? null,
   }));
   const clientReadinessApplicable = clientReadinessBoardItems.filter((r) => r.status !== "not_applicable");
   const clientReadinessSatisfiedCount = clientReadinessApplicable.filter(

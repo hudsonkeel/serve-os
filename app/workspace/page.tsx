@@ -172,10 +172,16 @@ export default async function WorkspacePage({
 }) {
   // Org-wide Today's Work dashboard, not the community-scoped People We
   // Serve surface — see the identical note in app/dashboard/page.tsx.
-  const [profile, schedule, workItems, rawSearchParams] = await Promise.all([
-    getCurrentAuthorizedUser(),
+  //
+  // profile is resolved before the Promise.all below (rather than
+  // alongside it) because getTodaysWorkItems() now needs the viewer's role
+  // to apply its capability filter (Office Staff Client Readiness UX v0.2
+  // — a "Verify ..." evidence handoff must not appear in a viewer's own
+  // Today's Work when they lack canVerifyResidentEvidence).
+  const profile = await getCurrentAuthorizedUser();
+  const [schedule, workItems, rawSearchParams] = await Promise.all([
     getAxisCareTodaysSchedule(),
-    getTodaysWorkItems(),
+    getTodaysWorkItems(profile?.role),
     searchParams,
   ]);
   const currentUser = buildCurrentUserDisplay(profile);

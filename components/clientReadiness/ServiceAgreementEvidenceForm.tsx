@@ -9,7 +9,20 @@ import { validateDocumentFile } from "@/lib/workforce/documentValidation";
 // One upload, one document — optionally also satisfies Billing / Payment
 // Authorization from the same document (Decision 7: never a duplicate
 // upload merely because two cards exist).
-export function ServiceAgreementEvidenceForm({ residentId }: { residentId: string }) {
+//
+// triggerLabel — Office Staff Client Readiness UX v0.2: the caller
+// (ClientReadinessBoard.tsx) computes a status-aware label ("Upload
+// Service Agreement" for a genuinely missing requirement, "Replace
+// Documentation"/"Upload Replacement Documentation" once evidence exists)
+// via resolveDocumentActionLabel — same upload action either way, never a
+// parallel write path.
+export function ServiceAgreementEvidenceForm({
+  residentId,
+  triggerLabel = "Upload Service Agreement",
+}: {
+  residentId: string;
+  triggerLabel?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -58,7 +71,7 @@ export function ServiceAgreementEvidenceForm({ residentId }: { residentId: strin
         onClick={() => setOpen(true)}
         className="rounded-lg bg-navy px-3 py-1.5 font-sans text-xs font-medium text-white hover:bg-navy-light"
       >
-        Upload Service Agreement
+        {triggerLabel}
       </button>
     );
   }

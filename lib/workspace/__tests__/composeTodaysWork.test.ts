@@ -1,9 +1,16 @@
 // Pure-function tests for ../composeTodaysWork.ts. Run with:
 //   npm run test:workspace
 import assert from "node:assert/strict";
-import { composeTodaysWorkItems, type ComposeTodaysWorkInput } from "../composeTodaysWork.ts";
+import {
+  composeTodaysWorkItems,
+  filterCorrectiveActionsForViewer,
+  isClientReadinessVerificationAction,
+  type ComposeTodaysWorkInput,
+} from "../composeTodaysWork.ts";
 import type { RelationshipWorkspaceRow } from "../../relationships/search.ts";
 import type { IncidentWithResidentName } from "../../data/incidents.ts";
+import { canVerifyResidentEvidence } from "../../auth/permissions.ts";
+import type { AuthRole } from "../../auth/constants.ts";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -458,6 +465,102 @@ test("K2. an infection follow-up and an infection-sourced corrective action's ef
     ["effectiveness_review", "infection_follow_up"],
   );
   assert.ok(items.every((i) => i.sourceRoute === "/qapi/infections/inf1"));
+});
+
+// ─── isClientReadinessVerificationAction (Office Staff Client Readiness
+// UX v0.2, Today's Work capability filter) ────────────────────────────────
+
+test("REGRESSION: a client_readiness evidence_awaiting_verification action is identified for filtering", () => {
+  assert.equal(isClientReadinessVerificationAction({ domain: "client_readiness", actionType: "evidence_awaiting_verification" }), true);
+});
+
+test("a client_readiness action of any OTHER actionType is not identified", () => {
+  assert.equal(isClientReadinessVerificationAction({ domain: "client_readiness", actionType: "evidence_missing" }), false);
+});
+
+test("REGRESSION: Workforce's own evidence_awaiting_verification actionType is NOT identified merely by actionType -- domain must also match, since Workforce's compliance_actions table is a separate flow entirely", () => {
+  assert.equal(isClientReadinessVerificationAction({ domain: "workforce", actionType: "evidence_awaiting_verification" }), false);
+  assert.equal(isClientReadinessVerificationAction({ domain: null, actionType: "evidence_awaiting_verification" }), false);
+});
+
+test("an incident/infection/EPRP corrective action (different domain) is not identified", () => {
+  assert.equal(isClientReadinessVerificationAction({ domain: "incidents", actionType: "evidence_awaiting_verification" }), false);
+  assert.equal(isClientReadinessVerificationAction({ domain: "emergency_preparedness", actionType: "evidence_awaiting_verification" }), false);
+});
+
+// ─── filterCorrectiveActionsForViewer, exercised by REAL role (Office
+// Staff Client Readiness UX v0.2, refinement 2 — role-level composition
+// tests). Uses the actual canVerifyResidentEvidence predicate from
+// lib/auth/permissions.ts, never a hand-rolled boolean, so these tests
+// prove real role behavior end to end, not just the filter's own logic in
+// isolation. ────────────────────────────────────────────────────────────
+
+interface FakeAction {
+  id: string;
+  domain: string | null;
+  actionType: string;
+}
+
+const CLIENT_READINESS_VERIFICATION_ACTION: FakeAction = {
+  id: "cr-verify-1",
+  domain: "client_readiness",
+  actionType: "evidence_awaiting_verification",
+};
+
+// An unrelated action (a different domain entirely, e.g. an Incident's own
+// corrective action) — must remain visible to every role regardless of
+// canVerifyResidentEvidence, proving the filter is scoped to exactly the
+// one action type/domain pair, never a blanket "hide from office_staff"
+// rule.
+const UNRELATED_INCIDENT_ACTION: FakeAction = {
+  id: "incident-action-1",
+  domain: "incidents",
+  actionType: "corrective_action",
+};
+
+const SOURCE_ACTIONS: readonly FakeAction[] = [CLIENT_READINESS_VERIFICATION_ACTION, UNRELATED_INCIDENT_ACTION];
+
+test("REGRESSION: office_staff does not receive the Client Readiness evidence_awaiting_verification action", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("office_staff" as AuthRole));
+  assert.equal(visible.some((a) => a.id === CLIENT_READINESS_VERIFICATION_ACTION.id), false);
+});
+
+test("REGRESSION: admin receives the Client Readiness evidence_awaiting_verification action", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("admin" as AuthRole));
+  assert.equal(visible.some((a) => a.id === CLIENT_READINESS_VERIFICATION_ACTION.id), true);
+});
+
+test("REGRESSION: manager receives the Client Readiness evidence_awaiting_verification action", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("manager" as AuthRole));
+  assert.equal(visible.some((a) => a.id === CLIENT_READINESS_VERIFICATION_ACTION.id), true);
+});
+
+test("REGRESSION: executive receives the Client Readiness evidence_awaiting_verification action", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("executive" as AuthRole));
+  assert.equal(visible.some((a) => a.id === CLIENT_READINESS_VERIFICATION_ACTION.id), true);
+});
+
+test("operations (never granted canVerifyResidentEvidence) also does not receive the action -- the filter tracks the real predicate, not a hard-coded role list", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("operations" as AuthRole));
+  assert.equal(visible.some((a) => a.id === CLIENT_READINESS_VERIFICATION_ACTION.id), false);
+});
+
+test("REGRESSION: an unrelated corrective action remains visible to office_staff -- the filter excludes only the one action/domain pair, never a blanket hide", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("office_staff" as AuthRole));
+  assert.equal(visible.some((a) => a.id === UNRELATED_INCIDENT_ACTION.id), true);
+});
+
+test("REGRESSION: filtering never mutates or removes anything from the source array -- the underlying corrective action is never removed from its source data, only excluded from this one viewer's own composed list", () => {
+  const sourceCopy = SOURCE_ACTIONS.map((a) => ({ ...a }));
+  filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("office_staff" as AuthRole));
+  assert.deepEqual(SOURCE_ACTIONS.map((a) => ({ ...a })), sourceCopy, "source array must be unchanged after filtering");
+  assert.equal(SOURCE_ACTIONS.length, 2, "source array length must be unchanged");
+});
+
+test("a viewer who CAN verify sees every action, source array untouched either way", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, true);
+  assert.equal(visible.length, SOURCE_ACTIONS.length);
+  assert.notEqual(visible, SOURCE_ACTIONS, "must return a new array, never the same reference, even when nothing is excluded");
 });
 
 let passed = 0;

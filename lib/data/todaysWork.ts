@@ -10,11 +10,14 @@
 // WorkItem links back to its real source.
 import {
   composeTodaysWorkItems,
+  filterCorrectiveActionsForViewer,
   type CorrectiveActionForCompose,
   type EffectivenessReviewForCompose,
   type InfectionFollowUpForCompose,
 } from "../workspace/composeTodaysWork.ts";
 import type { WorkItem } from "../workspace/workItem.ts";
+import { canVerifyResidentEvidence } from "../auth/permissions.ts";
+import type { AuthRole } from "../auth/constants.ts";
 import {
   getNearestOpenActionByRelationship,
   getRecentlyCompletedActions,
@@ -40,8 +43,22 @@ import { getResidentDisplayNamesByIds } from "./residentRoster.ts";
 // stays two extra queries total, never one per action. The pure mapper
 // (lib/workspace/mapping.ts#mapCorrectiveActionToWorkItem) never touches
 // the database itself.
-async function loadCorrectiveActionsForCompose(): Promise<CorrectiveActionForCompose[]> {
-  const actions = await getAllOpenCorrectiveActions();
+// canViewerVerifyResidentEvidence — Office Staff Client Readiness UX v0.2
+// capability filter: excludes a Client Readiness evidence-verification
+// handoff (see filterCorrectiveActionsForViewer's own comment,
+// lib/workspace/composeTodaysWork.ts) from a viewer who structurally
+// cannot act on it. Never touches getAllOpenCorrectiveActions() itself
+// (that function backs the Governance dashboard/QAPI rollups too, which
+// must keep showing every open action regardless of who's viewing Today's
+// Work) — filtered only here, at the Today's-Work-specific composition
+// boundary, and only on the array this function returns, never on the
+// underlying rows getAllOpenCorrectiveActions() fetched.
+async function loadCorrectiveActionsForCompose(canViewerVerifyResidentEvidence: boolean): Promise<CorrectiveActionForCompose[]> {
+  const allActions = await getAllOpenCorrectiveActions();
+  const actions = filterCorrectiveActionsForViewer(
+    allActions.map((a) => ({ ...a, actionType: a.action_type })),
+    canViewerVerifyResidentEvidence
+  );
   if (actions.length === 0) return [];
 
   const residentIds = [...new Set(actions.filter((a) => a.subject_type === "resident").map((a) => a.subject_id))];
@@ -139,7 +156,8 @@ async function loadOutstandingInfectionFollowUpsForCompose(): Promise<InfectionF
   }));
 }
 
-export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkItem[]> {
+export async function getTodaysWorkItems(viewerRole: AuthRole | null | undefined, now: Date = new Date()): Promise<WorkItem[]> {
+  const canViewerVerifyResidentEvidence = canVerifyResidentEvidence(viewerRole);
   const [
     openFollowUps,
     completedFollowUps,
@@ -167,7 +185,7 @@ export async function getTodaysWorkItems(now: Date = new Date()): Promise<WorkIt
     getActionableInfections(),
     getRecentlyResolvedInfections(),
     getEmergencyPreparednessReadinessEvaluation(),
-    loadCorrectiveActionsForCompose(),
+    loadCorrectiveActionsForCompose(canViewerVerifyResidentEvidence),
     loadEffectivenessReviewsForCompose(),
     loadOutstandingInfectionFollowUpsForCompose(),
   ]);

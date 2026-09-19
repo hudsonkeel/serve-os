@@ -329,5 +329,16 @@ Three server actions remain reachable with no server-side role check beyond (or,
 ### Reason
 This is a pre-existing gap that predates `office_staff` and affects every role equally (any authenticated user, including `operations` today, can already reach these actions directly regardless of what their UI shows them) — it is not introduced or worsened by restoring `office_staff`'s page access, since Next.js Server Actions are callable independent of whether the page containing their trigger button is reachable via navigation. Fixing it was explicitly out of scope for this branch and risked expanding a navigation-visibility slice into an unrelated security-hardening effort without its own review.
 
+---
+
+### Decision
+Recorded, not fixed in this branch: `lib/actions/clientReadiness.ts`'s server actions (document upload, attestations, triage recording, verify/reject) perform no independent community-scope check of their own — they trust whatever `residentId` they're called with. Community scoping is enforced only at `app/residents/[id]/page.tsx` (`resolveCurrentCommunityQueryFilter` → `notFound()` for a resident outside the viewer's community).
+
+### Reason
+Found during the Priority 2 Office Staff Client Readiness UX production-acceptance investigation (2026-09-19), while auditing this file's authorization surface end to end. Same shape as the entry immediately above (page-level gating, not defense-in-depth at the server-action layer) and appears to be the same pre-existing, codebase-wide pattern — not something office_staff's document-upload authority introduces or worsens, and not unique to Client Readiness. Folding a general server-action community-scope hardening effort into this UX/wording/provenance slice was explicitly out of scope; recording it here so it isn't silently lost.
+
+### Result
+No server action in `lib/actions/clientReadiness.ts` was changed to add a community-scope check as part of this branch. This entry exists so a future authorization-hardening pass starts from a known list of affected actions instead of rediscovering them.
+
 ### Result
 No change made to any of the three files in this branch. Recorded here as explicit security debt: a future pass must add `canPerformReconciliationActions` (or equivalent) checks to `residentIdentity.ts` and `residentDataIntegrity.ts`, and at minimum an authentication check to `connections.ts`, before treating resident identity-merge, data-integrity correction, and connections/interests capture as properly authorized.

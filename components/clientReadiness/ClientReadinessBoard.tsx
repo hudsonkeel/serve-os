@@ -15,7 +15,6 @@ import { TriageClassificationControl } from "@/components/clientReadiness/Triage
 import type { TriageClassificationDetail } from "@/lib/clientReadiness/triageClassificationDetail";
 import type { ResidentTriageClassification } from "@/lib/data/residentTriageClassifications";
 import {
-  CLIENT_READINESS_ATTESTATION_REQUIREMENT_CODES,
   CR_ASSESSMENT_CURRENT,
   CR_BILLING_AGREEMENT_ON_FILE,
   CR_CARE_DOCUMENTATION_CURRENT,
@@ -28,7 +27,18 @@ import {
   CR_SUPERVISORY_VISIT_RECORDED,
   EP_CLIENT_TRIAGE_CLASSIFIED,
 } from "@/lib/clientReadiness/constants";
+import {
+  canActOnRequirement,
+  isSatisfiedStatus,
+  resolveAttestationGuidance,
+  resolveClientReadinessCta as resolveClientReadinessCtaPure,
+  resolveDocumentActionLabel,
+  resolveDocumentStatusBanner,
+  type ClientReadinessCareContacts,
+} from "@/lib/clientReadiness/boardPresentation";
 import type { AuditReadinessStatus } from "@/lib/compliance/auditReadinessStatus";
+
+export type { ClientReadinessCareContacts } from "@/lib/clientReadiness/boardPresentation";
 
 export interface ClientReadinessBoardItem {
   requirementCode: string;
@@ -42,24 +52,31 @@ export interface ClientReadinessBoardItem {
   // row id, needed by the verify/reject control below. Null whenever no
   // evidence row exists yet (e.g. a genuinely missing requirement).
   evidenceId: string | null;
-}
-
-function isSatisfiedStatus(status: AuditReadinessStatus): boolean {
-  return status === "compliant" || status === "satisfied_by_event" || status === "exception";
-}
-
-// Office Staff Client Readiness v0.1 — the requirement-tier split.
-// Document-backed requirements (ordinary upload/supersede work) are
-// gated by canManageResidentDocuments, which now includes office_staff.
-// Attestation/governed requirements (a direct human confirmation or a
-// clinical classification — never a document upload) stay gated by
-// canAccessResidentEvidence, unchanged, office_staff excluded.
-// CLIENT_READINESS_ATTESTATION_REQUIREMENT_CODES is shared with
-// PeopleReadinessView.tsx (lib/clientReadiness/constants.ts) so the CTA
-// label/remediation form here and the Needs Attention card there can never
-// disagree about which tier a requirement belongs to.
-function canActOnRequirement(requirementCode: string, canManageDocuments: boolean, canManageAttestations: boolean): boolean {
-  return CLIENT_READINESS_ATTESTATION_REQUIREMENT_CODES.has(requirementCode) ? canManageAttestations : canManageDocuments;
+  // Office Staff Client Readiness UX v0.2 — the underlying person_evidence
+  // row's own verification_status ("unverified"/"verified"/"rejected"),
+  // distinct from the collapsed AuditReadinessStatus bucket. Lets the
+  // board distinguish "awaiting first verification" from "rejected, needs
+  // replacement" — both collapse to status === "needs_review" otherwise.
+  // Null when there's no evidence row (genuinely missing).
+  verificationStatus: string | null;
+  // The evidence row's notes — surfaced only for a rejected requirement,
+  // so Office Staff can see the reviewer's substantive feedback. See
+  // lib/actions/clientReadiness.ts's rejectResidentEvidenceAction for how
+  // this is composed to preserve the original contributor's notes
+  // alongside the reviewer's feedback, rather than overwriting them.
+  // Deliberately does NOT carry reviewer identity/time — see
+  // reviewedBy/reviewedAt below, the authoritative source for those.
+  evidenceNotes: string | null;
+  // The evidence row's own verified_by/verified_at — structured, DB-enforced
+  // fields (person_evidence_verification_fields_check), populated for BOTH
+  // a verification and a rejection (see rejectResidentEvidenceAction).
+  // This, not any text embedded in evidenceNotes, is the authoritative
+  // record of who reviewed this evidence and when — rendered alongside the
+  // rejection banner so removing reviewer/time from the free-text notes
+  // (per the 2026-09-19 provenance refinement) doesn't leave Office Staff
+  // unable to see who/when reviewed.
+  reviewedBy: string | null;
+  reviewedAt: string | null;
 }
 
 // Direct, requirement-specific CTAs — "Review & Resolve" is avoided
@@ -75,36 +92,58 @@ const REQUIREMENT_ACTION_LABELS: Record<string, string> = {
   [CR_BILLING_AGREEMENT_ON_FILE]: "Upload Billing Document",
   [CR_MEDICATION_LIST_ON_FILE]: "Verify Medication List",
   [CR_CARE_DOCUMENTATION_CURRENT]: "Verify Care Documentation",
-  [CR_SUPERVISORY_VISIT_RECORDED]: "Upload Supervisory Visit",
-  [CR_SIGNIFICANT_EVENTS_DOCUMENTED]: "Record Significant Event",
+  [CR_SUPERVISORY_VISIT_RECORDED]: "Upload Supervisory Visit Documentation",
+  [CR_SIGNIFICANT_EVENTS_DOCUMENTED]: "Upload Significant Event Documentation",
   [CR_DISCHARGE_SUMMARY_ON_FILE]: "Upload Discharge Summary",
 };
 
-// canManageDocuments/canManageAttestations narrow the CTA itself now —
-// a viewer who can't act on this specific requirement (e.g. office_staff
-// looking at Triage Classification) sees "View Requirement →", never a
-// verb implying they can resolve it. Matches resolveStatusCardCta's own
-// not_applicable convention.
+// Thin wrapper over the pure resolver (lib/clientReadiness/boardPresentation.ts)
+// — keeps this file's own call sites unchanged while the actual decision
+// logic (and its tests) live in the unit-testable pure module.
 function resolveClientReadinessCta(
   item: ClientReadinessBoardItem,
   careContacts: ClientReadinessCareContacts,
   canManageDocuments: boolean,
   canManageAttestations: boolean
 ): string {
-  if (isSatisfiedStatus(item.status)) return "View Evidence →";
-  if (item.status === "not_applicable") return "View Requirement →";
-  if (!canActOnRequirement(item.requirementCode, canManageDocuments, canManageAttestations)) return "View Requirement →";
+  return resolveClientReadinessCtaPure(
+    item,
+    careContacts,
+    canManageDocuments,
+    canManageAttestations,
+    REQUIREMENT_ACTION_LABELS[item.requirementCode],
+    resolveStatusCardCta
+  );
+}
 
-  if (item.requirementCode === CR_CLIENT_PROFILE_ON_FILE) {
-    const missingPhysician = !careContacts.physicianName || !careContacts.physicianPhone;
-    const guardianUnresolved = !(careContacts.guardianName && careContacts.guardianPhone) && !careContacts.guardianConfirmedNone;
-    if (missingPhysician) return "Add Physician →";
-    if (guardianUnresolved) return "Resolve Guardian →";
-    return "Review & Resolve →";
-  }
-
-  const label = REQUIREMENT_ACTION_LABELS[item.requirementCode];
-  return label ? `${label} →` : resolveStatusCardCta(item.status);
+// Small status banner rendered above a document-tier requirement's
+// upload/replace form when it's sitting at Awaiting Verification or was
+// rejected — never a substitute for the form, always alongside it. Reuses
+// existing evidence/status semantics (resolveDocumentStatusBanner), never
+// a parallel workflow state.
+function DocumentStatusBanner({ item }: { item: ClientReadinessBoardItem }) {
+  const banner = resolveDocumentStatusBanner(item);
+  if (!banner) return null;
+  const isRejected = banner.tone === "rejected";
+  return (
+    <div className={`space-y-1 rounded-lg border p-3 ${isRejected ? "border-red-200 bg-red-50" : "border-blue-200 bg-blue-50"}`}>
+      <p className={`font-sans text-xs font-semibold uppercase tracking-wide ${isRejected ? "text-red-700" : "text-blue-700"}`}>
+        {banner.heading}
+      </p>
+      <p className="font-sans text-xs text-body">{banner.body}</p>
+      {isRejected && item.reviewedBy && (
+        <p className="font-sans text-xs text-subtle">
+          Reviewed by {item.reviewedBy}
+          {item.reviewedAt ? ` on ${new Date(item.reviewedAt).toLocaleDateString()}` : ""}
+        </p>
+      )}
+      {isRejected && item.evidenceNotes && (
+        <p className="font-sans text-xs text-body">
+          <span className="font-semibold">Notes:</span> {item.evidenceNotes}
+        </p>
+      )}
+    </div>
+  );
 }
 
 // Office Staff Client Readiness v0.1 — the verify/reject control for
@@ -251,7 +290,18 @@ function resolveRequirementSpecificContent({
   // knows which tier each requirement code belongs to (see its own
   // comment), so this can never drift from what resolveClientReadinessCta
   // promises the CTA label means.
-  if (!canActOnRequirement(item.requirementCode, canManageDocuments, canManageAttestations)) return null;
+  if (!canActOnRequirement(item.requirementCode, canManageDocuments, canManageAttestations)) {
+    // Office Staff Client Readiness UX v0.2 — retain visibility, but for
+    // an unresolved attestation-tier requirement, replace the dead-end
+    // (nothing rendered at all) with concise, capability-oriented
+    // next-step copy. Never a hard-coded role name (Priority 3 will
+    // separately investigate a qualification/capability model distinct
+    // from AuthRole). A satisfied/not_applicable item needs no guidance —
+    // there's nothing left to explain.
+    if (isSatisfiedStatus(item.status) || item.status === "not_applicable") return null;
+    const guidance = resolveAttestationGuidance(item.requirementCode);
+    return guidance ? <p className="font-sans text-xs text-muted">{guidance}</p> : null;
+  }
 
   if (item.requirementCode === CR_CLIENT_PROFILE_ON_FILE) {
     const missingPhysician = !careContacts.physicianName || !careContacts.physicianPhone;
@@ -283,8 +333,13 @@ function resolveRequirementSpecificContent({
     }
     return (
       <div className="space-y-2">
+        <DocumentStatusBanner item={item} />
         <p className="font-sans text-xs text-muted">Recorded automatically when a Serve Assessment is approved.</p>
-        <DocumentEvidenceForm residentId={residentId} requirementCode={item.requirementCode} label="Upload Existing Assessment" />
+        <DocumentEvidenceForm
+          residentId={residentId}
+          requirementCode={item.requirementCode}
+          label={resolveDocumentActionLabel("Upload Existing Assessment", item)}
+        />
       </div>
     );
   }
@@ -294,18 +349,33 @@ function resolveRequirementSpecificContent({
   }
 
   if (item.requirementCode === CR_ISP_ON_FILE_AND_CURRENT) {
-    return <DocumentEvidenceForm residentId={residentId} requirementCode={item.requirementCode} label="Upload ISP" />;
+    return (
+      <div className="space-y-2">
+        <DocumentStatusBanner item={item} />
+        <DocumentEvidenceForm residentId={residentId} requirementCode={item.requirementCode} label={resolveDocumentActionLabel("Upload ISP", item)} />
+      </div>
+    );
   }
 
   if (item.requirementCode === CR_SERVICE_AGREEMENT_AND_DISCLOSURE_SIGNED) {
-    return <ServiceAgreementEvidenceForm residentId={residentId} />;
+    return (
+      <div className="space-y-2">
+        <DocumentStatusBanner item={item} />
+        <ServiceAgreementEvidenceForm residentId={residentId} triggerLabel={resolveDocumentActionLabel("Upload Service Agreement", item)} />
+      </div>
+    );
   }
 
   if (item.requirementCode === CR_BILLING_AGREEMENT_ON_FILE) {
     return (
       <div className="space-y-2">
+        <DocumentStatusBanner item={item} />
         <p className="font-sans text-xs text-muted">Usually satisfied automatically from the Service Agreement.</p>
-        <DocumentEvidenceForm residentId={residentId} requirementCode={item.requirementCode} label="Upload Separate Billing Document" />
+        <DocumentEvidenceForm
+          residentId={residentId}
+          requirementCode={item.requirementCode}
+          label={resolveDocumentActionLabel("Upload Separate Billing Document", item)}
+        />
       </div>
     );
   }
@@ -319,15 +389,45 @@ function resolveRequirementSpecificContent({
   }
 
   if (item.requirementCode === CR_SUPERVISORY_VISIT_RECORDED) {
-    return <DocumentEvidenceForm residentId={residentId} requirementCode={item.requirementCode} label="Record Supervisory Visit" dateLabel="Visit Date" />;
+    return (
+      <div className="space-y-2">
+        <DocumentStatusBanner item={item} />
+        <DocumentEvidenceForm
+          residentId={residentId}
+          requirementCode={item.requirementCode}
+          label={resolveDocumentActionLabel("Upload Completed Supervisory Visit Documentation", item)}
+          dateLabel="Visit Date"
+        />
+      </div>
+    );
   }
 
   if (item.requirementCode === CR_SIGNIFICANT_EVENTS_DOCUMENTED) {
-    return <DocumentEvidenceForm residentId={residentId} requirementCode={item.requirementCode} label="Record Significant Event" dateLabel="Event Date" />;
+    return (
+      <div className="space-y-2">
+        <DocumentStatusBanner item={item} />
+        <DocumentEvidenceForm
+          residentId={residentId}
+          requirementCode={item.requirementCode}
+          label={resolveDocumentActionLabel("Upload Significant Event Documentation", item)}
+          dateLabel="Event Date"
+        />
+      </div>
+    );
   }
 
   if (item.requirementCode === CR_DISCHARGE_SUMMARY_ON_FILE) {
-    return <DocumentEvidenceForm residentId={residentId} requirementCode={item.requirementCode} label="Upload Discharge Summary" dateLabel="Discharge Date" />;
+    return (
+      <div className="space-y-2">
+        <DocumentStatusBanner item={item} />
+        <DocumentEvidenceForm
+          residentId={residentId}
+          requirementCode={item.requirementCode}
+          label={resolveDocumentActionLabel("Upload Discharge Summary", item)}
+          dateLabel="Discharge Date"
+        />
+      </div>
+    );
   }
 
   return null;
@@ -382,18 +482,6 @@ function RequirementActions({
       {showVerification && <EvidenceVerificationControl evidenceId={item.evidenceId as string} residentId={residentId} />}
     </div>
   );
-}
-
-// The resident's current physician/guardian state, for
-// CR_CLIENT_PROFILE_ON_FILE's own direct-remediation form — the same
-// canonical fields the resident page's Care Contacts card already
-// reads, passed straight through rather than re-fetched.
-export interface ClientReadinessCareContacts {
-  physicianName: string;
-  physicianPhone: string;
-  guardianName: string;
-  guardianPhone: string;
-  guardianConfirmedNone: boolean;
 }
 
 export function ClientReadinessBoard({

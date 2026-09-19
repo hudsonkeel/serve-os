@@ -87,6 +87,50 @@ export interface CorrectiveActionForCompose {
   lifecycleStage: "open" | "implemented" | "verified_effective" | "cancelled";
 }
 
+// Office Staff Client Readiness UX v0.2 (Today's Work capability filter) —
+// a compliance_corrective_actions row created by
+// syncClientReadinessComplianceActionsForResident() (lib/clientReadiness/
+// complianceActionSync.ts: domain: "client_readiness", actionType:
+// "evidence_awaiting_verification") titled "Verify {requirement} —
+// {client}". Deliberately keyed on BOTH domain and actionType, not
+// actionType alone: Workforce's own compliance_actions flow (a completely
+// separate table, workforce_compliance_actions, never surfaced in Today's
+// Work today) happens to reuse the identical actionType string for its own
+// "Verify {name}" mapping — domain is what actually distinguishes this
+// Client Readiness verification handoff from anything else that might
+// someday share the same action_type value. A viewer without
+// canVerifyResidentEvidence structurally cannot act on this item (see
+// lib/actions/clientReadiness.ts's verifyResidentEvidenceAction/
+// rejectResidentEvidenceAction), so it must not appear in THEIR Today's
+// Work implying they own it — see lib/data/todaysWork.ts's
+// loadCorrectiveActionsForCompose(), the one caller. This is a
+// composition-time visibility filter only: the underlying corrective
+// action row is never touched (creation, dedup, due dates, and
+// auto-resolution all live entirely in complianceActionSync.ts/
+// sync_compliance_corrective_action(), unchanged), and an authorized
+// verifier's own Today's Work is completely unaffected.
+export function isClientReadinessVerificationAction(action: { domain: string | null; actionType: string }): boolean {
+  return action.domain === "client_readiness" && action.actionType === "evidence_awaiting_verification";
+}
+
+// Pure filter, extracted from lib/data/todaysWork.ts's loadCorrectiveActionsForCompose()
+// so the actual composition-time decision (not just the predicate above)
+// is independently unit-testable by role, without a database. Returns a
+// NEW array — never mutates `actions` or any element in it, and never
+// touches the caller's own already-fetched rows (which is what "the
+// underlying corrective action is never removed from its source data"
+// means in practice: getAllOpenCorrectiveActions() and every other
+// consumer of that same source data, e.g. the Governance/QAPI dashboards,
+// are entirely unaffected — this function only decides what a given
+// Today's Work composition includes in ITS OWN returned list).
+export function filterCorrectiveActionsForViewer<T extends { domain: string | null; actionType: string }>(
+  actions: readonly T[],
+  canViewerVerifyResidentEvidence: boolean
+): T[] {
+  if (canViewerVerifyResidentEvidence) return [...actions];
+  return actions.filter((action) => !isClientReadinessVerificationAction(action));
+}
+
 // Incident Corrective Action Lifecycle v0.1 — one already-fetched,
 // already-joined effectiveness review row whose parent action has reached
 // lifecycle_stage='implemented' and whose outcome is still null. The I/O
