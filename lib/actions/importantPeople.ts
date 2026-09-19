@@ -13,6 +13,8 @@ import {
   setContactFieldIfEmpty,
   recordContactFieldProvenance,
   insertContactRole,
+  type ContactRoleRow,
+  type ContactRow,
 } from "@/lib/data/contacts";
 import {
   buildImportantPeopleProposals,
@@ -20,52 +22,70 @@ import {
   type ProposedImportantPerson,
   type UnattachedPoaClaim,
 } from "@/lib/contacts/importantPeopleProposals";
-import { evaluateContactLinkForProposal, type ContactLinkDecision } from "@/lib/contacts/importantPeopleLinking";
+import {
+  evaluateContactLinkForProposal,
+  decideAutomaticProjectionAction,
+  describeNeedsReviewReason,
+  type AutomaticProjectionAction,
+} from "@/lib/contacts/importantPeopleLinking";
 import { partitionProposalsByResolution, computeMissingRoleInserts } from "@/lib/contacts/importantPeopleResolution";
 import { normalizeContactPhone } from "@/lib/contacts/normalization";
-import { ASSESSMENT_DERIVED_ROLE_STATUS } from "@/lib/contacts/roleTypes";
+import { ASSESSMENT_DERIVED_ROLE_STATUS, AUTOMATIC_PROJECTION_ACTOR } from "@/lib/contacts/roleTypes";
+import { formatPlainDate } from "@/lib/utils/date";
 import type { AssertionState } from "@/lib/assessmentIntelligence/factTypes";
 
-// Slice C.3 — assessment -> canonical Important People projection. Server actions only; no
-// direct authenticated-browser write path to the contact tables exists (same governed,
-// service-role-only posture as C.2's own tables and every other governed table in this repo —
-// see lib/data/contacts.ts's own header comment).
+// Slice C.3 refinement (2026-09-19) — "Do not ask the user to confirm what Serve already knows."
+// The original C.3 shape required a human confirmation click for every assessment-derived
+// Important Person, including cases with no genuine ambiguity at all. This file now performs that
+// projection AUTOMATICALLY for the two cases the existing C.2/C.3 identity machinery already
+// classifies as safe (no competing candidate at all, or an exact strong match to an existing
+// contact) — see lib/contacts/importantPeopleLinking.ts's decideAutomaticProjectionAction(). A
+// genuinely ambiguous or conflicting match — or a bare shared name with no strong identifier — is
+// NEVER auto-resolved; it is surfaced as a needs-review item with no write action of any kind.
 //
-// ASSESSMENT BOUNDARY: this file only ever READS from assessment_approved_facts (via the
-// existing, unmodified getApprovedFactsForResident()) — it never writes to
-// assessment_draft_facts, assessment_approved_facts, or the immutable assessment_document
-// snapshot, and never calls approve_assessment_session() or anything in
-// lib/actions/assessmentIntelligence.ts. Canonicalizing an Important Person is a strictly later,
-// separate, human-confirmed action over an assessment's already-approved, already-frozen
-// knowledge — it can never rewrite what was approved or when.
+// WHERE THIS RUNS: inside getImportantPeopleReviewData(), the same read path the resident page
+// already calls on every load — not inside approveAssessment(). Assessment approval stays focused
+// on approving/finalizing assessment knowledge; this projection is a separate, later, deterministic
+// reconciliation step over already-approved facts, run the same way
+// reconcileApprovedAssessmentArtifacts() closes other post-approval gaps without re-approving
+// anything. Every write this performs is idempotent by construction (see
+// lib/contacts/importantPeopleResolution.ts and the source_reference existence-checks in
+// lib/data/contacts.ts), so re-running it on every page load — including two people viewing the
+// same resident at once — never creates a duplicate contact or a duplicate role.
 //
-// SCOPE NOTE: proposals whose identity match tier is "requires_reconciliation" (an ambiguous or
-// conflicting match against an existing contact) are surfaced for visibility but have NO confirm
-// action wired up in this slice — building the full "pick which existing contact, or none, and
-// record a suppression for the ones you reject" reconciliation UI is real, additional scope
-// deliberately deferred past this narrow first cut (see the Slice C.3 investigation's own
-// "smallest useful path" framing). Only the two genuinely low-friction cases — no conflict
-// (create) and an exact strong match (link) — have a one-click action here.
+// ASSESSMENT BOUNDARY: this file only ever READS from assessment_approved_facts (via the existing,
+// unmodified getApprovedFactsForResident()) — it never writes to assessment_draft_facts,
+// assessment_approved_facts, or the immutable assessment_document snapshot, and never calls
+// approveAssessmentSession() or anything in lib/actions/assessmentIntelligence.ts. A failure while
+// materializing one proposal (a transient write error, or a genuinely thrown exception) is caught
+// per-proposal and that proposal simply falls back to a needs-review state for this load rather
+// than throwing — it can never corrupt or block assessment approval, which has already fully
+// completed by the time this ever runs, and it never prevents the rest of the page (or this
+// resident's other Important People) from rendering.
+//
+// PERMISSION BOUNDARY: automatic writes only run when the viewing user actually has
+// canEditResidentProfile() — the same authorization boundary the original manual confirm action
+// enforced. A lower-privileged viewer's page load never has a side effect they couldn't have
+// triggered themselves; the projection simply runs the next time someone with edit permission
+// views the resident (in practice, always the staff who act on this data). Read-only display of
+// whatever is already canonicalized is unaffected by this gate.
+//
+// WHAT THIS DELIBERATELY DOES NOT DO: build the ambiguous-match reconciliation workflow (picking
+// among candidates, recording a contact_identity_suppressions row) — a needs-review item has no
+// action attached in this slice, by design: a warning/action affordance should map to a real
+// available action, and no contact-identity review screen exists yet (unlike /reconciliation for
+// residents or /workforce/identity-review for caregivers).
 
-async function requireActor(): Promise<{ actor: string } | { error: string }> {
+async function getViewingActorForWrite(): Promise<string | null> {
   const profile = await getCurrentAuthorizedUser();
-  if (!profile) return { error: "You must be signed in." };
-  if (!canEditResidentProfile(profile.role)) {
-    return { error: "You do not have permission to manage Important People." };
-  }
-  return { actor: profile.full_name || profile.email };
+  if (!profile) return null;
+  if (!canEditResidentProfile(profile.role)) return null;
+  return AUTOMATIC_PROJECTION_ACTOR;
 }
 
-export interface ImportantPersonProposalView {
-  readonly proposalKey: string;
-  readonly firstName: string | null;
-  readonly lastName: string | null;
-  readonly rawFullName: string;
-  readonly phone: string | null;
-  readonly roles: readonly { roleType: string; sourceApprovedFactId: string }[];
-  readonly linkDecision: ContactLinkDecision;
-  readonly nameSourceApprovedFactId: string;
-  readonly phoneSourceApprovedFactId: string | null;
+export interface ImportantPersonRoleView {
+  readonly roleType: string;
+  readonly status: string;
 }
 
 export interface CurrentImportantPersonView {
@@ -73,27 +93,126 @@ export interface CurrentImportantPersonView {
   readonly firstName: string | null;
   readonly lastName: string | null;
   readonly phone: string | null;
-  readonly roles: readonly { roleType: string; status: string }[];
+  readonly roles: readonly ImportantPersonRoleView[];
+  /** "Sep 16" — the most recent approved-assessment date among this person's assessment-sourced
+   * roles, for a subtle provenance note. Null when nothing here came from an assessment. */
+  readonly mostRecentAssessmentDate: string | null;
+}
+
+export interface NeedsReviewPersonView {
+  readonly proposalKey: string;
+  readonly rawFullName: string;
+  readonly phone: string | null;
+  /** Short, human-facing reason (never a paragraph, never raw match evidence) — see
+   * describeNeedsReviewReason(). */
+  readonly reason: string;
 }
 
 export interface ImportantPeopleReviewData {
-  readonly proposals: readonly ImportantPersonProposalView[];
   readonly currentPeople: readonly CurrentImportantPersonView[];
+  readonly needsReview: readonly NeedsReviewPersonView[];
   readonly unattachedPoaClaims: readonly UnattachedPoaClaim[];
 }
 
-function toProposalView(proposal: ProposedImportantPerson, linkDecision: ContactLinkDecision): ImportantPersonProposalView {
-  return {
-    proposalKey: proposal.proposalKey,
-    firstName: proposal.firstName,
-    lastName: proposal.lastName,
-    rawFullName: proposal.rawFullName,
-    phone: proposal.phone,
-    roles: proposal.roles.map((r) => ({ roleType: r.roleType, sourceApprovedFactId: r.sourceApprovedFactId })),
-    linkDecision,
-    nameSourceApprovedFactId: proposal.nameSourceApprovedFactId,
-    phoneSourceApprovedFactId: proposal.phoneSourceApprovedFactId,
-  };
+/** Materializes one safe proposal into a canonical contact + its roles + field provenance.
+ * Idempotent: if any of the requested roles was already recorded (by source_reference) in
+ * `existingRoleRowsSnapshot` — a prior automatic projection run, a concurrent page load — this
+ * always reuses that existing contact instead of creating a second one, regardless of what
+ * `action` says. Existing contact field values are never overwritten, only filled in when empty;
+ * every asserted value is still recorded as provenance regardless of whether it won. */
+async function materializeProposal(
+  proposal: ProposedImportantPerson,
+  residentId: string,
+  action: Extract<AutomaticProjectionAction, "auto_create" | "auto_link">,
+  matchedContactId: string | null,
+  actor: string,
+  existingSourceReferences: ReadonlySet<string>,
+  existingRoleRowsSnapshot: readonly (ContactRoleRow & { contact: ContactRow })[]
+): Promise<{ contactId: string } | { error: string }> {
+  const missingRoles = computeMissingRoleInserts(proposal.roles, existingSourceReferences);
+
+  const alreadyRecordedRole = existingRoleRowsSnapshot.find((row) =>
+    proposal.roles.some((requested) => requested.sourceApprovedFactId === row.source_reference)
+  );
+
+  let contactId: string;
+  if (alreadyRecordedRole) {
+    contactId = alreadyRecordedRole.contact_id;
+  } else if (action === "auto_link" && matchedContactId) {
+    const existingContact = await getContactById(matchedContactId);
+    if (!existingContact) return { error: "The matched existing contact could not be found." };
+    contactId = existingContact.id;
+
+    // Never silently overwrite a conflicting current value — only fill in genuinely empty
+    // fields. Provenance is recorded regardless, so what this assessment asserted is never lost
+    // even when it doesn't win the current value.
+    if (proposal.firstName && !existingContact.first_name) {
+      await setContactFieldIfEmpty(contactId, "first_name", proposal.firstName, actor);
+    }
+    if (proposal.lastName && !existingContact.last_name) {
+      await setContactFieldIfEmpty(contactId, "last_name", proposal.lastName, actor);
+    }
+    if (proposal.phone && !existingContact.phone) {
+      await setContactFieldIfEmpty(contactId, "phone", proposal.phone, actor);
+      const normalized = normalizeContactPhone(proposal.phone);
+      if (normalized) await setContactFieldIfEmpty(contactId, "normalized_phone", normalized, actor);
+    }
+  } else {
+    const created = await createContact({
+      firstName: proposal.firstName,
+      lastName: proposal.lastName,
+      phone: proposal.phone,
+      normalizedPhone: proposal.phone ? normalizeContactPhone(proposal.phone) : null,
+      createdBy: actor,
+    });
+    if (!created) return { error: "Could not create the contact." };
+    contactId = created.id;
+  }
+
+  if (proposal.firstName) {
+    await recordContactFieldProvenance({
+      contactId,
+      fieldName: "first_name",
+      value: proposal.firstName,
+      source: "assessment",
+      sourceReference: proposal.nameSourceApprovedFactId,
+      assertedBy: actor,
+    });
+  }
+  if (proposal.lastName) {
+    await recordContactFieldProvenance({
+      contactId,
+      fieldName: "last_name",
+      value: proposal.lastName,
+      source: "assessment",
+      sourceReference: proposal.nameSourceApprovedFactId,
+      assertedBy: actor,
+    });
+  }
+  if (proposal.phone) {
+    await recordContactFieldProvenance({
+      contactId,
+      fieldName: "phone",
+      value: proposal.phone,
+      source: "assessment",
+      sourceReference: proposal.phoneSourceApprovedFactId ?? proposal.nameSourceApprovedFactId,
+      assertedBy: actor,
+    });
+  }
+
+  for (const role of missingRoles) {
+    await insertContactRole({
+      contactId,
+      residentId,
+      roleType: role.roleType,
+      status: ASSESSMENT_DERIVED_ROLE_STATUS,
+      source: "assessment",
+      sourceReference: role.sourceApprovedFactId,
+      createdBy: actor,
+    });
+  }
+
+  return { contactId };
 }
 
 export async function getImportantPeopleReviewData(residentId: string): Promise<ImportantPeopleReviewData | null> {
@@ -113,31 +232,100 @@ export async function getImportantPeopleReviewData(residentId: string): Promise<
   const existingReferences = await getAssessmentSourcedRoleReferencesForResident(residentId);
   const { unresolved } = partitionProposalsByResolution(people, existingReferences);
 
-  // v0.1 simplicity: suppression is checked against an empty set here — no UI in this slice
-  // writes a new contact_identity_suppressions row yet (see this file's own header comment on
-  // the deferred full reconciliation flow), so there is nothing to look up in production today.
-  // The read path already threads a real suppression set through to
-  // evaluateContactLinkForProposal() structurally, so wiring an actual writer later needs no
-  // change here.
-  const allContacts = unresolved.length > 0 ? await getAllContactsForMatching() : [];
-  const proposals = unresolved.map((proposal) =>
-    toProposalView(
-      proposal,
-      evaluateContactLinkForProposal(
+  const needsReview: NeedsReviewPersonView[] = [];
+
+  if (unresolved.length > 0) {
+    const writeActor = await getViewingActorForWrite();
+    // v0.1 simplicity: suppression is checked against an empty set here — no UI in this slice
+    // writes a new contact_identity_suppressions row yet (that belongs to the deferred
+    // reconciliation flow — see this file's own header comment). The read path already threads a
+    // real suppression set through to evaluateContactLinkForProposal() structurally, so wiring an
+    // actual writer later needs no change here.
+    const [allContacts, existingRoleRowsSnapshot] = await Promise.all([
+      getAllContactsForMatching(),
+      getContactRolesForResident(residentId),
+    ]);
+
+    for (const proposal of unresolved) {
+      const linkDecision = evaluateContactLinkForProposal(
         { firstName: proposal.firstName, lastName: proposal.lastName, normalizedEmail: null, normalizedPhone: proposal.normalizedPhone },
         allContacts,
         new Set()
-      )
-    )
-  );
+      );
+      const projectionAction = decideAutomaticProjectionAction(linkDecision);
 
+      if (projectionAction === "needs_review") {
+        needsReview.push({
+          proposalKey: proposal.proposalKey,
+          rawFullName: proposal.rawFullName,
+          phone: proposal.phone,
+          reason: describeNeedsReviewReason(linkDecision),
+        });
+        continue;
+      }
+
+      if (!writeActor) {
+        // Viewer lacks edit permission — the projection is deferred, not skipped: it runs the
+        // next time someone with edit permission views this resident. Nothing to show for it
+        // meanwhile; it simply doesn't appear as current or needs-review on this particular load.
+        continue;
+      }
+
+      try {
+        const result = await materializeProposal(
+          proposal,
+          residentId,
+          projectionAction,
+          linkDecision.matchedContactId,
+          writeActor,
+          existingReferences,
+          existingRoleRowsSnapshot
+        );
+        if ("error" in result) {
+          needsReview.push({
+            proposalKey: proposal.proposalKey,
+            rawFullName: proposal.rawFullName,
+            phone: proposal.phone,
+            reason: "Could not be added automatically — needs review",
+          });
+        }
+      } catch (err) {
+        console.error("[getImportantPeopleReviewData:materializeProposal]", { residentId, proposalKey: proposal.proposalKey, err });
+        needsReview.push({
+          proposalKey: proposal.proposalKey,
+          rawFullName: proposal.rawFullName,
+          phone: proposal.phone,
+          reason: "Could not be added automatically — needs review",
+        });
+      }
+    }
+  }
+
+  // Re-read AFTER any automatic writes above, so "Current Important People" always reflects what
+  // was just projected — never a stale pre-write snapshot.
   const existingRoleRows = await getContactRolesForResident(residentId);
-  const byContact = new Map<string, CurrentImportantPersonView>();
+  const approvedAtByFactId = new Map(approvedFactRows.map((f) => [f.id, f.approved_at]));
+
+  interface AccumulatingPerson {
+    contactId: string;
+    firstName: string | null;
+    lastName: string | null;
+    phone: string | null;
+    roles: ImportantPersonRoleView[];
+    latestApprovedAt: string | null;
+  }
+
+  const byContact = new Map<string, AccumulatingPerson>();
   for (const row of existingRoleRows) {
+    const roleEntry: ImportantPersonRoleView = { roleType: row.role_type, status: row.status };
+    const rowApprovedAt =
+      row.source === "assessment" && row.source_reference ? (approvedAtByFactId.get(row.source_reference) ?? null) : null;
     const existing = byContact.get(row.contact_id);
-    const roleEntry = { roleType: row.role_type, status: row.status };
     if (existing) {
-      (existing.roles as { roleType: string; status: string }[]).push(roleEntry);
+      existing.roles.push(roleEntry);
+      if (rowApprovedAt && (!existing.latestApprovedAt || rowApprovedAt > existing.latestApprovedAt)) {
+        existing.latestApprovedAt = rowApprovedAt;
+      }
     } else {
       byContact.set(row.contact_id, {
         contactId: row.contact_id,
@@ -145,125 +333,19 @@ export async function getImportantPeopleReviewData(residentId: string): Promise<
         lastName: row.contact.last_name,
         phone: row.contact.phone,
         roles: [roleEntry],
+        latestApprovedAt: rowApprovedAt,
       });
     }
   }
 
-  return { proposals, currentPeople: [...byContact.values()], unattachedPoaClaims };
-}
+  const currentPeople: CurrentImportantPersonView[] = [...byContact.values()].map((p) => ({
+    contactId: p.contactId,
+    firstName: p.firstName,
+    lastName: p.lastName,
+    phone: p.phone,
+    roles: p.roles,
+    mostRecentAssessmentDate: p.latestApprovedAt ? formatPlainDate(p.latestApprovedAt, { includeYear: false }) : null,
+  }));
 
-export interface ConfirmImportantPersonInput {
-  residentId: string;
-  decision: { type: "create_new" } | { type: "link_existing"; contactId: string };
-  firstName: string | null;
-  lastName: string | null;
-  phone: string | null;
-  nameSourceApprovedFactId: string;
-  phoneSourceApprovedFactId: string | null;
-  roles: readonly { roleType: string; sourceApprovedFactId: string }[];
-}
-
-/** The one write action this slice adds. Idempotent: a repeated call for the exact same proposal
- * (same resident + same set of source assessment_approved_facts ids) never creates a second
- * contact or duplicate role rows — see lib/contacts/importantPeopleResolution.ts's own comment
- * for the mechanism. Every role is written with status 'claimed', never 'verified' — a role
- * reported by an assessment is never equivalent to evidence-backed authority, regardless of
- * which role_type it is (including medical_poa/financial_poa). */
-export async function confirmImportantPersonProposal(
-  input: ConfirmImportantPersonInput
-): Promise<{ error?: string; contactId?: string }> {
-  const authResult = await requireActor();
-  if ("error" in authResult) return { error: authResult.error };
-
-  const existingReferences = await getAssessmentSourcedRoleReferencesForResident(input.residentId);
-  const requestedRoles = input.roles.map((r) => ({ roleType: r.roleType, sourceApprovedFactId: r.sourceApprovedFactId, sourceFieldPath: "" }));
-  const missingRoles = computeMissingRoleInserts(requestedRoles, existingReferences);
-
-  // A prior call (this exact click retried, or a page reload resubmitting) may have already
-  // recorded some or all of this proposal's roles — if so, ALWAYS reuse that contact, regardless
-  // of what `decision` says now. This is what stops a stale retry from ever creating a second
-  // contact for a proposal that was already (even partially) canonicalized.
-  const existingRoleRows = await getContactRolesForResident(input.residentId);
-  const alreadyRecordedRole = existingRoleRows.find((row) =>
-    input.roles.some((requested) => requested.sourceApprovedFactId === row.source_reference)
-  );
-
-  let contactId: string;
-  if (alreadyRecordedRole) {
-    contactId = alreadyRecordedRole.contact_id;
-  } else if (input.decision.type === "link_existing") {
-    const existingContact = await getContactById(input.decision.contactId);
-    if (!existingContact) return { error: "The selected existing contact could not be found." };
-    contactId = existingContact.id;
-
-    // Never silently overwrite a conflicting current value — only fill in genuinely empty
-    // fields. Provenance is recorded regardless, so what this assessment asserted is never lost
-    // even when it doesn't win the current value.
-    if (input.firstName && !existingContact.first_name) {
-      await setContactFieldIfEmpty(contactId, "first_name", input.firstName, authResult.actor);
-    }
-    if (input.lastName && !existingContact.last_name) {
-      await setContactFieldIfEmpty(contactId, "last_name", input.lastName, authResult.actor);
-    }
-    if (input.phone && !existingContact.phone) {
-      await setContactFieldIfEmpty(contactId, "phone", input.phone, authResult.actor);
-      const normalized = normalizeContactPhone(input.phone);
-      if (normalized) await setContactFieldIfEmpty(contactId, "normalized_phone", normalized, authResult.actor);
-    }
-  } else {
-    const created = await createContact({
-      firstName: input.firstName,
-      lastName: input.lastName,
-      phone: input.phone,
-      normalizedPhone: input.phone ? normalizeContactPhone(input.phone) : null,
-      createdBy: authResult.actor,
-    });
-    if (!created) return { error: "Could not create the contact." };
-    contactId = created.id;
-  }
-
-  if (input.firstName) {
-    await recordContactFieldProvenance({
-      contactId,
-      fieldName: "first_name",
-      value: input.firstName,
-      source: "assessment",
-      sourceReference: input.nameSourceApprovedFactId,
-      assertedBy: authResult.actor,
-    });
-  }
-  if (input.lastName) {
-    await recordContactFieldProvenance({
-      contactId,
-      fieldName: "last_name",
-      value: input.lastName,
-      source: "assessment",
-      sourceReference: input.nameSourceApprovedFactId,
-      assertedBy: authResult.actor,
-    });
-  }
-  if (input.phone) {
-    await recordContactFieldProvenance({
-      contactId,
-      fieldName: "phone",
-      value: input.phone,
-      source: "assessment",
-      sourceReference: input.phoneSourceApprovedFactId ?? input.nameSourceApprovedFactId,
-      assertedBy: authResult.actor,
-    });
-  }
-
-  for (const role of missingRoles) {
-    await insertContactRole({
-      contactId,
-      residentId: input.residentId,
-      roleType: role.roleType,
-      status: ASSESSMENT_DERIVED_ROLE_STATUS,
-      source: "assessment",
-      sourceReference: role.sourceApprovedFactId,
-      createdBy: authResult.actor,
-    });
-  }
-
-  return { contactId };
+  return { currentPeople, needsReview, unattachedPoaClaims };
 }

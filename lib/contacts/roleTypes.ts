@@ -37,13 +37,22 @@ export const CONTACT_ROLE_STATUSES = ["claimed", "verified", "revoked"] as const
 export type ContactRoleStatus = (typeof CONTACT_ROLE_STATUSES)[number];
 
 /** The one status any assessment-derived role is ever written with (Slice C.3,
- * lib/actions/importantPeople.ts's confirmImportantPersonProposal()) — a role an assessment
+ * lib/actions/importantPeople.ts's materializeProposal(), called automatically from
+ * getImportantPeopleReviewData() as of the Slice C.3 refinement) — a role an assessment
  * conversation reports is a claim, never proof, regardless of which role_type it is (including
  * medical_poa/financial_poa/guardian). Exported as a named constant, not a literal string
  * scattered inline, specifically so this guarantee is directly testable: see
  * lib/contacts/__tests__/roleTypes.test.ts's assertion that
  * isRoleAuthorityVerified(ASSESSMENT_DERIVED_ROLE_STATUS) is false. */
 export const ASSESSMENT_DERIVED_ROLE_STATUS: ContactRoleStatus = "claimed";
+
+/** created_by/asserted_by label for contacts/roles/provenance rows written by the automatic
+ * safe-projection path (Slice C.3 refinement, lib/actions/importantPeople.ts) rather than by a
+ * human clicking a confirm button — contacts.created_by, contact_roles.created_by, and
+ * contact_field_provenance.asserted_by are all plain non-blank text (no FK to a user/staff
+ * table), so a system label is a legitimate, honest value here: whoever reviews this record later
+ * should be able to tell "a person did this" from "Serve did this automatically" at a glance. */
+export const AUTOMATIC_PROJECTION_ACTOR = "Serve (automatic projection)";
 
 /** Whether a role's authority is actually evidenced, as opposed to merely claimed or
  * revoked. Exists so "is this role verified" is asked the same way everywhere, rather
