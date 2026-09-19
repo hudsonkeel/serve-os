@@ -342,3 +342,14 @@ No server action in `lib/actions/clientReadiness.ts` was changed to add a commun
 
 ### Result
 No change made to any of the three files in this branch. Recorded here as explicit security debt: a future pass must add `canPerformReconciliationActions` (or equivalent) checks to `residentIdentity.ts` and `residentDataIntegrity.ts`, and at minimum an authentication check to `connections.ts`, before treating resident identity-merge, data-integrity correction, and connections/interests capture as properly authorized.
+
+---
+
+### Decision
+Recorded, not fixed: today's community-selection model (`lib/auth/communityScope.ts`, `lib/auth/currentCommunity.ts`) lets any authenticated role select any active community system-wide, not a per-user-assigned subset. `user_profiles.community_id` is a single nullable scalar (a default/home community only, per its own clarifying migration, `20260827000000_clarify_user_profile_community_semantics.sql`) — it cannot represent one-to-many community assignment. A genuine many-to-many actor-community assignment model is required to restrict a role like `office_staff` to a specific set of communities (e.g. only Frisco + McKinney); that model does not exist today, though `workforce_community_memberships` already proves the target shape works elsewhere in this codebase (for `workforce_members`, a different table from `user_profiles`). Community enforcement (extending `isValidCommunitySelection`/`isCommunityAccessAuthorized` to check assignment) and Today's Work community-awareness (`lib/data/todaysWork.ts` is explicitly documented as an "org-wide" aggregator today, with zero community filtering anywhere in it) are two separate, not-yet-built pieces of future work, not implied or attempted by this decision.
+
+### Reason
+Found during the Priority 2B Office Staff Workspace investigation (2026-09-19) while tracing why production allowed an `office_staff` user to select from all five active communities. The community-selection and query-scoping mechanism itself (`setCurrentCommunityAction`, `resolveCurrentCommunityQueryFilter`, and every page/action that calls it) is genuinely, correctly server-enforced relative to whatever is currently selected — this is not a missed authorization check, it is that the underlying assignment data needed to narrow "which communities can this identity select" below "every active community" does not exist yet. Folding a community-assignment data model and its enforcement into a presentation-only Workspace-simplification slice was explicitly out of scope for that task.
+
+### Result
+No schema, authorization predicate, or community-scoping behavior changed in this branch. This entry exists so a future community-assignment implementation starts from the already-completed investigation (current architecture, the security implications of the current unrestricted-selection design, and the `workforce_community_memberships` precedent) instead of rediscovering it.

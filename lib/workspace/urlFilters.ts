@@ -8,10 +8,73 @@
 // this same state, so refresh/back-forward/deep-links all stay consistent
 // by construction.
 import type { WorkItem, WorkItemSourceType } from "./workItem.ts";
+import type { AuthRole } from "../auth/constants.ts";
 
 export type WorkspaceViewFilter = "all" | "mine" | "team" | "unassigned";
 
 const VIEW_FILTERS: readonly WorkspaceViewFilter[] = ["all", "mine", "team", "unassigned"];
+
+// Office Staff Workspace Simplification v0.1 — presentation only. Changes
+// which view button renders, its label, and the default/fallback view for
+// office_staff; never changes isUnassigned()/matchesCurrentUser() (see
+// ownership.ts, untouched) or which WorkItems exist in the array being
+// filtered (that's lib/data/todaysWork.ts's capability filtering, also
+// untouched). "Team Work" surfaces items owned by someone else — a
+// supervisory/dispatch concept with no established Office Staff job
+// function — so office_staff gets no button for it at all. "Unassigned"
+// is relabeled "Available Work" for office_staff only: identical
+// underlying items, framed as "work I could pick up" instead of a
+// dispatcher's "nobody owns this yet."
+function isOfficeStaffRole(role: AuthRole | null | undefined): boolean {
+  return role === "office_staff";
+}
+
+export interface WorkspaceViewOption {
+  readonly value: WorkspaceViewFilter;
+  readonly label: string;
+}
+
+const DEFAULT_VIEW_LABELS: Readonly<Record<WorkspaceViewFilter, string>> = {
+  all: "All",
+  mine: "My Work",
+  team: "Team Work",
+  unassigned: "Unassigned",
+};
+
+// Order matters here: for office_staff, "My Work" leads and "All" is
+// pushed last (present, but secondary) — "what should I do" first, "let
+// me browse everything I'm permitted to see" last. Every other role keeps
+// the original, unordered-by-priority set exactly as before.
+const OFFICE_STAFF_VIEW_ORDER: readonly WorkspaceViewFilter[] = ["mine", "unassigned", "all"];
+const OFFICE_STAFF_VIEW_LABEL_OVERRIDES: Partial<Readonly<Record<WorkspaceViewFilter, string>>> = {
+  unassigned: "Available Work",
+};
+const OFFICE_STAFF_HIDDEN_VIEWS: readonly WorkspaceViewFilter[] = ["team"];
+
+// The buttons a viewer's own workspace should render — never used to
+// decide what a request may filter to (that's isWorkspaceViewFilter's
+// existing "is this a real value" gate, unchanged); this only decides
+// what's shown as a first-class choice.
+export function resolveWorkspaceViewOptions(role: AuthRole | null | undefined): WorkspaceViewOption[] {
+  if (!isOfficeStaffRole(role)) {
+    return VIEW_FILTERS.map((value) => ({ value, label: DEFAULT_VIEW_LABELS[value] }));
+  }
+  return OFFICE_STAFF_VIEW_ORDER.map((value) => ({
+    value,
+    label: OFFICE_STAFF_VIEW_LABEL_OVERRIDES[value] ?? DEFAULT_VIEW_LABELS[value],
+  }));
+}
+
+// The view a workspace should land on when the URL carries no explicit
+// (or no valid) `view` param at all — every non-office_staff role keeps
+// today's "all" default unchanged.
+export function resolveWorkspaceViewDefault(role: AuthRole | null | undefined): WorkspaceViewFilter {
+  return isOfficeStaffRole(role) ? "mine" : "all";
+}
+
+function isViewHiddenForRole(view: WorkspaceViewFilter, role: AuthRole | null | undefined): boolean {
+  return isOfficeStaffRole(role) && (OFFICE_STAFF_HIDDEN_VIEWS as readonly string[]).includes(view);
+}
 
 // "governance" is a virtual, filter-only grouping — never a real
 // WorkItemSourceType (no mapper ever produces one). It exists purely so
@@ -44,9 +107,26 @@ function isWorkspaceViewFilter(value: string | undefined): value is WorkspaceVie
 // Accepts a plain string map (works identically for a server component's
 // awaited `searchParams` and a client component's `Object.fromEntries(
 // useSearchParams())`), so the exact same parser backs both the initial
-// server-rendered state and every client-side update.
-export function parseWorkspaceFilters(searchParams: Readonly<Record<string, string | undefined>>): WorkspaceFilters {
-  const view = isWorkspaceViewFilter(searchParams.view) ? searchParams.view : DEFAULT_WORKSPACE_FILTERS.view;
+// server-rendered state and every client-side update. `role` is optional
+// and purely presentational (Office Staff Workspace Simplification v0.1):
+// omitting it reproduces the exact prior behavior for every existing
+// caller/role. When supplied: a missing/invalid `view` param resolves to
+// this role's own default (resolveWorkspaceViewDefault) instead of always
+// "all"; an explicit but role-hidden value (office_staff requesting
+// `view=team`, e.g. by hand-editing the URL) resolves to that role's
+// default too, rather than silently activating a filter its own UI never
+// offers as a button — the least surprising behavior for a value that is
+// structurally valid but not meant to be reachable for this viewer.
+export function parseWorkspaceFilters(
+  searchParams: Readonly<Record<string, string | undefined>>,
+  role?: AuthRole | null
+): WorkspaceFilters {
+  const rawView = searchParams.view;
+  const view = isWorkspaceViewFilter(rawView)
+    ? isViewHiddenForRole(rawView, role)
+      ? resolveWorkspaceViewDefault(role)
+      : rawView
+    : resolveWorkspaceViewDefault(role);
   const source = (searchParams.source as WorkspaceSourceFilter | undefined) ?? DEFAULT_WORKSPACE_FILTERS.source;
   return { view, source };
 }
