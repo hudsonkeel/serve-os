@@ -6,11 +6,15 @@ import {
   filterCorrectiveActionsForViewer,
   isClientReadinessVerificationAction,
   type ComposeTodaysWorkInput,
+  type TodaysWorkGovernanceCapabilities,
 } from "../composeTodaysWork.ts";
 import type { RelationshipWorkspaceRow } from "../../relationships/search.ts";
 import type { IncidentWithResidentName } from "../../data/incidents.ts";
+import type { InfectionWithResidentName } from "../../data/infections.ts";
 import { canVerifyResidentEvidence } from "../../auth/permissions.ts";
+import { canViewAuditReadiness, canViewIncidentsAndInfections } from "../../compliance/permissions.ts";
 import type { AuthRole } from "../../auth/constants.ts";
+import { countActionableWorkItems } from "../urlFilters.ts";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -488,12 +492,15 @@ test("an incident/infection/EPRP corrective action (different domain) is not ide
   assert.equal(isClientReadinessVerificationAction({ domain: "emergency_preparedness", actionType: "evidence_awaiting_verification" }), false);
 });
 
-// ─── filterCorrectiveActionsForViewer, exercised by REAL role (Office
-// Staff Client Readiness UX v0.2, refinement 2 — role-level composition
-// tests). Uses the actual canVerifyResidentEvidence predicate from
-// lib/auth/permissions.ts, never a hand-rolled boolean, so these tests
-// prove real role behavior end to end, not just the filter's own logic in
-// isolation. ────────────────────────────────────────────────────────────
+// ─── filterCorrectiveActionsForViewer, exercised by REAL capability
+// predicates (Today's Work Viewer Scoping v0.1, extending Office Staff
+// Client Readiness UX v0.2's role-level composition tests). Uses the
+// actual canVerifyResidentEvidence/canViewIncidentsAndInfections/
+// canViewAuditReadiness predicates from lib/auth/permissions.ts and
+// lib/compliance/permissions.ts for literal role strings, never a
+// hand-rolled boolean or a role-name branch inside the test itself, so
+// these tests prove real role behavior end to end, not just the filter's
+// own logic in isolation. ────────────────────────────────────────────────
 
 interface FakeAction {
   id: string;
@@ -507,60 +514,182 @@ const CLIENT_READINESS_VERIFICATION_ACTION: FakeAction = {
   actionType: "evidence_awaiting_verification",
 };
 
-// An unrelated action (a different domain entirely, e.g. an Incident's own
-// corrective action) — must remain visible to every role regardless of
-// canVerifyResidentEvidence, proving the filter is scoped to exactly the
-// one action type/domain pair, never a blanket "hide from office_staff"
-// rule.
-const UNRELATED_INCIDENT_ACTION: FakeAction = {
+const INCIDENT_ACTION: FakeAction = {
   id: "incident-action-1",
   domain: "incidents",
-  actionType: "corrective_action",
+  actionType: "incident_follow_up_required",
 };
 
-const SOURCE_ACTIONS: readonly FakeAction[] = [CLIENT_READINESS_VERIFICATION_ACTION, UNRELATED_INCIDENT_ACTION];
+const INFECTION_ACTION: FakeAction = {
+  id: "infection-action-1",
+  domain: "infections",
+  actionType: "infection_follow_up_required",
+};
 
-test("REGRESSION: office_staff does not receive the Client Readiness evidence_awaiting_verification action", () => {
-  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("office_staff" as AuthRole));
-  assert.equal(visible.some((a) => a.id === CLIENT_READINESS_VERIFICATION_ACTION.id), false);
+const EPRP_ACTION: FakeAction = {
+  id: "eprp-action-1",
+  domain: "emergency_preparedness",
+  actionType: "evidence_missing",
+};
+
+const SOURCE_ACTIONS: readonly FakeAction[] = [
+  CLIENT_READINESS_VERIFICATION_ACTION,
+  INCIDENT_ACTION,
+  INFECTION_ACTION,
+  EPRP_ACTION,
+];
+
+function capabilitiesFor(role: AuthRole): TodaysWorkGovernanceCapabilities {
+  return {
+    canVerifyResidentEvidence: canVerifyResidentEvidence(role),
+    canViewIncidentsAndInfections: canViewIncidentsAndInfections(role),
+    canViewAuditReadiness: canViewAuditReadiness(role),
+  };
+}
+
+test("REGRESSION: office_staff receives none of the governance-domain corrective actions (Client Readiness verification, Incident, Infection, or EPRP)", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, capabilitiesFor("office_staff" as AuthRole));
+  assert.deepEqual(visible, []);
 });
 
-test("REGRESSION: admin receives the Client Readiness evidence_awaiting_verification action", () => {
-  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("admin" as AuthRole));
-  assert.equal(visible.some((a) => a.id === CLIENT_READINESS_VERIFICATION_ACTION.id), true);
+test("admin receives every governance-domain corrective action", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, capabilitiesFor("admin" as AuthRole));
+  assert.equal(visible.length, SOURCE_ACTIONS.length);
 });
 
-test("REGRESSION: manager receives the Client Readiness evidence_awaiting_verification action", () => {
-  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("manager" as AuthRole));
-  assert.equal(visible.some((a) => a.id === CLIENT_READINESS_VERIFICATION_ACTION.id), true);
+test("manager receives every governance-domain corrective action", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, capabilitiesFor("manager" as AuthRole));
+  assert.equal(visible.length, SOURCE_ACTIONS.length);
 });
 
-test("REGRESSION: executive receives the Client Readiness evidence_awaiting_verification action", () => {
-  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("executive" as AuthRole));
-  assert.equal(visible.some((a) => a.id === CLIENT_READINESS_VERIFICATION_ACTION.id), true);
+test("executive receives every governance-domain corrective action", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, capabilitiesFor("executive" as AuthRole));
+  assert.equal(visible.length, SOURCE_ACTIONS.length);
 });
 
-test("operations (never granted canVerifyResidentEvidence) also does not receive the action -- the filter tracks the real predicate, not a hard-coded role list", () => {
-  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("operations" as AuthRole));
-  assert.equal(visible.some((a) => a.id === CLIENT_READINESS_VERIFICATION_ACTION.id), false);
+test("operations receives the Incident/Infection/EPRP corrective actions (canViewIncidentsAndInfections and canViewAuditReadiness both true for operations) but NOT the Client Readiness verification handoff (canVerifyResidentEvidence is false for operations) -- proves the filter follows the real, independent predicates rather than a hard-coded expected-role list", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, capabilitiesFor("operations" as AuthRole));
+  assert.deepEqual(
+    visible.map((a) => a.id).sort(),
+    [INCIDENT_ACTION.id, INFECTION_ACTION.id, EPRP_ACTION.id].sort(),
+  );
 });
 
-test("REGRESSION: an unrelated corrective action remains visible to office_staff -- the filter excludes only the one action/domain pair, never a blanket hide", () => {
-  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("office_staff" as AuthRole));
-  assert.equal(visible.some((a) => a.id === UNRELATED_INCIDENT_ACTION.id), true);
+test("REGRESSION: an unrecognized/future domain is left visible rather than guessed into an existing capability's tier (fail-open, not fail-closed, for a domain this filter doesn't yet know about)", () => {
+  const futureDomainAction: FakeAction = { id: "future-1", domain: "some_future_domain", actionType: "whatever" };
+  const visible = filterCorrectiveActionsForViewer([futureDomainAction], capabilitiesFor("office_staff" as AuthRole));
+  assert.equal(visible.length, 1);
 });
 
 test("REGRESSION: filtering never mutates or removes anything from the source array -- the underlying corrective action is never removed from its source data, only excluded from this one viewer's own composed list", () => {
   const sourceCopy = SOURCE_ACTIONS.map((a) => ({ ...a }));
-  filterCorrectiveActionsForViewer(SOURCE_ACTIONS, canVerifyResidentEvidence("office_staff" as AuthRole));
+  filterCorrectiveActionsForViewer(SOURCE_ACTIONS, capabilitiesFor("office_staff" as AuthRole));
   assert.deepEqual(SOURCE_ACTIONS.map((a) => ({ ...a })), sourceCopy, "source array must be unchanged after filtering");
-  assert.equal(SOURCE_ACTIONS.length, 2, "source array length must be unchanged");
+  assert.equal(SOURCE_ACTIONS.length, 4, "source array length must be unchanged");
 });
 
-test("a viewer who CAN verify sees every action, source array untouched either way", () => {
-  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, true);
+test("a viewer with every capability sees every action, source array untouched either way", () => {
+  const visible = filterCorrectiveActionsForViewer(SOURCE_ACTIONS, {
+    canVerifyResidentEvidence: true,
+    canViewIncidentsAndInfections: true,
+    canViewAuditReadiness: true,
+  });
   assert.equal(visible.length, SOURCE_ACTIONS.length);
   assert.notEqual(visible, SOURCE_ACTIONS, "must return a new array, never the same reference, even when nothing is excluded");
+});
+
+// ─── Operational Summary inherits the same viewer-scoped array (Today's
+// Work Viewer Scoping v0.1) — proves the "Governance & Quality" summary
+// card (app/workspace/page.tsx's countActionableWorkItems(workItems,
+// "governance")) reads zero for a viewer whose upstream I/O layer already
+// omitted every governance-domain source, using the REAL
+// countActionableWorkItems function against composeTodaysWorkItems' own
+// output. No second implementation of the visibility decision is created
+// here — this only demonstrates that the summary and the list read the
+// same already-filtered array, which is the actual invariant that fixes
+// the reported "Governance & Quality shows a nonzero count office_staff
+// can't act on" defect. ─────────────────────────────────────────────────
+
+function summaryIncident(): IncidentWithResidentName {
+  return {
+    id: "inc-summary-1",
+    community_id: null,
+    resident_id: "r1",
+    workforce_member_id: null,
+    occurred_at: "2026-07-18T00:00:00.000Z",
+    location: null,
+    incident_type: "fall",
+    incident_type_other: null,
+    description: "Resident fell in the hallway.",
+    immediate_response: null,
+    injury_occurred: false,
+    injury_medical_details: null,
+    parties_notified: [],
+    follow_up_required: true,
+    owner: "Jordan Lee",
+    notes: null,
+    review_status: "not_reviewed",
+    reviewed_by: null,
+    reviewed_at: null,
+    review_findings: null,
+    status: "open",
+    resolution_note: null,
+    resolved_by: null,
+    resolved_at: null,
+    created_by: "Jordan Lee",
+    created_at: "2026-07-18T00:00:00.000Z",
+    updated_at: "2026-07-18T00:00:00.000Z",
+    updated_by: "Jordan Lee",
+    residentDisplayName: "Ada Washington",
+  };
+}
+
+function summaryInfection(): InfectionWithResidentName {
+  return {
+    id: "inf-summary-1",
+    community_id: null,
+    resident_id: "r2",
+    disclosed_at: "2026-07-18T00:00:00.000Z",
+    condition_description: "Reported respiratory infection.",
+    treatment_description: null,
+    disclosed_by: "Jordan Lee",
+    follow_up_required: true,
+    owner: "Jordan Lee",
+    notes: null,
+    review_status: "not_reviewed",
+    reviewed_by: null,
+    reviewed_at: null,
+    review_findings: null,
+    next_follow_up_date: null,
+    next_follow_up_purpose: null,
+    next_follow_up_purpose_note: null,
+    status: "open",
+    resolution_note: null,
+    resolved_by: null,
+    resolved_at: null,
+    created_by: "Jordan Lee",
+    created_at: "2026-07-18T00:00:00.000Z",
+    updated_by: null,
+    updated_at: null,
+    residentDisplayName: "Sam Rivera",
+  };
+}
+
+test("REGRESSION: a fully-populated (admin-shaped) input produces a nonzero Governance & Quality count via the real countActionableWorkItems function", () => {
+  const items = composeTodaysWorkItems(
+    {
+      ...EMPTY_INPUT,
+      actionableIncidents: [summaryIncident()],
+      actionableInfections: [summaryInfection()],
+    },
+    NOW,
+  );
+  assert.equal(countActionableWorkItems(items, "governance"), 2);
+});
+
+test("REGRESSION: an already-viewer-scoped (office_staff-shaped) input -- i.e. what lib/data/todaysWork.ts now produces when the viewer lacks canViewIncidentsAndInfections/canViewAuditReadiness and never fetches these sources at all -- composes to a Governance & Quality count of exactly 0, proving the summary card inherits the fix with no separate implementation", () => {
+  const items = composeTodaysWorkItems(EMPTY_INPUT, NOW);
+  assert.equal(countActionableWorkItems(items, "governance"), 0);
 });
 
 let passed = 0;

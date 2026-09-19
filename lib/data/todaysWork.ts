@@ -14,9 +14,11 @@ import {
   type CorrectiveActionForCompose,
   type EffectivenessReviewForCompose,
   type InfectionFollowUpForCompose,
+  type TodaysWorkGovernanceCapabilities,
 } from "../workspace/composeTodaysWork.ts";
 import type { WorkItem } from "../workspace/workItem.ts";
 import { canVerifyResidentEvidence } from "../auth/permissions.ts";
+import { canViewAuditReadiness, canViewIncidentsAndInfections } from "../compliance/permissions.ts";
 import type { AuthRole } from "../auth/constants.ts";
 import {
   getNearestOpenActionByRelationship,
@@ -25,8 +27,13 @@ import {
 } from "./relationships.ts";
 import { getAllOpenWellnessFollowUps, getRecentlyCompletedWellnessFollowUps } from "./wellnessFollowUps.ts";
 import { getRecruitingLeads } from "./recruitingLeads.ts";
-import { getActionableIncidents, getRecentlyResolvedIncidents } from "./incidents.ts";
-import { getActionableInfections, getInfectionsWithOutstandingFollowUp, getRecentlyResolvedInfections } from "./infections.ts";
+import { getActionableIncidents, getRecentlyResolvedIncidents, type IncidentWithResidentName } from "./incidents.ts";
+import {
+  getActionableInfections,
+  getInfectionsWithOutstandingFollowUp,
+  getRecentlyResolvedInfections,
+  type InfectionWithResidentName,
+} from "./infections.ts";
 import { getEmergencyPreparednessReadinessEvaluation } from "../emergencyPreparedness/emergencyPreparednessReadiness.ts";
 import {
   getAllOpenCorrectiveActions,
@@ -43,21 +50,25 @@ import { getResidentDisplayNamesByIds } from "./residentRoster.ts";
 // stays two extra queries total, never one per action. The pure mapper
 // (lib/workspace/mapping.ts#mapCorrectiveActionToWorkItem) never touches
 // the database itself.
-// canViewerVerifyResidentEvidence — Office Staff Client Readiness UX v0.2
-// capability filter: excludes a Client Readiness evidence-verification
-// handoff (see filterCorrectiveActionsForViewer's own comment,
-// lib/workspace/composeTodaysWork.ts) from a viewer who structurally
-// cannot act on it. Never touches getAllOpenCorrectiveActions() itself
-// (that function backs the Governance dashboard/QAPI rollups too, which
-// must keep showing every open action regardless of who's viewing Today's
-// Work) — filtered only here, at the Today's-Work-specific composition
-// boundary, and only on the array this function returns, never on the
-// underlying rows getAllOpenCorrectiveActions() fetched.
-async function loadCorrectiveActionsForCompose(canViewerVerifyResidentEvidence: boolean): Promise<CorrectiveActionForCompose[]> {
+// capabilities — Today's Work Viewer Scoping v0.1 (extends the Office
+// Staff Client Readiness UX v0.2 verification filter): excludes any
+// corrective action whose own domain/source the viewer structurally
+// cannot act on (see isCorrectiveActionVisibleToViewer's comment,
+// lib/workspace/composeTodaysWork.ts) — Client Readiness verification
+// handoffs, Incident/Infection follow-ups, and Emergency Preparedness
+// corrective actions are each checked against the same capability
+// predicate that already gates that domain's own destination page. Never
+// touches getAllOpenCorrectiveActions() itself (that function backs the
+// Governance dashboard/QAPI rollups too, which must keep showing every
+// open action regardless of who's viewing Today's Work) — filtered only
+// here, at the Today's-Work-specific composition boundary, and only on
+// the array this function returns, never on the underlying rows
+// getAllOpenCorrectiveActions() fetched.
+async function loadCorrectiveActionsForCompose(capabilities: TodaysWorkGovernanceCapabilities): Promise<CorrectiveActionForCompose[]> {
   const allActions = await getAllOpenCorrectiveActions();
   const actions = filterCorrectiveActionsForViewer(
     allActions.map((a) => ({ ...a, actionType: a.action_type })),
-    canViewerVerifyResidentEvidence
+    capabilities
   );
   if (actions.length === 0) return [];
 
@@ -156,8 +167,67 @@ async function loadOutstandingInfectionFollowUpsForCompose(): Promise<InfectionF
   }));
 }
 
+// Today's Work Viewer Scoping v0.1 — Incidents, Infections, their
+// effectiveness reviews, and infection follow-up obligations are all
+// gated behind the SAME canViewIncidentsAndInfections() capability that
+// already gates /qapi/incidents/[id] and /qapi/infections/[id] (see
+// lib/compliance/permissions.ts). Bundled into one loader so a viewer
+// lacking that capability skips every one of these fetches entirely,
+// rather than fetching organization-wide Incident/Infection data only to
+// filter it back out downstream — matching this codebase's established
+// `capability ? await fetch() : []` idiom for capability-gated data.
+async function loadIncidentsAndInfectionsForCompose(canViewerSeeIncidentsAndInfections: boolean): Promise<{
+  actionableIncidents: IncidentWithResidentName[];
+  recentlyResolvedIncidents: IncidentWithResidentName[];
+  actionableInfections: InfectionWithResidentName[];
+  recentlyResolvedInfections: InfectionWithResidentName[];
+  pendingEffectivenessReviews: EffectivenessReviewForCompose[];
+  outstandingInfectionFollowUps: InfectionFollowUpForCompose[];
+}> {
+  if (!canViewerSeeIncidentsAndInfections) {
+    return {
+      actionableIncidents: [],
+      recentlyResolvedIncidents: [],
+      actionableInfections: [],
+      recentlyResolvedInfections: [],
+      pendingEffectivenessReviews: [],
+      outstandingInfectionFollowUps: [],
+    };
+  }
+
+  const [
+    actionableIncidents,
+    recentlyResolvedIncidents,
+    actionableInfections,
+    recentlyResolvedInfections,
+    pendingEffectivenessReviews,
+    outstandingInfectionFollowUps,
+  ] = await Promise.all([
+    getActionableIncidents(),
+    getRecentlyResolvedIncidents(),
+    getActionableInfections(),
+    getRecentlyResolvedInfections(),
+    loadEffectivenessReviewsForCompose(),
+    loadOutstandingInfectionFollowUpsForCompose(),
+  ]);
+
+  return {
+    actionableIncidents,
+    recentlyResolvedIncidents,
+    actionableInfections,
+    recentlyResolvedInfections,
+    pendingEffectivenessReviews,
+    outstandingInfectionFollowUps,
+  };
+}
+
 export async function getTodaysWorkItems(viewerRole: AuthRole | null | undefined, now: Date = new Date()): Promise<WorkItem[]> {
-  const canViewerVerifyResidentEvidence = canVerifyResidentEvidence(viewerRole);
+  const capabilities: TodaysWorkGovernanceCapabilities = {
+    canVerifyResidentEvidence: canVerifyResidentEvidence(viewerRole),
+    canViewIncidentsAndInfections: canViewIncidentsAndInfections(viewerRole),
+    canViewAuditReadiness: canViewAuditReadiness(viewerRole),
+  };
+
   const [
     openFollowUps,
     completedFollowUps,
@@ -165,14 +235,9 @@ export async function getTodaysWorkItems(viewerRole: AuthRole | null | undefined
     nearestActions,
     completedActions,
     recruiting,
-    actionableIncidents,
-    recentlyResolvedIncidents,
-    actionableInfections,
-    recentlyResolvedInfections,
+    incidentsAndInfections,
     eprpEvaluation,
     openCorrectiveActions,
-    pendingEffectivenessReviews,
-    outstandingInfectionFollowUps,
   ] = await Promise.all([
     getAllOpenWellnessFollowUps(),
     getRecentlyCompletedWellnessFollowUps(),
@@ -180,15 +245,19 @@ export async function getTodaysWorkItems(viewerRole: AuthRole | null | undefined
     getNearestOpenActionByRelationship(),
     getRecentlyCompletedActions(),
     getRecruitingLeads(),
-    getActionableIncidents(),
-    getRecentlyResolvedIncidents(),
-    getActionableInfections(),
-    getRecentlyResolvedInfections(),
-    getEmergencyPreparednessReadinessEvaluation(),
-    loadCorrectiveActionsForCompose(canViewerVerifyResidentEvidence),
-    loadEffectivenessReviewsForCompose(),
-    loadOutstandingInfectionFollowUpsForCompose(),
+    loadIncidentsAndInfectionsForCompose(capabilities.canViewIncidentsAndInfections),
+    capabilities.canViewAuditReadiness ? getEmergencyPreparednessReadinessEvaluation() : Promise.resolve(null),
+    loadCorrectiveActionsForCompose(capabilities),
   ]);
+
+  const {
+    actionableIncidents,
+    recentlyResolvedIncidents,
+    actionableInfections,
+    recentlyResolvedInfections,
+    pendingEffectivenessReviews,
+    outstandingInfectionFollowUps,
+  } = incidentsAndInfections;
 
   return composeTodaysWorkItems(
     {
