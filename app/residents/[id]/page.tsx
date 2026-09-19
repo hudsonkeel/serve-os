@@ -23,6 +23,8 @@ import { ResidentTimeline } from "@/components/residents/ResidentTimeline";
 import { AssessmentSection } from "@/components/residents/AssessmentSection";
 import { getAssessmentSessionsForResident } from "@/lib/data/assessmentIntelligence";
 import { getCurrentAssessmentSummary } from "@/lib/actions/assessmentIntelligence";
+import { getImportantPeopleReviewData } from "@/lib/actions/importantPeople";
+import { ImportantPeoplePanel } from "@/components/residents/ImportantPeoplePanel";
 import { Badge } from "@/components/ui/Badge";
 import { AskServeTrigger } from "@/components/askServe/AskServeTrigger";
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
@@ -187,6 +189,7 @@ export default async function ResidentDetailPage({
   const timelineEvents = await getResidentTimeline(id);
   const relationships = await getRelationshipsByResident(id);
   const assessmentSessions = await getAssessmentSessionsForResident(id);
+  const importantPeopleData = await getImportantPeopleReviewData(id);
   const currentAssessmentState = await getCurrentAssessmentSummary(id);
   const residentDocuments = canManageDocuments ? await getPersonDocumentsForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
   const residentEvidence = canManageDocuments ? await getPersonEvidenceForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
@@ -500,6 +503,16 @@ export default async function ResidentDetailPage({
             ispStatus={ispStatus}
             residentPageHref={residentPageHref}
           />
+
+          {/* Slice C.3 — canonical Important People, projected from the most recent approved
+              assessment. Deliberately placed beside ResidentEssentials (which still shows the
+              existing flat contact fields on residents: family_contact_, physician_, and
+              legal_guardian_ prefixed columns, untouched) rather than merged into it, so the two
+              stay visually adjacent without becoming a confusing duplicate representation of the
+              same information. */}
+          {importantPeopleData && (
+            <ImportantPeoplePanel residentId={id} initialData={importantPeopleData} canEdit={canEditProfile} />
+          )}
 
           {/* About This Person — collapsed by default; a compact summary
               stands in for the four largely-empty category boxes this used
