@@ -11,14 +11,14 @@ import type { AuthRole } from "../auth/constants.ts";
 // These are genuinely two different tiers, both expressed explicitly:
 //
 //   GENERAL_STAFF_ROLES     — every role that existed before office_staff
-//     (admin, manager, executive, operations). The three destinations
+//     (admin, manager, executive, operations). The two destinations
 //     below predate office_staff and were never restricted for any of
 //     those four; office_staff v0.1 is the first role excluded from
-//     them. Reused across several unrelated-content pages (the executive
-//     dashboard, Community Outlook, Ask Serve) because they share the
-//     same role boundary today, not because they are one capability —
-//     if that boundary ever needs to diverge per page, split this
-//     constant then, not preemptively now.
+//     them. Reused across unrelated-content pages (the executive
+//     dashboard, Community Outlook) because they share the same role
+//     boundary today, not because they are one capability — if that
+//     boundary ever needs to diverge per page, split this constant
+//     then, not preemptively now.
 //
 //   MANAGEMENT_TIER_ROLES   — admin, manager, executive only. Narrower
 //     than GENERAL_STAFF_ROLES: excludes operations too. Used only for
@@ -28,6 +28,19 @@ import type { AuthRole } from "../auth/constants.ts";
 //     is not gated by either constant.
 const GENERAL_STAFF_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "operations"];
 const MANAGEMENT_TIER_ROLES: readonly AuthRole[] = ["admin", "manager", "executive"];
+
+// Ask Serve is read-only organizational knowledge (Serve P&P, Texas PAS
+// regulations, controlled procedures with authority/status labeled) and
+// grants no additional operational/governance authority — office_staff
+// may look up what policy requires without gaining permission to verify
+// compliance evidence, approve exceptions, or take any other currently
+// prohibited action. This is the one case (anticipated in the
+// GENERAL_STAFF_ROLES comment above) where a destination's role
+// boundary diverges from the shared tier, so it gets its own constant
+// rather than widening GENERAL_STAFF_ROLES — canViewOrganizationalDashboard
+// and canViewCommunityOutlook remain unaffected and still exclude
+// office_staff.
+const ASK_SERVE_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "operations", "office_staff"];
 
 // The People We Serve had a canViewPeopleWeServe predicate here
 // initially, excluding office_staff the same way as the four functions
@@ -49,7 +62,7 @@ export function canViewCommunityOutlook(role: string | null | undefined): boolea
 }
 
 export function canViewAskServe(role: string | null | undefined): boolean {
-  return Boolean(role && (GENERAL_STAFF_ROLES as readonly string[]).includes(role));
+  return Boolean(role && (ASK_SERVE_ROLES as readonly string[]).includes(role));
 }
 
 // Quality (QAPI) is deliberately NOT redefined here — it gates on

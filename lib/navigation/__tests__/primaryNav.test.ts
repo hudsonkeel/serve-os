@@ -22,11 +22,13 @@ function visibleLabels(role: AuthRole | null): string[] {
   ];
 }
 
-// Office Staff Visibility v0.1 / Scoped Workforce Audit Readiness — the
-// exact approved destination set per role. Every role except office_staff
-// must see the full, unchanged nav; office_staff sees Today's Work, The
-// People We Serve, Workforce, Audit Readiness (a scoped workforce-only
-// view at the same URL — see app/audit-readiness/page.tsx), and Settings.
+// Office Staff Visibility v0.1 / Scoped Workforce Audit Readiness / Ask
+// Serve office_staff access — the exact approved destination set per
+// role. Every role except office_staff must see the full, unchanged
+// nav; office_staff sees Today's Work, The People We Serve, Workforce,
+// Audit Readiness (a scoped workforce-only view at the same URL — see
+// app/audit-readiness/page.tsx), Ask Serve (read-only organizational
+// knowledge, no added operational/governance authority), and Settings.
 const EXPECTED: Record<(typeof AUTH_ROLES)[number], string[]> = {
   admin: [
     "Today's Work",
@@ -72,7 +74,7 @@ const EXPECTED: Record<(typeof AUTH_ROLES)[number], string[]> = {
     "Ask Serve",
     "Settings",
   ],
-  office_staff: ["Today's Work", "The People We Serve", "Workforce", "Audit Readiness", "Settings"],
+  office_staff: ["Today's Work", "The People We Serve", "Workforce", "Audit Readiness", "Ask Serve", "Settings"],
 };
 
 for (const role of AUTH_ROLES) {
@@ -96,13 +98,13 @@ test("office_staff's Governance section keeps only Audit Readiness (Quality/QAPI
   assert.equal(sections.some((s) => s.heading === "Understand"), false);
 });
 
-test("REGRESSION: office_staff nav contains Audit Readiness but not Quality (QAPI), How We're Doing, Community Outlook, or Ask Serve", () => {
+test("REGRESSION: office_staff nav contains Audit Readiness and Ask Serve but not Quality (QAPI), How We're Doing, or Community Outlook", () => {
   const labels = visibleLabels("office_staff");
   assert.ok(labels.includes("Audit Readiness"));
+  assert.ok(labels.includes("Ask Serve"));
   assert.ok(!labels.includes("Quality (QAPI)"));
   assert.ok(!labels.includes("How We're Doing"));
   assert.ok(!labels.includes("Community Outlook"));
-  assert.ok(!labels.includes("Ask Serve"));
 });
 
 test("a null role sees nothing role-restricted, but does see The People We Serve/Workforce/Audit Readiness/Settings (unrestricted items have no role check to fail)", () => {
