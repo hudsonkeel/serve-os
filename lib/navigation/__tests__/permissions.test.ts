@@ -27,7 +27,7 @@ function assertRoleTable(fn: (role: string | null | undefined) => boolean, fnNam
   });
 }
 
-// ─── The three remaining "general staff" destinations — every
+// ─── The two remaining "general staff" destinations — every
 // pre-office_staff role unchanged, office_staff excluded. The People We
 // Serve is deliberately NOT tested here anymore — it was revised to be
 // unrestricted for every role (resident-access revision); see
@@ -51,12 +51,16 @@ assertRoleTable(canViewCommunityOutlook, "canViewCommunityOutlook", {
   office_staff: false,
 });
 
+// ─── Ask Serve — read-only organizational-knowledge lookup, deliberately
+// widened to office_staff (unlike the two tables above): it grants no
+// additional operational/governance authority, only the ability to see
+// what Serve policy and Texas PAS regulation require. ─────────────────
 assertRoleTable(canViewAskServe, "canViewAskServe", {
   admin: true,
   manager: true,
   executive: true,
   operations: true,
-  office_staff: false,
+  office_staff: true,
 });
 
 // ─── Settings management tier — narrower: excludes operations too ────────
@@ -75,13 +79,13 @@ test("office_staff CANNOT view the organizational dashboard (How We're Doing)", 
 test("office_staff CANNOT view Community Outlook", () => {
   assert.equal(canViewCommunityOutlook("office_staff"), false);
 });
-test("office_staff CANNOT view Ask Serve", () => {
-  assert.equal(canViewAskServe("office_staff"), false);
+test("office_staff CAN view Ask Serve (read-only organizational knowledge, no added operational/governance authority)", () => {
+  assert.equal(canViewAskServe("office_staff"), true);
 });
 test("office_staff sees Settings only as My Account (management tier denied)", () => {
   assert.equal(canViewManagementSettings("office_staff"), false);
 });
-test("operations retains full pre-existing access to the three remaining general-staff destinations", () => {
+test("operations retains full pre-existing access to the general-staff destinations, and to Ask Serve", () => {
   assert.equal(canViewOrganizationalDashboard("operations"), true);
   assert.equal(canViewCommunityOutlook("operations"), true);
   assert.equal(canViewAskServe("operations"), true);

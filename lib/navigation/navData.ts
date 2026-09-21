@@ -31,7 +31,8 @@ export interface NavDestinationSection {
 }
 
 // Every role that existed before office_staff, which is excluded from
-// Quality (QAPI), How We're Doing, Community Outlook, and Ask Serve.
+// Quality (QAPI), How We're Doing, and Community Outlook (Ask Serve is
+// no longer gated by this list — see ASK_SERVE_NAV_ROLES below).
 // Matches lib/navigation/permissions.ts's GENERAL_STAFF_ROLES and
 // lib/compliance/permissions.ts's canViewAuditReadiness exactly — kept as
 // its own literal here (not imported) because this file is nav display
@@ -59,6 +60,17 @@ export interface NavDestinationSection {
 //     excludes office_staff, unchanged — see
 //     components/compliance/PeopleReadinessView.tsx.
 const PRE_OFFICE_STAFF_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "operations"];
+
+// Ask Serve is read-only organizational knowledge and grants no
+// additional operational/governance authority, so it's visible to
+// office_staff too — unlike Quality (QAPI), How We're Doing, and
+// Community Outlook above/below, which stay on PRE_OFFICE_STAFF_ROLES
+// unchanged. Matches lib/navigation/permissions.ts's ASK_SERVE_ROLES
+// exactly (kept as its own literal here for the same reason
+// PRE_OFFICE_STAFF_ROLES is: this file is nav display data, not the
+// permission predicate itself — see app/ask-serve/page.tsx for the
+// real gate).
+const ASK_SERVE_NAV_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "operations", "office_staff"];
 
 export const NAV_SECTIONS_DATA: NavDestinationSection[] = [
   {
@@ -108,7 +120,7 @@ export const NAV_SECTIONS_DATA: NavDestinationSection[] = [
 // Utility area — Ask Serve + Settings, deliberately outside the
 // Today/Serve/Understand work hierarchy above.
 export const NAV_UTILITY_DATA: NavDestination[] = [
-  { label: "Ask Serve", href: "/ask-serve", roles: PRE_OFFICE_STAFF_ROLES },
+  { label: "Ask Serve", href: "/ask-serve", roles: ASK_SERVE_NAV_ROLES },
   { label: "Settings", href: "/settings" },
 ];
 
