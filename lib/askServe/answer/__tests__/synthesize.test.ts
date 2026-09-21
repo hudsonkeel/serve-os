@@ -184,6 +184,89 @@ test("not_found is allowed to have zero citations without failing", async () => 
   assert.equal(answer.citations.length, 0);
 });
 
+// ── Refinement 2: distinct-field-purpose / anti-repetition prompt change ──
+// These prove the STRUCTURE the prompt change relies on still behaves
+// correctly (importantNote stays a valid, optional field; a simple
+// supported answer doesn't require one; draft/pending evidence can still
+// produce one; citation/authority protections are untouched) — never
+// brittle assertions on Sonnet's actual wording, which none of these
+// tests depend on.
+
+test("REFINEMENT 2: importantNote remains a valid, optional field in the schema — both null and populated pass validation", async () => {
+  const ev = evidence();
+  const withoutNote = fakeClientReturningText(
+    JSON.stringify({ supportStatus: "supported", answer: "Serve requires X.", operationalGuidance: null, importantNote: null, citedEvidenceIds: ["sec-281"] })
+  );
+  const withNote = fakeClientReturningText(
+    JSON.stringify({ supportStatus: "supported", answer: "Serve requires X.", operationalGuidance: null, importantNote: "A distinct qualification.", citedEvidenceIds: ["sec-281"] })
+  );
+  const a1 = await synthesizeAskServeAnswer("q", [ev], { client: withoutNote });
+  const a2 = await synthesizeAskServeAnswer("q", [ev], { client: withNote });
+  assert.equal(a1.importantNote, null);
+  assert.equal(a2.importantNote, "A distinct qualification.");
+});
+
+test("REFINEMENT 2: a simple supported answer does not require an importantNote", async () => {
+  const ev = evidence();
+  const client = fakeClientReturningText(
+    JSON.stringify({ supportStatus: "supported", answer: "Serve requires X.", operationalGuidance: "Do X.", importantNote: null, citedEvidenceIds: ["sec-281"] })
+  );
+  const answer = await synthesizeAskServeAnswer("q", [ev], { client });
+  assert.equal(answer.supportStatus, "supported");
+  assert.equal(answer.importantNote, null);
+});
+
+test("REFINEMENT 2: operationalGuidance remains optional — a supported answer with none is still valid", async () => {
+  const ev = evidence();
+  const client = fakeClientReturningText(
+    JSON.stringify({ supportStatus: "supported", answer: "Serve requires X.", operationalGuidance: null, importantNote: null, citedEvidenceIds: ["sec-281"] })
+  );
+  const answer = await synthesizeAskServeAnswer("q", [ev], { client });
+  assert.equal(answer.operationalGuidance, null);
+});
+
+test("REFINEMENT 2: draft/pending-not-binding evidence (e.g. the EPRP) can still appropriately produce an importantNote", async () => {
+  const draftEv = evidence({
+    sourceType: "serve_controlled_procedure",
+    sourceTitle: "EPRP",
+    sourceStatus: "draft_pending_review",
+    operationalAuthority: "pending_not_binding",
+    sectionNumber: "EPRP-5",
+  });
+  const client = fakeClientReturningText(
+    JSON.stringify({
+      supportStatus: "partially_supported",
+      answer: "Serve P&P references a separate EPRP for detailed emergency procedures.",
+      operationalGuidance: null,
+      importantNote: "The detailed EPRP is still in leadership review and is not yet binding.",
+      citedEvidenceIds: ["sec-281"],
+    })
+  );
+  const answer = await synthesizeAskServeAnswer("q", [draftEv], { client });
+  assert.equal(answer.supportStatus, "partially_supported");
+  assert.match(answer.importantNote ?? "", /not yet binding|pending|draft/i);
+  // The prompt change must never loosen the existing authority protection:
+  // the citation's own operationalAuthority still comes from the real
+  // evidence record, not from the model's importantNote text.
+  assert.equal(answer.citations[0].operationalAuthority, "pending_not_binding");
+});
+
+test("REFINEMENT 2: citation/authority protections are unchanged by the prompt update — an invented citation id is still dropped", async () => {
+  const ev = evidence();
+  const client = fakeClientReturningText(
+    JSON.stringify({
+      supportStatus: "supported",
+      answer: "Serve requires X.",
+      operationalGuidance: null,
+      importantNote: "Some note.",
+      citedEvidenceIds: ["sec-281", "sec-invented"],
+    })
+  );
+  const answer = await synthesizeAskServeAnswer("q", [ev], { client });
+  assert.equal(answer.citations.length, 1);
+  assert.equal(answer.citations[0].evidenceId, "sec-281");
+});
+
 test("partially_supported and needs_review pass through structurally unchanged", async () => {
   const ev = evidence();
   for (const status of ["partially_supported", "needs_review"] as const) {
