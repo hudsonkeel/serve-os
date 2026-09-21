@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Sparkles, Loader2, AlertTriangle } from "lucide-react";
 import { askServeQuestion, type AskServeQuestionResult } from "@/lib/actions/askServe";
 import type { AskServeCitation, SupportStatus } from "@/lib/askServe/answer/types";
@@ -44,14 +44,16 @@ export function AskServeWorkspace() {
   const [lastAskedQuestion, setLastAskedQuestion] = useState<string | null>(null);
   const [result, setResult] = useState<AskServeQuestionResult | null>(null);
   const [isPending, startTransition] = useTransition();
-  const resultRef = useRef<HTMLDivElement | null>(null);
 
-  // Every submission — from the top input, a suggested question, or the
-  // bottom input — is a brand-new standalone question. Only the question
-  // text itself is sent; no prior question, answer, or evidence is ever
-  // passed along. This is a UX convenience (not scrolling back to a
-  // "reset" link), not conversational memory: askServeQuestion() below
-  // takes exactly one argument, the new question text, same as always.
+  // Every submission — from the top input or a suggested question — is a
+  // brand-new standalone question. Only the question text itself is sent;
+  // no prior question, answer, or evidence is ever passed along.
+  // askServeQuestion() takes exactly one argument, the new question text.
+  // `question` (what's currently editable in the input) and `result`
+  // (what's currently displayed as the answer) are intentionally separate
+  // state: a successful answer clears `question` so the same input is
+  // immediately ready for the next question, without touching `result`.
+  // On failure `question` is left alone so the user can retry it.
   function ask(q: string) {
     const trimmed = q.trim();
     if (!trimmed) return;
@@ -59,6 +61,9 @@ export function AskServeWorkspace() {
     startTransition(async () => {
       const res = await askServeQuestion(trimmed);
       setResult(res);
+      if (!res.error) {
+        setQuestion("");
+      }
     });
   }
 
@@ -76,48 +81,11 @@ export function AskServeWorkspace() {
     if (lastAskedQuestion) ask(lastAskedQuestion);
   }
 
-  // Brings the newest loading/error/answer state into view — relevant
-  // when the question came from the bottom input, where the user is
-  // scrolled past the top of the page. Deliberately simple: scroll the
-  // same target on every result change, whichever input triggered it.
-  useEffect(() => {
-    if ((isPending || result) && resultRef.current) {
-      resultRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [isPending, result]);
-
   const answer = result?.answer;
   const groupedCitations = answer ? groupCitations(answer.citations) : [];
-
-  // Shared by the top input and the post-answer bottom input (Refinement
-  // 1) — one input implementation, same validation/submission path
-  // (handleSubmit -> ask() -> askServeQuestion()), never duplicated
-  // business logic. The only difference between the two placements is
-  // the placeholder copy.
-  function renderQuestionForm(placeholder: string) {
-    return (
-      <form onSubmit={handleSubmit} className="rounded-xl border border-ivory-border bg-surface p-1.5 shadow-card">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <Sparkles size={16} strokeWidth={1.5} className="shrink-0 text-gold/60" />
-          <input
-            type="text"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder={placeholder}
-            className="flex-1 bg-transparent font-sans text-sm text-body outline-none placeholder:text-muted"
-            disabled={isPending}
-          />
-          <button
-            type="submit"
-            disabled={isPending || question.trim().length === 0}
-            className="shrink-0 rounded-lg bg-navy px-4 py-2 font-sans text-xs font-medium text-white transition-opacity disabled:opacity-40"
-          >
-            {isPending ? "Asking…" : "Ask"}
-          </button>
-        </div>
-      </form>
-    );
-  }
+  const inputPlaceholder = answer
+    ? "Ask another Serve question…"
+    : "Ask a question about Serve policy or Texas PAS requirements…";
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -135,10 +103,30 @@ export function AskServeWorkspace() {
         </p>
       </div>
 
-      {/* Input */}
-      <div className="mb-6">{renderQuestionForm("Ask a question about Serve policy or Texas PAS requirements…")}</div>
+      {/* Input — the single canonical question entry point */}
+      <div className="mb-6">
+        <form onSubmit={handleSubmit} className="rounded-xl border border-ivory-border bg-surface p-1.5 shadow-card">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <Sparkles size={16} strokeWidth={1.5} className="shrink-0 text-gold/60" />
+            <input
+              type="text"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder={inputPlaceholder}
+              className="flex-1 bg-transparent font-sans text-sm text-body outline-none placeholder:text-muted"
+              disabled={isPending}
+            />
+            <button
+              type="submit"
+              disabled={isPending || question.trim().length === 0}
+              className="shrink-0 rounded-lg bg-navy px-4 py-2 font-sans text-xs font-medium text-white transition-opacity disabled:opacity-40"
+            >
+              {isPending ? "Asking…" : "Ask"}
+            </button>
+          </div>
+        </form>
+      </div>
 
-      <div ref={resultRef}>
       {/* Loading */}
       {isPending && (
         <div className="mb-6 flex items-center justify-center gap-2 rounded-xl border border-ivory-border bg-surface px-5 py-6 text-muted">
@@ -216,7 +204,6 @@ export function AskServeWorkspace() {
           )}
         </div>
       )}
-      </div>
 
       {/* Suggested prompts — shown until an answer/error is on screen, so the
           workspace doesn't feel cluttered once someone is mid-conversation. */}
@@ -237,18 +224,6 @@ export function AskServeWorkspace() {
             ))}
           </div>
         </div>
-      )}
-
-      {/* Bottom query input — a standalone, standard Ask Serve submission
-          (see renderQuestionForm's own header comment), not a follow-up:
-          every submission from here goes through the exact same ask() ->
-          askServeQuestion() path as the top input, with no prior question,
-          answer, or evidence carried along. Shown once a result (answer
-          or error) is on screen, so the natural next action after reading
-          an answer and its sources is typing the next question, not
-          scrolling back to the top or clicking a reset link. */}
-      {!isPending && result && (
-        <div className="mt-6">{renderQuestionForm("Ask another Serve question…")}</div>
       )}
     </div>
   );
