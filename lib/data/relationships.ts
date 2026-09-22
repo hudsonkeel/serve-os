@@ -678,6 +678,18 @@ export interface ResidentSearchResult {
 // community filter, never a fetch-then-filter. "none" (unassigned scope)
 // short-circuits before any query runs — an unassigned user must not
 // silently search every community.
+//
+// is_active = true is the same lifecycle gate every other resident-listing
+// query in this codebase already applies (communityMetrics.ts,
+// residentRoster.ts, residentDataIntegrity.ts) — this was the one query
+// missing it. merge_residents() (see
+// supabase/migrations/20260805000000_create_resident_identity_resolution.sql)
+// already guarantees is_active = false on every retired/merged duplicate at
+// the moment identity resolution confirms it, so this one filter is
+// sufficient to keep a reconciled duplicate (e.g. a merged "Elliott
+// Goldberg" pointing at canonical "Elliot Goldberg") from appearing here as
+// an independently selectable person again — no separate redirect lookup
+// needed for that.
 export async function searchResidentsForLinking(
   query: string,
   filter: CommunityQueryFilter,
@@ -691,6 +703,7 @@ export async function searchResidentsForLinking(
   let dbQuery = supabase
     .from("residents")
     .select("id, first_name, last_name, display_name, full_name, unit_number, community_name")
+    .eq("is_active", true)
     .or(
       `first_name.ilike.%${normalized}%,last_name.ilike.%${normalized}%,display_name.ilike.%${normalized}%,full_name.ilike.%${normalized}%,unit_number.ilike.%${normalized}%`
     );
