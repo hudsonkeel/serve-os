@@ -9,8 +9,9 @@
 // Pure, read-only, I/O-free: takes already-fetched approved facts and returns proposals only.
 // Never writes anything, never touches assessment_draft_facts/assessment_approved_facts/the
 // immutable assessment_document snapshot — this module doesn't even have a database handle to do
-// so. The eventual write path (lib/actions/importantPeople.ts) is a separate, later, explicit
-// human-confirmed action over this module's OUTPUT, never triggered by computing it.
+// so. The eventual write path (lib/actions/importantPeople.ts) is a separate, later step over this
+// module's OUTPUT — automatic for safe/unambiguous cases, human-reviewed for ambiguous ones (Slice
+// C.3 refinement, 2026-09-19) — never triggered by computing it.
 //
 // PHYSICIAN IS DELIBERATELY EXCLUDED (Slice C.3 product decision, documented per the task's own
 // instruction): `important_people.physician_name`/`physician_phone` are NOT inspected here.

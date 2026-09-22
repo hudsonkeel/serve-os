@@ -370,7 +370,7 @@ export function AssessmentReviewPanel({
       )}
 
       {approved && approvedSnapshot && (
-        <ApprovedAssessmentDocument residentName={residentName} snapshot={approvedSnapshot} />
+        <ApprovedAssessmentDocument residentId={residentId} residentName={residentName} snapshot={approvedSnapshot} />
       )}
 
       {approved && !approvedSnapshot && (
@@ -449,9 +449,11 @@ export function AssessmentReviewPanel({
 // and re-deriving it from today's draft facts would reintroduce a live dependency this view must
 // not have), and print-ready as-is: this is the one thing on the page NOT hidden by print:hidden.
 function ApprovedAssessmentDocument({
+  residentId,
   residentName,
   snapshot,
 }: {
+  residentId: string;
   residentName: string;
   snapshot: AssessmentDocumentSnapshot;
 }) {
@@ -468,55 +470,83 @@ function ApprovedAssessmentDocument({
           Approved {approvedAtDisplay} by {snapshot.approvedBy}
         </p>
       </div>
-      <AssessmentDocumentSections sections={snapshot.sections} />
+      <AssessmentDocumentSections residentId={residentId} sections={snapshot.sections} />
     </div>
   );
 }
 
-function AssessmentDocumentSections({ sections }: { sections: readonly ProjectedDomainSection[] }) {
+// A domain section this historical document renders exactly as captured is, by definition, a
+// point-in-time record — but "Important People" is the one domain that ALSO has a living,
+// evolving counterpart elsewhere on this person's page (Slice C.3's canonical Important People,
+// automatically kept current from every approved assessment). Every other domain has no such
+// counterpart, so only this one needs the "this is history, here's where the current picture
+// lives" treatment — communicated with a small label and a direct link, never a paragraph.
+const DOMAIN_WITH_LIVE_COUNTERPART = "important_people";
+
+function AssessmentDocumentSections({
+  residentId,
+  sections,
+}: {
+  residentId: string;
+  sections: readonly ProjectedDomainSection[];
+}) {
   if (sections.length === 0) {
     return <p className="font-sans text-sm text-muted">Nothing was established in this assessment.</p>;
   }
 
   return (
     <div className="space-y-6">
-      {sections.map((section) => (
-        <div key={section.domain}>
-          <h3 className="mb-2 font-sans text-label font-semibold uppercase tracking-widest text-muted">
-            {section.label}
-          </h3>
-          <div className="divide-y divide-ivory-border rounded-lg border border-ivory-border print:divide-ivory-border print:rounded-none print:border-0 print:border-t">
-            {section.fields.map((field) => {
-              const style = STATE_STYLES[field.state];
-              return (
-                <div key={field.fieldPath} className="px-4 py-2.5 print:px-0">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-sans text-sm text-body">{field.label}</p>
-                      {field.source === "profile" && (
-                        <span
-                          className="inline-flex items-center rounded-full bg-ivory-warm px-2 py-0.5 font-sans text-[11px] font-medium text-subtle"
-                          title="Already known from this person's Serve profile, not stated during this conversation"
-                        >
-                          From Serve profile
+      {sections.map((section) => {
+        const hasLiveCounterpart = section.domain === DOMAIN_WITH_LIVE_COUNTERPART;
+        return (
+          <div key={section.domain}>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-sans text-label font-semibold uppercase tracking-widest text-muted">
+                {section.label}
+                {hasLiveCounterpart && <span className="text-subtle"> · At Assessment</span>}
+              </h3>
+              {hasLiveCounterpart && (
+                <Link
+                  href={`/residents/${residentId}#important-people`}
+                  className="font-sans text-xs font-semibold text-navy underline underline-offset-2 print:hidden"
+                >
+                  Current Important People →
+                </Link>
+              )}
+            </div>
+            <div className="divide-y divide-ivory-border rounded-lg border border-ivory-border print:divide-ivory-border print:rounded-none print:border-0 print:border-t">
+              {section.fields.map((field) => {
+                const style = STATE_STYLES[field.state];
+                return (
+                  <div key={field.fieldPath} className="px-4 py-2.5 print:px-0">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-sans text-sm text-body">{field.label}</p>
+                        {field.source === "profile" && (
+                          <span
+                            className="inline-flex items-center rounded-full bg-ivory-warm px-2 py-0.5 font-sans text-[11px] font-medium text-subtle"
+                            title="Already known from this person's Serve profile, not stated during this conversation"
+                          >
+                            From Serve profile
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-sans text-xs font-semibold ${style.className}`}>
+                          {field.state === "value" ? (field.displayValue ?? "—") : style.label}
                         </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-sans text-xs font-semibold ${style.className}`}>
-                        {field.state === "value" ? (field.displayValue ?? "—") : style.label}
-                      </span>
-                      {field.state === "uncertain" && field.displayValue && (
-                        <span className="font-sans text-xs text-muted">{field.displayValue}</span>
-                      )}
+                        {field.state === "uncertain" && field.displayValue && (
+                          <span className="font-sans text-xs text-muted">{field.displayValue}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

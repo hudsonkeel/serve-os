@@ -508,14 +508,18 @@ export default async function ResidentDetailPage({
             residentPageHref={residentPageHref}
           />
 
-          {/* Slice C.3 — canonical Important People, projected from the most recent approved
-              assessment. Deliberately placed beside ResidentEssentials (which still shows the
+          {/* Slice C.3 — canonical Important People, automatically projected from the most recent
+              approved assessment for safe/unambiguous knowledge (Slice C.3 refinement,
+              2026-09-19). Deliberately placed beside ResidentEssentials (which still shows the
               existing flat contact fields on residents: family_contact_, physician_, and
               legal_guardian_ prefixed columns, untouched) rather than merged into it, so the two
               stay visually adjacent without becoming a confusing duplicate representation of the
-              same information. */}
+              same information. The id anchor is the "Current Important People ->" navigation
+              target from the historical Assessment view (ApprovedAssessmentDocument). */}
           {importantPeopleData && (
-            <ImportantPeoplePanel residentId={id} initialData={importantPeopleData} canEdit={canEditProfile} />
+            <div id="important-people">
+              <ImportantPeoplePanel initialData={importantPeopleData} />
+            </div>
           )}
 
           {/* About This Person — collapsed by default; a compact summary

@@ -97,8 +97,9 @@ export async function setContactFieldIfEmpty(
 
 /** Idempotent by (contact_id, field_name, source_reference): if a provenance row already
  * recording this exact assertion exists, does nothing rather than inserting a redundant
- * duplicate — this is what keeps a retried/duplicate confirm click from piling up repeated
- * identical history rows for the same already-recorded assessment fact. A genuinely NEW value
+ * duplicate — this is what keeps a repeated automatic-projection run (every page load,
+ * concurrent viewers) from piling up repeated identical history rows for the same
+ * already-recorded assessment fact. A genuinely NEW value
  * for the same field (different source_reference, e.g. a later manual correction) always
  * inserts its own new row — this only de-duplicates the exact same (contact, field, source)
  * triple, never collapses two different assertions into one. */
@@ -182,7 +183,8 @@ export async function getAssessmentSourcedRoleReferencesForResident(residentId: 
 /** Idempotent by (resident_id, source_reference): the caller (lib/actions/importantPeople.ts)
  * already filters requested roles down to only the missing ones via computeMissingRoleInserts()
  * before calling this, but this defensive re-check protects against a genuine race (two
- * near-simultaneous confirm requests for the same proposal) that filter can't catch on its own,
+ * near-simultaneous page loads triggering automatic projection for the same proposal) that
+ * filter can't catch on its own,
  * without needing a database-level unique constraint that would also have to reject legitimate
  * manually-entered roles with no source_reference at all. */
 export async function insertContactRole(input: {

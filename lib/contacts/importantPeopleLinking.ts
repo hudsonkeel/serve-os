@@ -70,3 +70,41 @@ export function evaluateContactLinkForProposal(
   // name-only near-match is still returned for advisory display.
   return { action: "create_new", matchedContactId: null, candidates };
 }
+
+// Automatic safe projection (Slice C.3 refinement, 2026-09-19): "Do not ask the user to confirm
+// what Serve already knows" means the two genuinely unambiguous ContactLinkActions above
+// (create_new with no competing signal, link_existing on an exact strong match) now execute
+// automatically rather than waiting for a confirmation click. requires_reconciliation always
+// stays human-only — that judgment call is exactly what an "obvious duplicate creation" or
+// "silent merge" risk would otherwise smuggle past a person.
+//
+// The one case this function is stricter than evaluateContactLinkForProposal's own action: a
+// create_new decision that still carries a name_only_no_merge candidate. That tier already
+// guarantees the candidate is never auto-LINKED (a shared name alone is never sufficient to
+// merge), but blindly auto-CREATING in that situation would silently produce what looks like an
+// obvious duplicate person to whoever notices it later — the exact failure mode this refinement
+// exists to avoid on the other side. Genuine judgment (is this really a second person, or the
+// same one under a different phone number?) is a human call, so this downgrades that one
+// situation to needs_review rather than either auto action.
+export type AutomaticProjectionAction = "auto_create" | "auto_link" | "needs_review";
+
+export function decideAutomaticProjectionAction(decision: ContactLinkDecision): AutomaticProjectionAction {
+  if (decision.action === "link_existing") return "auto_link";
+  if (decision.action === "requires_reconciliation") return "needs_review";
+  const hasNameOnlyCandidate = decision.candidates.some((c) => c.tier === "name_only_no_merge");
+  return hasNameOnlyCandidate ? "needs_review" : "auto_create";
+}
+
+/** Short, human-facing reason for a needs_review state — never a paragraph, never the raw
+ * evidence array. Picks the single most relevant candidate's tier (a proposal can only reach
+ * needs_review via requires_reconciliation, or via create_new with a name_only_no_merge
+ * candidate — see decideAutomaticProjectionAction above). */
+export function describeNeedsReviewReason(decision: ContactLinkDecision): string {
+  if (decision.candidates.some((c) => c.tier === "conflicting_identity_requires_review")) {
+    return "Conflicting information with an existing contact";
+  }
+  if (decision.candidates.some((c) => c.tier === "proposed_match_requires_review")) {
+    return "Possible match with an existing contact";
+  }
+  return "Same name as an existing contact";
+}
