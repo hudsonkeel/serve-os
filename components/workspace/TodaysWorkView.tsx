@@ -7,19 +7,13 @@ import {
   buildWorkspaceHref,
   matchesSourceFilter,
   parseWorkspaceFilters,
+  resolveWorkspaceViewOptions,
   type WorkspaceFilters,
   type WorkspaceSourceFilter,
-  type WorkspaceViewFilter,
 } from "@/lib/workspace/urlFilters";
+import type { AuthRole } from "@/lib/auth/constants";
 import type { WorkItem } from "@/lib/workspace/workItem";
 import { SOURCE_LABELS, WorkItemRow } from "./WorkItemRow";
-
-const VIEW_FILTERS: { value: WorkspaceViewFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "mine", label: "My Work" },
-  { value: "team", label: "Team Work" },
-  { value: "unassigned", label: "Unassigned" },
-];
 
 function sourceFilterLabel(source: WorkspaceSourceFilter): string {
   if (source === "all") return "All";
@@ -36,12 +30,23 @@ interface TodaysWorkViewProps {
   // source of truth. Keeps first paint and hydration consistent without a
   // second, potentially-diverging copy of this same state.
   initialFilters: WorkspaceFilters;
+  // Office Staff Workspace Simplification v0.1 — the already-resolved
+  // viewer role from app/workspace/page.tsx's own getCurrentAuthorizedUser()
+  // call, threaded through rather than looked up again here. Presentation
+  // only: which view buttons render/their labels/the default and
+  // hidden-view fallback (see resolveWorkspaceViewOptions/
+  // parseWorkspaceFilters in lib/workspace/urlFilters.ts). Never affects
+  // which WorkItems exist in `items` or ownership matching itself.
+  viewerRole: AuthRole | null | undefined;
 }
 
 // The continuity layer — additive to, never a replacement for, the
 // Operational Summary rendered above it on the Workspace page. See
 // docs/architecture/TODAYS_WORK_CONTINUITY.md. Defaults to "All" so urgent
-// unassigned work is never hidden by default.
+// unassigned work is never hidden by default — except for office_staff,
+// whose own default is "My Work" (resolveWorkspaceViewDefault), per Office
+// Staff Workspace Simplification v0.1's "what should I do" product
+// direction; every other role's default is unchanged.
 //
 // URL-backed (Today's Work Actionability slice, product decision #7):
 // filter state lives entirely in the ?view=&source= query string, read via
@@ -49,14 +54,17 @@ interface TodaysWorkViewProps {
 // of sync with the address bar. This is what makes a summary-card
 // deep-link (?source=wellness_follow_up), a refresh, and the browser's
 // back/forward buttons all land on the exact same filtered list.
-export function TodaysWorkView({ items, currentUser, initialFilters }: TodaysWorkViewProps) {
+export function TodaysWorkView({ items, currentUser, initialFilters, viewerRole }: TodaysWorkViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // useSearchParams() reflects the same URL on both the server render and
   // the client hydration pass for this force-dynamic page, so it's always
   // populated in practice; initialFilters (server-parsed) is kept only as
   // a defensive fallback, never a second source of truth once mounted.
-  const filters = searchParams ? parseWorkspaceFilters(Object.fromEntries(searchParams.entries())) : initialFilters;
+  const filters = searchParams
+    ? parseWorkspaceFilters(Object.fromEntries(searchParams.entries()), viewerRole)
+    : initialFilters;
+  const viewOptions = resolveWorkspaceViewOptions(viewerRole);
 
   function updateFilters(next: Partial<WorkspaceFilters>) {
     router.push(buildWorkspaceHref({ ...filters, ...next }));
@@ -82,7 +90,7 @@ export function TodaysWorkView({ items, currentUser, initialFilters }: TodaysWor
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        {VIEW_FILTERS.map((f) => (
+        {viewOptions.map((f) => (
           <button
             key={f.value}
             type="button"

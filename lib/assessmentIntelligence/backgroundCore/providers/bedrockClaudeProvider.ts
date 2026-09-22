@@ -1,4 +1,11 @@
-import { BedrockRuntimeClient, ConverseCommand, type ConverseCommandOutput } from "@aws-sdk/client-bedrock-runtime";
+import { ConverseCommand, type ConverseCommandOutput } from "@aws-sdk/client-bedrock-runtime";
+import {
+  BEDROCK_REGION,
+  CLAUDE_MODEL_ID,
+  extractTextFromConverseResponse,
+  getBedrockClient,
+  type BedrockConverseClient,
+} from "../../../ai/bedrockClaude.ts";
 import { buildExtractionSystemPrompt, buildExtractionUserPrompt } from "../../extractionPrompt.ts";
 import { normalizeExtractedFacts } from "../../factTypes.ts";
 import type { AssessmentExtractionProvider, ExtractionResult } from "../../extractionProvider.ts";
@@ -18,44 +25,24 @@ import type { AssessmentExtractionProvider, ExtractionResult } from "../../extra
 // Moved here 2026-09-17 (background-safe processing core split) — no `import "server-only"` and
 // no React/Next dependency, so this is safely importable from a standalone Netlify Background
 // Function. See ../dataAccess.ts's header comment for the full rationale.
+//
+// Client/region/model constants and the Converse response-text helper moved to
+// lib/ai/bedrockClaude.ts 2026-09-20 (Ask Serve answer synthesis needed the exact same
+// approved Bedrock client/model without duplicating this file's AWS SDK boilerplate) — this
+// module keeps re-exporting them under their original names so nothing importing from here
+// needs to change. Everything below this point (the extraction-specific prompt building, JSON
+// parsing, and normalizeExtractedFacts() validation) is unchanged.
 
-const REGION = "us-east-1";
-const MODEL_ID = "us.anthropic.claude-sonnet-4-6";
+const REGION = BEDROCK_REGION;
+const MODEL_ID = CLAUDE_MODEL_ID;
 const PROVIDER_ID = "bedrock-claude";
-
-let cachedClient: BedrockRuntimeClient | null = null;
-
-function getClient(): BedrockRuntimeClient {
-  if (cachedClient) return cachedClient;
-  // No explicit credentials constructed here — the AWS SDK's default credential provider chain
-  // resolves them (environment variables, shared config/SSO profile, or a workload identity in
-  // a deployed environment), per the least-custom-code, no-static-keys-if-avoidable preference.
-  cachedClient = new BedrockRuntimeClient({ region: REGION });
-  return cachedClient;
-}
-
-function extractTextFromConverseResponse(response: ConverseCommandOutput): string {
-  const content = response.output?.message?.content;
-  if (!Array.isArray(content)) return "";
-  const textBlock = content.find(
-    (block): block is { text: string } => typeof block === "object" && block !== null && typeof (block as { text?: unknown }).text === "string"
-  );
-  return textBlock?.text ?? "";
-}
-
-/** Minimal shape this module actually needs from a Bedrock client — deliberately not the full
- * BedrockRuntimeClient type (whose overloaded `send` collapses awkwardly through `Pick`). Lets
- * tests inject a plain mock object without any AWS SDK/network dependency. */
-export interface BedrockConverseClient {
-  send(command: ConverseCommand): Promise<ConverseCommandOutput>;
-}
 
 /** The real extraction call. Accepts an injectable client so tests can exercise malformed-
  * response and error handling without any AWS credentials or network access — see
  * __tests__/bedrockClaudeProvider.test.ts. */
 export async function extractFactsViaBedrockClaude(
   transcriptText: string,
-  client: BedrockConverseClient = getClient()
+  client: BedrockConverseClient = getBedrockClient()
 ): Promise<ExtractionResult> {
   if (!transcriptText || !transcriptText.trim()) {
     return { accepted: [], rejected: [], provider: PROVIDER_ID, modelId: MODEL_ID, rawResponseParseError: null };
@@ -112,3 +99,4 @@ export const bedrockClaudeExtractionProvider: AssessmentExtractionProvider = {
 };
 
 export { REGION as BEDROCK_REGION, MODEL_ID as BEDROCK_MODEL_ID };
+export type { BedrockConverseClient };

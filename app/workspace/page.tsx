@@ -29,6 +29,7 @@ import { TODAY_WORK_CONTEXT } from "@/lib/askServe/areaContexts";
 import { getTodaysWorkItems } from "@/lib/data/todaysWork";
 import { TodaysWorkView } from "@/components/workspace/TodaysWorkView";
 import { buildWorkspaceHref, countActionableWorkItems, parseWorkspaceFilters } from "@/lib/workspace/urlFilters";
+import { isOperationalSummaryCardVisible, type OperationalSummaryCardKey } from "@/lib/workspace/operationalSummary";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -187,7 +188,7 @@ export default async function WorkspacePage({
   const currentUser = buildCurrentUserDisplay(profile);
   const greeting = getCentralTimeGreeting();
   const askServeEnabled = isContextualAskServeEnabled(currentUser.role);
-  const initialFilters = parseWorkspaceFilters(rawSearchParams);
+  const initialFilters = parseWorkspaceFilters(rawSearchParams, profile?.role);
 
   // Today's Work Actionability slice, product decision #2/"Summary Source
   // of Truth" — every card below that claims to represent Today's Work is
@@ -201,38 +202,51 @@ export default async function WorkspacePage({
   // all," regardless of Continuity Rule staleness) still live on their own
   // domain surfaces (Residents directory, Relationships/Prospects board,
   // How We're Doing) — deliberately not reproduced here.
-  const operationalSummary = [
+  const allOperationalSummaryCards: Array<{
+    key: OperationalSummaryCardKey;
+    label: string;
+    value: number | null;
+    description: string;
+    href: string;
+    external?: boolean;
+  }> = [
     {
+      key: "assessments",
       label: "Assessments",
       value: countActionableWorkItems(workItems, "assessment"),
       description: "Continuity-Rule actionable",
       href: buildWorkspaceHref({ source: "assessment" }),
     },
     {
+      key: "follow_ups",
       label: "Follow-ups",
       value: countActionableWorkItems(workItems, "relationship_action"),
       description: "Open relationship actions",
       href: buildWorkspaceHref({ source: "relationship_action" }),
     },
     {
+      key: "wellness_follow_ups",
       label: "Wellness Follow-ups",
       value: countActionableWorkItems(workItems, "wellness_follow_up"),
       description: "Due or overdue",
       href: buildWorkspaceHref({ source: "wellness_follow_up" }),
     },
     {
+      key: "proposals",
       label: "Proposals",
       value: countActionableWorkItems(workItems, "proposal"),
       description: "Continuity-Rule actionable",
       href: buildWorkspaceHref({ source: "proposal" }),
     },
     {
+      key: "recruiting",
       label: "Recruiting",
       value: countActionableWorkItems(workItems, "recruiting"),
       description: "Continuity-Rule actionable",
       href: buildWorkspaceHref({ source: "recruiting" }),
     },
     {
+      key: "payroll",
       label: "Payroll",
       value: null,
       description: "Additional AxisCare integration in progress",
@@ -247,12 +261,16 @@ export default async function WorkspacePage({
       // lib/workspace/urlFilters.ts. Deliberately not a QAPI Activity
       // Signal (those are factual/historical counts on /qapi; this is the
       // actionable-workload count for the exact items listed below).
+      key: "governance",
       label: "Governance & Quality",
       value: countActionableWorkItems(workItems, "governance"),
       description: "Incidents, Infections, EPRP, Corrective Actions",
       href: buildWorkspaceHref({ source: "governance" }),
     },
   ];
+  const operationalSummary = allOperationalSummaryCards.filter((card) =>
+    isOperationalSummaryCardVisible(card.key, profile?.role)
+  );
 
   return (
     <PageContainer title="Today's Work">
@@ -331,6 +349,7 @@ export default async function WorkspacePage({
             items={workItems}
             currentUser={{ email: currentUser.email, fullName: currentUser.fullName }}
             initialFilters={initialFilters}
+            viewerRole={profile?.role}
           />
         </section>
 

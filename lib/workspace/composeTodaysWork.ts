@@ -113,11 +113,48 @@ export function isClientReadinessVerificationAction(action: { domain: string | n
   return action.domain === "client_readiness" && action.actionType === "evidence_awaiting_verification";
 }
 
+// Today's Work Viewer Scoping v0.1 — every compliance_corrective_actions
+// row Today's Work will ever see carries one of exactly four domain
+// values in production today (see sync_compliance_corrective_action() and
+// create_incident_corrective_action()/create_infection_corrective_action()
+// in supabase/migrations/): "client_readiness", "emergency_preparedness",
+// "incidents", "infections". Each maps to the SAME capability predicate
+// that already gates that domain's own destination page/nav visibility —
+// deliberately not a role check, so a future role change to any of those
+// three predicates (lib/auth/permissions.ts, lib/compliance/permissions.ts)
+// is inherited here automatically, with no edit to this file. A domain
+// this codebase hasn't invented yet is left visible (fail-open) rather
+// than guessed at — a genuinely new domain should extend this map
+// explicitly, not be silently swept into an existing capability's tier.
+// Fail-open here is safe specifically because Today's Work is a visibility
+// layer, never the enforcement boundary: an unmapped domain's own
+// destination page and server actions still independently gate view/act
+// authority (see app/qapi/incidents/[id]/page.tsx's canViewIncidentsAndInfections
+// check and every resolveCorrectiveActionAction-style mutation's
+// canManageCorrectiveActions check for the established precedent this
+// relies on) — this filter failing open can surface a work item, never
+// grant access to it.
+export interface TodaysWorkGovernanceCapabilities {
+  canVerifyResidentEvidence: boolean;
+  canViewIncidentsAndInfections: boolean;
+  canViewAuditReadiness: boolean;
+}
+
+function isCorrectiveActionVisibleToViewer(
+  action: { domain: string | null; actionType: string },
+  capabilities: TodaysWorkGovernanceCapabilities
+): boolean {
+  if (isClientReadinessVerificationAction(action)) return capabilities.canVerifyResidentEvidence;
+  if (action.domain === "incidents" || action.domain === "infections") return capabilities.canViewIncidentsAndInfections;
+  if (action.domain === "emergency_preparedness") return capabilities.canViewAuditReadiness;
+  return true;
+}
+
 // Pure filter, extracted from lib/data/todaysWork.ts's loadCorrectiveActionsForCompose()
-// so the actual composition-time decision (not just the predicate above)
-// is independently unit-testable by role, without a database. Returns a
-// NEW array — never mutates `actions` or any element in it, and never
-// touches the caller's own already-fetched rows (which is what "the
+// so the actual composition-time decision (not just the predicates above)
+// is independently unit-testable by capability, without a database.
+// Returns a NEW array — never mutates `actions` or any element in it, and
+// never touches the caller's own already-fetched rows (which is what "the
 // underlying corrective action is never removed from its source data"
 // means in practice: getAllOpenCorrectiveActions() and every other
 // consumer of that same source data, e.g. the Governance/QAPI dashboards,
@@ -125,10 +162,9 @@ export function isClientReadinessVerificationAction(action: { domain: string | n
 // Today's Work composition includes in ITS OWN returned list).
 export function filterCorrectiveActionsForViewer<T extends { domain: string | null; actionType: string }>(
   actions: readonly T[],
-  canViewerVerifyResidentEvidence: boolean
+  capabilities: TodaysWorkGovernanceCapabilities
 ): T[] {
-  if (canViewerVerifyResidentEvidence) return [...actions];
-  return actions.filter((action) => !isClientReadinessVerificationAction(action));
+  return actions.filter((action) => isCorrectiveActionVisibleToViewer(action, capabilities));
 }
 
 // Incident Corrective Action Lifecycle v0.1 — one already-fetched,

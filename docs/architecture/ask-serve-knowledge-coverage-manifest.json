@@ -1,0 +1,147 @@
+{
+  "generatedAt": "2026-09-20T22:58:36.221Z",
+  "documentCounts": {
+    "texas_pas": 40,
+    "texas_statute_cross_reference": 1,
+    "serve_pnp": 1,
+    "serve_controlled_procedure": 1
+  },
+  "sectionCounts": {
+    "texas_pas": 40,
+    "texas_statute_cross_reference": 1,
+    "serve_pnp": 114,
+    "serve_controlled_procedure": 12
+  },
+  "excludedFiles": [
+    {
+      "filename": "01 — Texas PAS Core Regulations — Serve Caregiving (combined).pdf",
+      "reason": "combined/omnibus PDF — redundant with individually split section PDFs"
+    }
+  ],
+  "sectionNumberGaps": [
+    {
+      "sectionNumber": "1",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§1 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "2",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§2 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "201",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§201 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "211",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§211 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "214",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§214 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "241",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§241 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "242",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§242 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "243",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§243 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "247",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§247 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "248",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§248 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "250",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§250 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "251",
+      "servePnpPresent": true,
+      "texasPasPresent": false,
+      "explanation": "No Texas PAS §558.251 (Peer Review) source PDF is in this corpus. This is a known regulatory-source availability/versioning condition (the current TAC viewer does not currently expose §558.251 as an individually downloadable rule, and current rulemaking activity adds a versioning wrinkle) — not fabricated, not treated as missing. Serve's P&P §251 (Peer Review Policy) remains retrievable as Serve policy on its own."
+    },
+    {
+      "sectionNumber": "252",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§252 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "259",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§259 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "289",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§289 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    },
+    {
+      "sectionNumber": "297",
+      "servePnpPresent": true,
+      "texasPasPresent": false,
+      "explanation": "No Texas PAS §558.297 (Receipt of Physician Orders) source PDF is in this corpus, and none is expected: Serve is PAS-only/non-medical and its P&P §297 is a clean non-applicability statement (\"Serve Caregiving does not provide services requiring physician orders and Serve does not accept physician orders\"). This is an intentional Serve operating boundary, not a missing source."
+    },
+    {
+      "sectionNumber": "302",
+      "servePnpPresent": true,
+      "texasPasPresent": false,
+      "explanation": "No Texas PAS §558.302 (Pronouncement of Death) source PDF is in this corpus, and none is expected: Serve's P&P §302 is a clean non-applicability statement (\"Serve Caregiving does not pronounce death under any circumstances\"). This is an intentional Serve operating boundary, not a missing source."
+    },
+    {
+      "sectionNumber": "322",
+      "servePnpPresent": false,
+      "texasPasPresent": true,
+      "explanation": "§322 exists in only one source (P&P: false, Texas PAS: true) with no recorded explanation — needs review."
+    }
+  ],
+  "deduplicationNotes": [
+    {
+      "sectionNumber": "287",
+      "kept": "§287 \"Quality Assessment and Performance Improvement\" (5 chunk(s), starting at document position 901)",
+      "dropped": "§287 \"Client Satisfaction Survey Policy\" (1 chunk(s), starting at document position 471)",
+      "similarity": 0.8813559322033898,
+      "resolution": "auto_deduplicated_materially_equivalent"
+    }
+  ],
+  "warnings": [
+    {
+      "sourcePath": "docs/organizational-knowledge/policies/1.Serve Caregiving Policies & Procedures.docx",
+      "sourceType": "serve_pnp",
+      "message": "Duplicate section detected: §287 occurs twice in this document. §287 \"Client Satisfaction Survey Policy\" (1 chunk(s), starting at document position 471) was dropped as a materially equivalent (similarity 0.88) duplicate of §287 \"Quality Assessment and Performance Improvement\" (5 chunk(s), starting at document position 901), which was kept."
+    }
+  ]
+}

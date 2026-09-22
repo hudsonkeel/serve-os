@@ -8,8 +8,11 @@ import {
   isActionableWorkItem,
   matchesSourceFilter,
   parseWorkspaceFilters,
+  resolveWorkspaceViewDefault,
+  resolveWorkspaceViewOptions,
 } from "../urlFilters.ts";
 import type { WorkItem } from "../workItem.ts";
+import type { AuthRole } from "../../auth/constants.ts";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -51,6 +54,84 @@ test("parseWorkspaceFilters: source is passed through as-is (sourceType values a
 test("parseWorkspaceFilters: view and source combine independently", () => {
   const filters = parseWorkspaceFilters({ view: "unassigned", source: "incident" });
   assert.deepEqual(filters, { view: "unassigned", source: "incident" });
+});
+
+// ─── Office Staff Workspace Simplification v0.1 — role-aware view
+// resolution. Presentation only: never changes isUnassigned()/
+// matchesCurrentUser() (ownership.ts, untouched by this slice) or which
+// WorkItems exist in the array being filtered. ──────────────────────────
+
+test("resolveWorkspaceViewDefault: office_staff defaults to 'mine' ('What should I do')", () => {
+  assert.equal(resolveWorkspaceViewDefault("office_staff" as AuthRole), "mine");
+});
+
+test("resolveWorkspaceViewDefault: every other role keeps the original 'all' default, unchanged", () => {
+  for (const role of ["admin", "manager", "executive", "operations"] as AuthRole[]) {
+    assert.equal(resolveWorkspaceViewDefault(role), "all", role);
+  }
+  assert.equal(resolveWorkspaceViewDefault(null), "all");
+  assert.equal(resolveWorkspaceViewDefault(undefined), "all");
+});
+
+test("resolveWorkspaceViewOptions: office_staff gets exactly My Work, Available Work, All -- in that order, Team Work absent", () => {
+  const options = resolveWorkspaceViewOptions("office_staff" as AuthRole);
+  assert.deepEqual(
+    options.map((o) => o.value),
+    ["mine", "unassigned", "all"],
+  );
+  assert.deepEqual(
+    options.map((o) => o.label),
+    ["My Work", "Available Work", "All"],
+  );
+  assert.ok(!options.some((o) => o.value === "team"), "office_staff must never receive a Team Work option");
+});
+
+test("resolveWorkspaceViewOptions: every other role gets the original four options, unchanged (values, labels, and order)", () => {
+  for (const role of ["admin", "manager", "executive", "operations", null, undefined] as (AuthRole | null | undefined)[]) {
+    const options = resolveWorkspaceViewOptions(role);
+    assert.deepEqual(
+      options,
+      [
+        { value: "all", label: "All" },
+        { value: "mine", label: "My Work" },
+        { value: "team", label: "Team Work" },
+        { value: "unassigned", label: "Unassigned" },
+      ],
+      String(role),
+    );
+  }
+});
+
+test("REGRESSION: parseWorkspaceFilters with no view param defaults office_staff to 'mine', not 'all'", () => {
+  assert.equal(parseWorkspaceFilters({}, "office_staff" as AuthRole).view, "mine");
+});
+
+test("parseWorkspaceFilters: office_staff explicitly requesting the hidden 'team' view falls back to her own default ('mine'), never silently activating a hidden filter", () => {
+  assert.equal(parseWorkspaceFilters({ view: "team" }, "office_staff" as AuthRole).view, "mine");
+});
+
+test("parseWorkspaceFilters: office_staff CAN still explicitly select 'unassigned' (Available Work) and 'all' -- only 'team' is hidden", () => {
+  assert.equal(parseWorkspaceFilters({ view: "unassigned" }, "office_staff" as AuthRole).view, "unassigned");
+  assert.equal(parseWorkspaceFilters({ view: "all" }, "office_staff" as AuthRole).view, "all");
+  assert.equal(parseWorkspaceFilters({ view: "mine" }, "office_staff" as AuthRole).view, "mine");
+});
+
+test("parseWorkspaceFilters: an invalid view value for office_staff falls back to her own default ('mine'), not the global 'all' default", () => {
+  assert.equal(parseWorkspaceFilters({ view: "bogus" }, "office_staff" as AuthRole).view, "mine");
+});
+
+test("REGRESSION: parseWorkspaceFilters behavior for every other role is completely unchanged by passing their role explicitly", () => {
+  for (const role of ["admin", "manager", "executive", "operations"] as AuthRole[]) {
+    assert.equal(parseWorkspaceFilters({}, role).view, "all");
+    assert.equal(parseWorkspaceFilters({ view: "team" }, role).view, "team", `${role} must still be able to select Team Work`);
+    assert.equal(parseWorkspaceFilters({ view: "bogus" }, role).view, "all");
+  }
+});
+
+test("REGRESSION: omitting the role parameter entirely reproduces the exact pre-existing (role-agnostic) behavior", () => {
+  assert.deepEqual(parseWorkspaceFilters({}), DEFAULT_WORKSPACE_FILTERS);
+  assert.equal(parseWorkspaceFilters({ view: "team" }).view, "team");
+  assert.equal(parseWorkspaceFilters({ view: "bogus" }).view, "all");
 });
 
 // ─── buildWorkspaceHref (Acceptance H — round-trips with parseWorkspaceFilters) ──
