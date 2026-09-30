@@ -275,3 +275,33 @@ No further direct production deployment was made to this site during this valida
 testing in §8 ran locally (`intake-finish.js`'s handler invoked directly in a Node script) or
 against a local `next dev` server, specifically to avoid deploying the transcription branches to
 production before they're reviewed and merged.
+
+## 10. Native capture — Assessment Mobile Capture v0.1 (Capture-Only Slice, 2026-09-30)
+
+A second capture path, native to Serve OS, now exists alongside the external serve-intake-mvp
+handoff above (which is unchanged). It stops before transcription:
+
+```
+iPhone/browser (MediaRecorder, one recorder per run, pause()/resume())
+  → IndexedDB (every blob + runId, chunkIndex, MIME type, byte size, recordedAt — before any network)
+  → requestNativeChunkUpload (auth + scope + ownership; idempotent: identical object = success,
+    different object at that index = conflict, never overwritten)
+  → signed PUT into private intake-audio: {sessionId}/{chunkIndex:6}_{runId}.{ext}
+  → Finish: drain every local chunk → finishNativeCapture verifies every chunk in storage by
+    run + exact byte size → intake_sources 'uploaded' (+ capture metadata) → session 'captured'
+```
+
+- **`captured` is not `queued`.** The existing extraction queue never sees it. The transcription
+  slice will own the `captured` → (transcribe) → `queued` step so extraction stays unchanged.
+- **Native sessions are marked** by `intake_sources.source_payload.capture_origin =
+  'serve_os_native_capture'`. Only those are ever resumed, written, inspected, or downloadable;
+  an in-progress session from any other capture flow blocks the pilot for that resident rather
+  than being touched.
+- **Indexes never repeat** across reloads, runs, or devices: next index = max(server objects,
+  this device's local chunks) + 1. A cross-device collision surfaces as a conflict.
+- **Blobs are stored exactly as recorded.** Whether a single run's chunks concatenate into media
+  AWS Transcribe accepts (WebM from Chrome, fragmented MP4 from iOS Safari) is unproven and is the
+  purpose of device Test #1 — not assumed.
+- Code: `lib/assessmentCapture/captureLogic.ts`, `lib/assessmentCapture/idb.ts`,
+  `lib/data/nativeAssessmentCapture.ts`, `lib/actions/nativeAssessmentCapture.ts`,
+  `app/residents/[id]/assessment/capture/page.tsx`, `components/residents/assessment/*`.

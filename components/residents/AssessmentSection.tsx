@@ -5,25 +5,18 @@ import { useRouter } from "next/navigation";
 import { LinkButton } from "@/components/ui/Button";
 import { submitPastedTranscriptAndExtract, retryFailedAssessmentProcessing } from "@/lib/actions/assessmentIntelligence";
 import { decideRetryEligibility, SAFE_PROCESSING_FAILURE_MESSAGE } from "@/lib/assessmentIntelligence/processingQueue";
+import { assessmentSessionStatusLabel } from "@/lib/assessmentCapture/captureLogic";
 import type { AssessmentSessionRecord } from "@/lib/data/assessmentIntelligence";
+import { CapturedAudioInspector } from "@/components/residents/assessment/CapturedAudioInspector";
 
 interface AssessmentSectionProps {
   residentId: string;
   residentName: string;
   sessions: AssessmentSessionRecord[];
+  /** Assessment Mobile Capture v0.1 pilot affordances (admin/manager only — see
+   * canUseMobileCapturePilot). Off by default: everyone else sees this section unchanged. */
+  canUseMobileCapturePilot?: boolean;
 }
-
-const STATUS_LABELS: Record<string, string> = {
-  recording: "Recording",
-  queued: "Queued",
-  processing: "Processing",
-  failed: "Failed",
-  draft: "Draft — needs review",
-  needs_review: "Needs review",
-  approved: "Approved",
-  amended: "Amended",
-  operationalized: "Operationalized",
-};
 
 function StatusBadge({ status }: { status: string }) {
   const tone =
@@ -36,7 +29,7 @@ function StatusBadge({ status }: { status: string }) {
           : "bg-ivory text-muted";
   return (
     <span className={`inline-flex items-center rounded-full px-3 py-1 font-sans text-xs font-semibold ${tone}`}>
-      {STATUS_LABELS[status] ?? status}
+      {assessmentSessionStatusLabel(status)}
     </span>
   );
 }
@@ -82,7 +75,7 @@ function RetrySessionButton({ session }: { session: AssessmentSessionRecord }) {
   );
 }
 
-export function AssessmentSection({ residentId, residentName, sessions }: AssessmentSectionProps) {
+export function AssessmentSection({ residentId, residentName, sessions, canUseMobileCapturePilot = false }: AssessmentSectionProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -157,6 +150,9 @@ export function AssessmentSection({ residentId, residentName, sessions }: Assess
                   <RetrySessionButton session={s} />
                 </div>
               )}
+              {canUseMobileCapturePilot && (s.status === "captured" || s.status === "recording") && (
+                <CapturedAudioInspector residentId={residentId} assessmentSessionId={s.id} />
+              )}
             </div>
           ))}
         </div>
@@ -178,7 +174,18 @@ export function AssessmentSection({ residentId, residentName, sessions }: Assess
         >
           {showPasteForm ? "Cancel" : "Paste Transcript (admin/test fallback)"}
         </button>
+        {canUseMobileCapturePilot && (
+          <LinkButton href={`/residents/${residentId}/assessment/capture`}>
+            Record on this device — Mobile Capture Pilot
+          </LinkButton>
+        )}
       </div>
+      {canUseMobileCapturePilot && (
+        <p className="mt-2 font-sans text-xs text-muted">
+          Pilot for administrators and managers: records audio on this phone and saves it securely. Use fictional
+          role-play test records only — recordings are not transcribed yet.
+        </p>
+      )}
 
       {showPasteForm && (
         <div className="mt-4">

@@ -44,6 +44,7 @@ import { CR_ASSESSMENT_CURRENT, CR_ISP_ON_FILE_AND_CURRENT } from "@/lib/clientR
 import { getResidentById, setResidentCommunityId } from "@/lib/data/residents";
 import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 import { resolveAssessmentCommunity } from "@/lib/assessmentIntelligence/communityResolution";
+import { CAPTURED_SESSION_STATUS } from "@/lib/assessmentCapture/captureLogic";
 
 // Server actions for the assessment intelligence layer — see docs/architecture/
 // ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md. Distinct from lib/actions/assessmentCapture.ts
@@ -477,6 +478,14 @@ export async function approveAssessment(input: {
 }): Promise<{ error?: string; pricingStatus?: string }> {
   const authResult = await requireActor();
   if ("error" in authResult) return { error: authResult.error };
+
+  // Assessment Mobile Capture v0.1: approve_assessment_session() does not check the prior
+  // status, so a 'captured' session (audio only — no transcript, no facts) must be refused here
+  // rather than approved as an empty assessment via a direct request.
+  const existing = await getAssessmentSession(input.assessmentSessionId);
+  if (existing?.status === CAPTURED_SESSION_STATUS) {
+    return { error: "This assessment's audio has not been transcribed yet, so there is nothing to approve." };
+  }
 
   const result = await approveAssessmentSession({
     assessmentSessionId: input.assessmentSessionId,

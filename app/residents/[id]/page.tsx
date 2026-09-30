@@ -31,6 +31,7 @@ import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import {
   canAccessResidentEvidence,
   canCaptureResidentAssessment,
+  canUseMobileCapturePilot,
   canEditResidentProfile,
   canManageResidentDocuments,
   canPerformReconciliationActions,
@@ -541,7 +542,12 @@ export default async function ResidentDetailPage({
               <ResidentTimeline events={timelineEvents} />
             </div>
 
-            <AssessmentSection residentId={id} residentName={record.residentDisplayName} sessions={assessmentSessions} />
+            <AssessmentSection
+              residentId={id}
+              residentName={record.residentDisplayName}
+              sessions={assessmentSessions}
+              canUseMobileCapturePilot={canUseMobileCapturePilot(profile?.role)}
+            />
 
             <WellnessNotes residentId={id} notes={wellnessNotes} openFollowUps={openFollowUps} />
 
