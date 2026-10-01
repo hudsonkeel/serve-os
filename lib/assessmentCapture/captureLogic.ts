@@ -11,14 +11,14 @@
 // Original recorded blobs are preserved exactly: this module names and verifies them, it never
 // concatenates, remuxes, or transcodes anything.
 
-import { canCaptureResidentAssessment, canUseMobileCapturePilot } from "../auth/permissions.ts";
+import { canCaptureResidentAssessment, canInspectCapturedAssessmentAudio } from "../auth/permissions.ts";
 import type { AuthRole } from "../auth/constants.ts";
 
 export const CAPTURED_SESSION_STATUS = "captured" as const;
 export const RECORDING_SESSION_STATUS = "recording" as const;
 export const INTAKE_AUDIO_BUCKET = "intake-audio";
 export const NATIVE_CAPTURE_ORIGIN = "serve_os_native_capture";
-export const NATIVE_CAPTURE_VERSION = "mobile-capture-pilot-v0.1";
+export const NATIVE_CAPTURE_VERSION = "native-capture-v0.1";
 export const CHUNK_TIMESLICE_MS = 10_000;
 export const MAX_CHUNK_INDEX = 999_999;
 export const CHUNK_DOWNLOAD_URL_TTL_SECONDS = 300;
@@ -230,25 +230,26 @@ export interface CaptureSessionLookup {
 export type CaptureSessionResumeDecision =
   | { kind: "resume"; sessionId: string }
   | { kind: "create" }
-  | { kind: "blocked"; error: string }
   | { kind: "error"; error: string };
-
-export const FOREIGN_RECORDING_SESSION_MESSAGE =
-  "This person already has an in-progress assessment from the existing capture flow. The mobile capture pilot will not modify it — use a different (fictional) test record.";
 
 /** Ported from feature/assessment-aws-transcription-pipeline (43709f5) and adapted:
  *  - a lookup ERROR always yields "error", never "create" — a failed lookup must never silently
  *    start a duplicate session (the original defect);
  *  - only a NATIVE capture session is ever resumed;
- *  - an in-progress session from any other capture flow blocks the pilot outright rather than
- *    being resumed (appending audio to it) or shadowed by a second concurrent session. */
+ *  - an in-progress session from any other capture flow (e.g. a stale session left 'recording'
+ *    by the legacy external recorder) is ignored: never resumed, never written to, and never a
+ *    reason to refuse capture — so a resident with leftover legacy state can still be assessed,
+ *    while that legacy session and its audio stay exactly as they are. */
 export function decideCaptureSessionResume(lookup: CaptureSessionLookup): CaptureSessionResumeDecision {
   if (lookup.error) return { kind: "error", error: lookup.error };
-  const foreign = lookup.sessions.filter((s) => !s.isNativeCapture);
-  if (foreign.length > 0) return { kind: "blocked", error: FOREIGN_RECORDING_SESSION_MESSAGE };
-  const native = [...lookup.sessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  const native = lookup.sessions.filter((s) => s.isNativeCapture).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   if (native.length > 0) return { kind: "resume", sessionId: native[0].id };
   return { kind: "create" };
+}
+
+/** The one in-app destination of the normal Assessment/Reassessment button. */
+export function nativeCaptureHref(residentId: string): string {
+  return `/residents/${encodeURIComponent(residentId)}/assessment/capture`;
 }
 
 // ─── Per-chunk upload idempotency ─────────────────────────────────────────────────────────────
@@ -446,26 +447,31 @@ export function decideCaptureFinalize(input: {
 
 export type CaptureAccessDecision = { ok: true } | { ok: false; error: string };
 
-/** Authorization + ownership for every native-capture action. Role must pass BOTH the current
- * assessment-capture permission and the pilot restriction; the resident must be inside the
- * caller's community scope; and, when a session is involved, it must belong to exactly this
- * resident, be a native-capture session, and be in an allowed status. */
+/** Authorization + ownership for every native-capture action. Recording requires exactly the
+ * permission that governs the normal Assessment button (canCaptureResidentAssessment) — no
+ * broader. Raw-audio inspection additionally requires canInspectCapturedAssessmentAudio. The
+ * resident must be inside the caller's community scope; and, when a session is involved, it must
+ * belong to exactly this resident, be a native-capture session, and be in an allowed status. */
 export function decideCaptureAccess(input: {
   role: AuthRole | null | undefined;
   residentInScope: boolean;
   residentId: string;
   session?: { residentId: string; status: string; isNativeCapture: boolean } | null;
   allowedStatuses?: readonly string[];
+  requireAudioInspection?: boolean;
 }): CaptureAccessDecision {
   if (!input.role) return { ok: false, error: "You must be signed in." };
-  if (!canCaptureResidentAssessment(input.role) || !canUseMobileCapturePilot(input.role)) {
-    return { ok: false, error: "You do not have permission to use the mobile capture pilot." };
+  if (!canCaptureResidentAssessment(input.role)) {
+    return { ok: false, error: "You do not have permission to capture assessments." };
+  }
+  if (input.requireAudioInspection && !canInspectCapturedAssessmentAudio(input.role)) {
+    return { ok: false, error: "You do not have permission to inspect captured audio." };
   }
   if (!input.residentInScope) return { ok: false, error: "Resident not found." };
   if (input.session === undefined) return { ok: true };
   if (input.session === null) return { ok: false, error: "Assessment session not found for this resident." };
   if (input.session.residentId !== input.residentId) return { ok: false, error: "Assessment session not found for this resident." };
-  if (!input.session.isNativeCapture) return { ok: false, error: "This assessment was not recorded with the mobile capture pilot." };
+  if (!input.session.isNativeCapture) return { ok: false, error: "This assessment was not recorded in Serve OS." };
   if (input.allowedStatuses && !input.allowedStatuses.includes(input.session.status)) {
     return { ok: false, error: `This assessment is '${assessmentSessionStatusLabel(input.session.status)}' and cannot accept this action.` };
   }

@@ -32,7 +32,7 @@ import {
 } from "@/lib/data/nativeAssessmentCapture";
 
 // Server actions for Assessment Mobile Capture v0.1 — the native, in-browser recorder at
-// /residents/[id]/assessment/capture (pilot: admin/manager only, fictional test data only).
+// /residents/[id]/assessment/capture, opened by the normal Assessment/Reassessment button.
 //
 // Separate from lib/actions/assessmentCapture.ts (the existing production "Assessment" button's
 // external-capture handoff), which is untouched. Every action here is reachable by direct POST,
@@ -65,7 +65,8 @@ async function requireResidentAccess(residentId: unknown): Promise<{ ctx: Ctx; r
 async function requireSessionAccess(
   residentId: unknown,
   assessmentSessionId: unknown,
-  allowedStatuses: readonly string[]
+  allowedStatuses: readonly string[],
+  requireAudioInspection = false
 ): Promise<{ ctx: Ctx; residentId: string; session: NativeCaptureSessionState } | AccessError> {
   const access = await requireResidentAccess(residentId);
   if ("error" in access) return access;
@@ -78,6 +79,7 @@ async function requireSessionAccess(
     residentId: access.residentId,
     session: session ? { residentId: session.residentId, status: session.status, isNativeCapture: session.isNativeCapture } : null,
     allowedStatuses,
+    requireAudioInspection,
   });
   if (!decision.ok || !session) return { error: decision.ok ? "Assessment session not found for this resident." : decision.error };
   return { ...access, session };
@@ -92,8 +94,7 @@ export interface NativeCaptureSessionInfo {
 
 export type NativeCaptureStartState =
   | { kind: "none" }
-  | { kind: "resumable"; session: NativeCaptureSessionInfo }
-  | { kind: "blocked"; error: string };
+  | { kind: "resumable"; session: NativeCaptureSessionInfo };
 
 async function describeSession(assessmentSessionId: string, resumed: boolean): Promise<{ session?: NativeCaptureSessionInfo; error?: string }> {
   const listing = await listStoredChunksForSession(assessmentSessionId);
@@ -115,7 +116,6 @@ export async function getNativeCaptureStartState(residentId: string): Promise<Na
   if ("error" in access) return { kind: "error", error: access.error };
   const decision = decideCaptureSessionResume(await lookupRecordingSessionsForResident(access.residentId));
   if (decision.kind === "error") return { kind: "error", error: decision.error };
-  if (decision.kind === "blocked") return { kind: "blocked", error: decision.error };
   if (decision.kind === "create") return { kind: "none" };
   const described = await describeSession(decision.sessionId, true);
   if (!described.session) return { kind: "error", error: described.error ?? "Could not load the in-progress assessment." };
@@ -129,7 +129,7 @@ export async function startOrResumeNativeCapture(residentId: string): Promise<{ 
   if ("error" in access) return { error: access.error };
 
   const decision = decideCaptureSessionResume(await lookupRecordingSessionsForResident(access.residentId));
-  if (decision.kind === "error" || decision.kind === "blocked") return { error: decision.error };
+  if (decision.kind === "error") return { error: decision.error };
   if (decision.kind === "resume") return describeSession(decision.sessionId, true);
 
   // Same community resolution as startAssessmentForExistingPerson (lib/actions/
@@ -258,7 +258,8 @@ export async function finishNativeCapture(input: {
 }
 
 // ─── Admin inspection for Test #1 ─────────────────────────────────────────────────────────────
-// Scoped to exactly one native-capture session, pilot roles only. Not a general audio browser:
+// Scoped to exactly one native-capture session; admin/manager only (canInspectCapturedAssessmentAudio).
+// Not a general audio browser:
 // a non-native session (e.g. the existing capture flow's real recordings) is refused outright.
 
 export interface CapturedAudioInspection {
@@ -273,7 +274,7 @@ export async function inspectNativeCapturedAudio(input: {
   residentId: string;
   assessmentSessionId: string;
 }): Promise<{ inspection?: CapturedAudioInspection; error?: string }> {
-  const access = await requireSessionAccess(input?.residentId, input?.assessmentSessionId, [RECORDING_SESSION_STATUS, CAPTURED_SESSION_STATUS]);
+  const access = await requireSessionAccess(input?.residentId, input?.assessmentSessionId, [RECORDING_SESSION_STATUS, CAPTURED_SESSION_STATUS], true);
   if ("error" in access) return { error: access.error };
   const listing = await listStoredChunksForSession(access.session.id);
   if (listing.error) return { error: listing.error };
@@ -295,7 +296,7 @@ export async function createNativeCapturedAudioDownloadLinks(input: {
   residentId: string;
   assessmentSessionId: string;
 }): Promise<{ links?: { chunkIndex: number; runId: string | null; name: string; signedUrl: string }[]; error?: string }> {
-  const access = await requireSessionAccess(input?.residentId, input?.assessmentSessionId, [RECORDING_SESSION_STATUS, CAPTURED_SESSION_STATUS]);
+  const access = await requireSessionAccess(input?.residentId, input?.assessmentSessionId, [RECORDING_SESSION_STATUS, CAPTURED_SESSION_STATUS], true);
   if ("error" in access) return { error: access.error };
   const listing = await listStoredChunksForSession(access.session.id);
   if (listing.error) return { error: listing.error };

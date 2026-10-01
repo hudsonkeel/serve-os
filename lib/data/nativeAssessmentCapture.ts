@@ -143,9 +143,9 @@ export async function getNativeCaptureSessionState(
 
 /** Creates a new 'recording' session plus its native live_audio_stream source (the marker that
  * makes it resumable by native capture). Never writes 'queued'. If the source insert fails twice
- * the session is left as-is (status 'recording', no native marker) and an error is returned — it
- * is then treated as a foreign in-progress session and blocks further pilot capture for this
- * resident rather than being silently resumed or duplicated. */
+ * the session is left as-is (status 'recording', no native marker, no audio) and an error is
+ * returned — it is then treated like any non-native session: never resumed or written to. The
+ * assessor's next Start creates a fresh native session. */
 export async function createNativeCaptureSession(input: {
   residentId: string;
   startedBy: string;

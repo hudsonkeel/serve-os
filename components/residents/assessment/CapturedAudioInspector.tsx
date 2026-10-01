@@ -59,7 +59,7 @@ export function CapturedAudioInspector({ residentId, assessmentSessionId }: { re
           disabled={isPending}
           className="font-sans text-xs font-semibold text-navy underline disabled:opacity-50"
         >
-          {isPending ? "Loading…" : "Inspect captured audio (pilot)"}
+          {isPending ? "Loading…" : "Inspect captured audio (admin)"}
         </button>
         {error && <p className="font-sans text-xs text-danger-text">{error}</p>}
       </div>

@@ -31,7 +31,7 @@ import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import {
   canAccessResidentEvidence,
   canCaptureResidentAssessment,
-  canUseMobileCapturePilot,
+  canInspectCapturedAssessmentAudio,
   canEditResidentProfile,
   canManageResidentDocuments,
   canPerformReconciliationActions,
@@ -546,7 +546,7 @@ export default async function ResidentDetailPage({
               residentId={id}
               residentName={record.residentDisplayName}
               sessions={assessmentSessions}
-              canUseMobileCapturePilot={canUseMobileCapturePilot(profile?.role)}
+              canInspectCapturedAudio={canInspectCapturedAssessmentAudio(profile?.role)}
             />
 
             <WellnessNotes residentId={id} notes={wellnessNotes} openFollowUps={openFollowUps} />

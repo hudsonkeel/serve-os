@@ -82,14 +82,15 @@ export function canCaptureResidentAssessment(role: AuthRole | null | undefined):
   return Boolean(role && RESIDENT_ASSESSMENT_CAPTURE_ROLES.includes(role));
 }
 
-// Assessment Mobile Capture v0.1 pilot — the native in-browser recorder
-// (/residents/[id]/assessment/capture) is a test affordance only while it
-// is being proven on real devices with fictional data. Narrower than
-// canCaptureResidentAssessment on purpose (admin/manager only); every
-// native-capture server action requires BOTH predicates. The existing
-// production Assessment button (external capture handoff) is unaffected.
-const MOBILE_CAPTURE_PILOT_ROLES: readonly AuthRole[] = ["admin", "manager"];
+// Assessment Mobile Capture — recording itself is governed by
+// canCaptureResidentAssessment above (the same predicate as the normal
+// Assessment button, which now opens native capture). This narrower
+// predicate governs only the admin inspection tool for one session's raw
+// captured audio (metadata + short-lived download links of the original
+// blobs) — direct access to raw recordings is kept to admin/manager, and is
+// always a subset of the capture roles.
+const CAPTURED_AUDIO_INSPECTION_ROLES: readonly AuthRole[] = ["admin", "manager"];
 
-export function canUseMobileCapturePilot(role: AuthRole | null | undefined): boolean {
-  return Boolean(role && MOBILE_CAPTURE_PILOT_ROLES.includes(role) && canCaptureResidentAssessment(role));
+export function canInspectCapturedAssessmentAudio(role: AuthRole | null | undefined): boolean {
+  return Boolean(role && CAPTURED_AUDIO_INSPECTION_ROLES.includes(role) && canCaptureResidentAssessment(role));
 }

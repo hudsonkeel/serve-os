@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
   CAPTURED_SESSION_STATUS,
   ASSESSMENT_SESSION_STATUS_LABELS,
-  FOREIGN_RECORDING_SESSION_MESSAGE,
+  nativeCaptureHref,
   assessmentSessionStatusLabel,
   normalizeMimeType,
   mimeTypeToExtension,
@@ -26,7 +26,8 @@ import {
 } from "../captureLogic.ts";
 import { isEligibleForDispatch, isStaleProcessing, decideRetryEligibility } from "../../assessmentIntelligence/processingQueue.ts";
 import { isReviewReadyStatus } from "../../assessmentIntelligence/currentAssessmentSelection.ts";
-import { canUseMobileCapturePilot } from "../../auth/permissions.ts";
+import { canCaptureResidentAssessment, canInspectCapturedAssessmentAudio } from "../../auth/permissions.ts";
+import { AUTH_ROLES } from "../../auth/constants.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
 const tests: Test[] = [];
@@ -253,14 +254,19 @@ test("resume: resumes the newest native in-progress session", () => {
   assert.deepEqual(d, { kind: "resume", sessionId: "new" });
 });
 
-test("resume: an in-progress session from another capture flow blocks — never resumed, never shadowed", () => {
+test("resume: a legacy-flow in-progress session is ignored — never resumed; the native one is", () => {
   const d = decideCaptureSessionResume({
     sessions: [
-      { id: "legacy", startedAt: "2026-09-01T10:00:00Z", isNativeCapture: false },
+      { id: "legacy", startedAt: "2026-10-01T10:00:00Z", isNativeCapture: false },
       { id: "native", startedAt: "2026-09-30T10:00:00Z", isNativeCapture: true },
     ],
   });
-  assert.deepEqual(d, { kind: "blocked", error: FOREIGN_RECORDING_SESSION_MESSAGE });
+  assert.deepEqual(d, { kind: "resume", sessionId: "native" });
+});
+
+test("resume: only a stale legacy session exists -> create a new native session (legacy one untouched, capture not blocked)", () => {
+  const d = decideCaptureSessionResume({ sessions: [{ id: "legacy", startedAt: "2026-09-01T10:00:00Z", isNativeCapture: false }] });
+  assert.deepEqual(d, { kind: "create" });
 });
 
 // ─── existing-object idempotency ────────────────────────────────────────────────────────────
@@ -388,13 +394,27 @@ test("finalize: malformed manifest entries are rejected", () => {
 
 const nativeSession = { residentId: RESIDENT, status: "recording", isNativeCapture: true };
 
-test("access: pilot limited to admin/manager; executive, operations, office_staff, signed-out all refused", () => {
-  assert.equal(canUseMobileCapturePilot("admin"), true);
-  assert.equal(canUseMobileCapturePilot("manager"), true);
-  for (const role of ["executive", "operations", "office_staff"] as const) {
-    assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, false, role);
+test("access: exactly the roles authorized for the normal Assessment button may capture — no broader", () => {
+  for (const role of AUTH_ROLES) {
+    assert.equal(
+      decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok,
+      canCaptureResidentAssessment(role),
+      role
+    );
   }
+  for (const role of ["admin", "manager", "executive", "operations"] as const) {
+    assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, true, role);
+  }
+  assert.equal(decideCaptureAccess({ role: "office_staff", residentInScope: true, residentId: RESIDENT }).ok, false);
   assert.equal(decideCaptureAccess({ role: null, residentInScope: true, residentId: RESIDENT }).ok, false);
+});
+
+test("access: raw-audio inspection stays admin/manager only, and is always a subset of capture roles", () => {
+  for (const role of AUTH_ROLES) {
+    const inspect = decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT, requireAudioInspection: true }).ok;
+    assert.equal(inspect, role === "admin" || role === "manager", role);
+    if (canInspectCapturedAssessmentAudio(role)) assert.equal(canCaptureResidentAssessment(role), true, role);
+  }
 });
 
 test("access: resident outside the caller's community scope is refused", () => {
@@ -423,6 +443,64 @@ test("access: session status must be in the action's allowed set", () => {
   const base = { role: "admin" as const, residentInScope: true, residentId: RESIDENT };
   assert.equal(decideCaptureAccess({ ...base, session: nativeSession, allowedStatuses: ["recording"] }).ok, true);
   assert.equal(decideCaptureAccess({ ...base, session: { ...nativeSession, status: "draft" }, allowedStatuses: ["recording", "captured"] }).ok, false);
+});
+
+// ─── entry point: the one normal Assessment button ──────────────────────────────────────────
+
+function walk(rel: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(join(repoRoot, rel), { withFileTypes: true })) {
+    const child = `${rel}/${entry.name}`;
+    if (entry.isDirectory()) out.push(...walk(child));
+    else if (/\.(tsx?|jsx?)$/.test(entry.name) && !child.includes("__tests__")) out.push(child);
+  }
+  return out;
+}
+const uiFiles = [...walk("app"), ...walk("components")];
+const codeOf = (rel: string) => read(rel).replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+test("entry: native capture href is the in-app capture route", () => {
+  assert.equal(nativeCaptureHref(RESIDENT), `/residents/${RESIDENT}/assessment/capture`);
+});
+
+test("entry: the existing Assessment button links to native capture and no longer launches serve-intake", () => {
+  const code = codeOf("components/residents/AssessmentCaptureButton.tsx");
+  assert.match(code, /href=\{nativeCaptureHref\(residentId\)\}/);
+  assert.ok(!/startAssessmentCapture|window\.open|NEXT_PUBLIC_SERVE_INTAKE_URL|serve-intake|captureUrl/.test(code));
+});
+
+test("entry: the button keeps its props/label contract for both call sites", () => {
+  const code = codeOf("components/residents/AssessmentCaptureButton.tsx");
+  assert.match(code, /label = "Assessment"/);
+  assert.match(code, /className=\{\s*className \?\?/);
+  assert.match(codeOf("components/residents/WorkWithThisPersonStrip.tsx"), /canCaptureAssessment && \(\s*<AssessmentCaptureButton/);
+});
+
+test("entry: exactly one assessment-recording action — no other UI links to capture or to the legacy recorder", () => {
+  const linking = uiFiles.filter((f) => /nativeCaptureHref\(|\/assessment\/capture/.test(codeOf(f)));
+  assert.deepEqual(linking, ["components/residents/AssessmentCaptureButton.tsx"]);
+  for (const f of uiFiles) {
+    const code = codeOf(f);
+    assert.ok(!/Record on this device|Mobile Capture Pilot/.test(code), `${f} still has the pilot affordance`);
+    assert.ok(!/startAssessmentCapture\(/.test(code), `${f} still launches the legacy handoff`);
+  }
+});
+
+test("entry: the capture page is gated by the same permission as the button", () => {
+  const code = codeOf("app/residents/[id]/assessment/capture/page.tsx");
+  assert.match(code, /canCaptureResidentAssessment\(profile\.role\)/);
+  assert.ok(!/canUseMobileCapturePilot/.test(code));
+});
+
+test("history: Assessment History still lists every session with its label, Review link, failure Retry, and paste fallback", () => {
+  const code = codeOf("components/residents/AssessmentSection.tsx");
+  assert.match(code, /sessions\.map\(/);
+  assert.match(code, /s\.status === "draft" \|\| s\.status === "needs_review" \|\| s\.status === "approved"/);
+  assert.match(code, /<RetrySessionButton session=\{s\} \/>/);
+  assert.match(code, /Paste Transcript \(admin\/test fallback\)/);
+  for (const status of ["recording", "queued", "processing", "failed", "draft", "needs_review", "approved", "amended", "operationalized"]) {
+    assert.ok(ASSESSMENT_SESSION_STATUS_LABELS[status], status);
+  }
 });
 
 // ─── microphone errors ──────────────────────────────────────────────────────────────────────

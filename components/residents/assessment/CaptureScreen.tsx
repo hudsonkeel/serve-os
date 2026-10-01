@@ -1,6 +1,7 @@
 "use client";
 
-// Assessment Mobile Capture v0.1 — native in-browser assessment recorder (pilot).
+// Assessment Mobile Capture — native in-browser assessment recorder (opened by the normal
+// Assessment/Reassessment button).
 //
 // Reliability model (ported from feature/assessment-aws-transcription-pipeline's CaptureScreen,
 // itself from serve-intake-mvp, with that branch's defects fixed):
@@ -34,7 +35,7 @@ import {
 } from "@/lib/assessmentCapture/captureLogic";
 import { addChunk, deleteChunksForSession, getChunksForSession, setChunkState, type LocalChunkRecord } from "@/lib/assessmentCapture/idb";
 
-type Phase = "ready" | "starting" | "recording" | "paused" | "interrupted" | "finishing" | "done" | "blocked" | "fatal";
+type Phase = "ready" | "starting" | "recording" | "paused" | "interrupted" | "finishing" | "done";
 
 interface Counts {
   total: number;
@@ -83,11 +84,11 @@ interface CaptureScreenProps {
 }
 
 export function CaptureScreen({ residentId, residentDisplayName, initialState }: CaptureScreenProps) {
-  const [phase, setPhaseState] = useState<Phase>(initialState.kind === "blocked" ? "blocked" : "ready");
+  const [phase, setPhaseState] = useState<Phase>("ready");
   const [elapsed, setElapsed] = useState(0);
   const [counts, setCounts] = useState<Counts>(EMPTY_COUNTS);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(initialState.kind === "blocked" ? initialState.error : null);
+  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(
     initialState.kind === "resumable"
       ? `Resuming an in-progress capture — ${initialState.session.uploadedChunkCount} segment(s) already saved.`
@@ -316,7 +317,7 @@ export function CaptureScreen({ residentId, residentDisplayName, initialState }:
       const recorder = chosen ? new MediaRecorder(stream, { mimeType: chosen }) : new MediaRecorder(stream);
       const recorderMime = recorder.mimeType || chosen;
       if (recorderMime && !mimeTypeToExtension(recorderMime)) {
-        throw new Error(`This browser records audio as "${recorderMime}", which the pilot does not support yet.`);
+        throw new Error(`This browser records audio as "${recorderMime}", which Serve OS does not support yet.`);
       }
       const runId = newRunId();
       recorderRef.current = recorder;
@@ -628,10 +629,6 @@ export function CaptureScreen({ residentId, residentDisplayName, initialState }:
 
   return (
     <div className="mx-auto flex min-h-[80vh] w-full max-w-md flex-col gap-5 px-4 py-6">
-      <div className="rounded-lg border border-warning-text/30 bg-warning-surface px-3 py-2 font-sans text-xs text-warning-text">
-        <strong>Mobile Capture Pilot</strong> — fictional role-play test data only. Audio is saved but not transcribed yet.
-      </div>
-
       <div className="text-center">
         <p className="font-sans text-sm uppercase tracking-wide text-muted">Assessing</p>
         <h1 className="mt-1 font-serif text-2xl font-light text-body">{residentDisplayName}</h1>
@@ -670,9 +667,7 @@ export function CaptureScreen({ residentId, residentDisplayName, initialState }:
                   ? "Starting microphone…"
                   : phase === "interrupted"
                     ? "Stopped"
-                    : phase === "blocked"
-                      ? "Unavailable"
-                      : "Ready"}
+                    : "Ready"}
         </p>
       </div>
 
@@ -695,11 +690,7 @@ export function CaptureScreen({ residentId, residentDisplayName, initialState }:
       {uploadNote && <p className="text-center font-sans text-xs text-warning-text">{uploadNote}</p>}
 
       <div className="mt-auto space-y-3">
-        {phase === "blocked" ? (
-          <Link href={backHref} className="block w-full rounded-lg border border-ivory-border py-3 text-center font-sans text-button font-medium text-body">
-            Back to {residentDisplayName}
-          </Link>
-        ) : phase === "finishing" ? (
+        {phase === "finishing" ? (
           <button
             type="button"
             onClick={handleKeepRecording}
