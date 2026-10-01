@@ -12,9 +12,15 @@
 // collide with this record shape. Blobs are stored exactly as produced — never concatenated or
 // re-encoded.
 
+import type { RunLogEntry } from "./recordingHealth.ts";
+
 const DB_NAME = "serve-os-mobile-capture";
-const DB_VERSION = 1;
+// v2 (resilience hardening): adds the "runs" store — the per-assessment recorder-run log
+// (start/end/reason), so interruption history survives a reload. Upgrading from v1 only ADDS a
+// store; existing chunks are untouched.
+const DB_VERSION = 2;
 const STORE = "chunks";
+const RUN_STORE = "runs";
 
 export type LocalChunkState = "pending" | "uploaded" | "conflict" | "orphaned";
 
@@ -41,6 +47,10 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE)) {
         const store = db.createObjectStore(STORE, { keyPath: ["sessionId", "chunkIndex"] });
         store.createIndex("bySession", "sessionId", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(RUN_STORE)) {
+        const runs = db.createObjectStore(RUN_STORE, { keyPath: ["sessionId", "runId"] });
+        runs.createIndex("bySession", "sessionId", { unique: false });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -101,6 +111,49 @@ export async function deleteChunksForSession(sessionId: string): Promise<void> {
   const tx = db.transaction(STORE, "readwrite");
   const index = tx.objectStore(STORE).index("bySession");
   const request = index.openCursor(IDBKeyRange.only(sessionId));
+  request.onsuccess = () => {
+    const cursor = request.result;
+    if (cursor) {
+      cursor.delete();
+      cursor.continue();
+    }
+  };
+  await txDone(tx);
+}
+
+// ─── Recorder-run log (interruption metadata) ─────────────────────────────────────────────────
+
+export interface LocalRunRecord extends RunLogEntry {
+  sessionId: string;
+}
+
+/** Writes the current state of one run (insert or update — a run's end is recorded after its
+ * start). Never touches chunk records. */
+export async function saveRun(sessionId: string, run: RunLogEntry): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(RUN_STORE, "readwrite");
+  tx.objectStore(RUN_STORE).put({ ...run, sessionId } satisfies LocalRunRecord);
+  await txDone(tx);
+}
+
+export async function getRunsForSession(sessionId: string): Promise<RunLogEntry[]> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(RUN_STORE, "readonly");
+    const request = tx.objectStore(RUN_STORE).index("bySession").getAll(IDBKeyRange.only(sessionId));
+    request.onsuccess = () => {
+      const rows = ((request.result as LocalRunRecord[]) || []).map(({ runId, startedAt, endedAt, endReason }) => ({ runId, startedAt, endedAt, endReason }));
+      resolve(rows.sort((a, b) => a.startedAt - b.startedAt));
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/** Removes this session's run log — only after the server has confirmed 'captured'. */
+export async function deleteRunsForSession(sessionId: string): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(RUN_STORE, "readwrite");
+  const request = tx.objectStore(RUN_STORE).index("bySession").openCursor(IDBKeyRange.only(sessionId));
   request.onsuccess = () => {
     const cursor = request.result;
     if (cursor) {

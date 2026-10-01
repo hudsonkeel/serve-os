@@ -15,6 +15,7 @@ import {
   type StorageObjectInfo,
   type StoredChunk,
 } from "../assessmentCapture/captureLogic.ts";
+import type { ContinuitySummary, RunLogEntry } from "../assessmentCapture/recordingHealth.ts";
 
 // Data access for Assessment Mobile Capture v0.1 (native in-browser capture). Deliberately a
 // separate module from lib/data/assessmentIntelligence.ts: nothing here participates in the
@@ -266,6 +267,8 @@ export async function finalizeNativeCaptureSession(input: {
   existingPayload: Record<string, unknown> | null;
   summary: CapturedAudioSummary;
   manifest: readonly FinalizeManifestEntry[];
+  runLog: readonly RunLogEntry[];
+  continuity: ContinuitySummary;
 }): Promise<{ status?: typeof CAPTURED_SESSION_STATUS; error?: string }> {
   const supabase = createServerClient();
   const finalizedAt = new Date().toISOString();
@@ -291,6 +294,19 @@ export async function finalizeNativeCaptureSession(input: {
     })),
     first_recorded_at: recordedAts.length ? new Date(Math.min(...recordedAts)).toISOString() : null,
     last_recorded_at: recordedAts.length ? new Date(Math.max(...recordedAts)).toISOString() : null,
+    // Resilience hardening: whether this was one continuous capture, and if not, every recorder
+    // run with when/why it ended (reason only where the browser distinguished one) and the
+    // measured gaps between runs. Lives in the existing source_payload JSON — no schema change.
+    capture_continuity: input.continuity.continuity,
+    interruption_count: input.continuity.interruptionCount,
+    interruptions: input.continuity.interruptions.map((i) => ({ run_id: i.runId, reason: i.reason, at: new Date(i.at).toISOString() })),
+    gaps_between_runs_ms: input.continuity.gapsBetweenRunsMs,
+    run_log: input.runLog.map((r) => ({
+      run_id: r.runId,
+      started_at: new Date(r.startedAt).toISOString(),
+      ended_at: r.endedAt === null ? null : new Date(r.endedAt).toISOString(),
+      end_reason: r.endReason,
+    })),
   };
 
   const { error: sourceError } = await supabase

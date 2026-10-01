@@ -115,6 +115,48 @@ export function CapturedAudioInspector({ residentId, assessmentSessionId }: { re
           </tbody>
         </table>
       )}
+      {inspection && (
+        <div className="space-y-1">
+          {inspection.continuity ? (
+            <>
+              <p className={inspection.continuity.continuity === "continuous" ? "text-success-text" : "font-semibold text-warning-text"}>
+                {inspection.continuity.continuity === "continuous"
+                  ? "Continuous recording (one uninterrupted run)."
+                  : `Interrupted recording — ${inspection.continuity.interruptionCount} interruption(s); some of the conversation may not have been recorded.`}
+              </p>
+              {inspection.continuity.runs.length > 0 && (
+                <table className="w-full text-left">
+                  <thead className="text-muted">
+                    <tr>
+                      <th className="font-medium">Run</th>
+                      <th className="font-medium">Started</th>
+                      <th className="font-medium">Ended</th>
+                      <th className="font-medium">Why it ended</th>
+                    </tr>
+                  </thead>
+                  <tbody className="font-mono">
+                    {inspection.continuity.runs.map((r) => (
+                      <tr key={r.runId}>
+                        <td>{r.runId}</td>
+                        <td>{r.startedAt ? new Date(r.startedAt).toLocaleTimeString() : "—"}</td>
+                        <td>{r.endedAt ? new Date(r.endedAt).toLocaleTimeString() : "—"}</td>
+                        <td>{r.endReason ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {inspection.continuity.gapsBetweenRunsMs.length > 0 && (
+                <p className="text-muted">
+                  Gaps between runs: {inspection.continuity.gapsBetweenRunsMs.map((g) => `${Math.round(g / 1000)}s`).join(", ")}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-muted">Continuity is recorded when the assessment is finished.</p>
+          )}
+        </div>
+      )}
       {links ? (
         <div className="space-y-1">
           <p className="text-muted">Download links expire in 5 minutes. Files are the original, unmodified recorded blobs.</p>

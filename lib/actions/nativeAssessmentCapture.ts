@@ -18,6 +18,7 @@ import {
   type CapturedAudioSummary,
   type FinalizeManifestEntry,
 } from "@/lib/assessmentCapture/captureLogic";
+import { sanitizeRunLog, summarizeContinuity } from "@/lib/assessmentCapture/recordingHealth";
 import {
   isResidentInCaptureScope,
   lookupRecordingSessionsForResident,
@@ -202,7 +203,13 @@ export async function requestNativeChunkUpload(input: {
 const MAX_MANIFEST_ENTRIES = 20_000;
 
 export type FinishNativeCaptureResult =
-  | { status: typeof CAPTURED_SESSION_STATUS; chunkCount: number; totalBytes: number }
+  | {
+      status: typeof CAPTURED_SESSION_STATUS;
+      chunkCount: number;
+      totalBytes: number;
+      continuity: "continuous" | "interrupted";
+      interruptionCount: number;
+    }
   | { incompleteChunkIndexes: number[]; error: string }
   | { error: string };
 
@@ -213,6 +220,8 @@ export async function finishNativeCapture(input: {
   residentId: string;
   assessmentSessionId: string;
   manifest: FinalizeManifestEntry[];
+  /** This device's recorder-run log (untrusted; sanitized). Optional for older clients. */
+  runLog?: unknown;
 }): Promise<FinishNativeCaptureResult> {
   if (!Array.isArray(input?.manifest) || input.manifest.length > MAX_MANIFEST_ENTRIES) {
     return { error: "Invalid recording manifest." };
@@ -240,21 +249,38 @@ export async function finishNativeCapture(input: {
 
   if (decision.kind === "already_captured") {
     const summary = summarizeStoredChunks(listing.chunks);
-    return { status: CAPTURED_SESSION_STATUS, chunkCount: summary.chunkCount, totalBytes: summary.totalBytes };
+    const prior = access.session.sourcePayload;
+    return {
+      status: CAPTURED_SESSION_STATUS,
+      chunkCount: summary.chunkCount,
+      totalBytes: summary.totalBytes,
+      continuity: prior?.capture_continuity === "continuous" ? "continuous" : "interrupted",
+      interruptionCount: typeof prior?.interruption_count === "number" ? prior.interruption_count : 0,
+    };
   }
   if (decision.kind === "incomplete") return { incompleteChunkIndexes: decision.missingChunkIndexes, error: decision.reason };
   if (decision.kind === "rejected") return { error: decision.reason };
   if (!access.session.sourceId) return { error: "No audio source found for this assessment." };
 
+  const runLog = sanitizeRunLog(input.runLog);
+  const continuity = summarizeContinuity(runLog, decision.summary.runCount);
   const result = await finalizeNativeCaptureSession({
     assessmentSessionId: access.session.id,
     sourceId: access.session.sourceId,
     existingPayload: access.session.sourcePayload,
     summary: decision.summary,
     manifest,
+    runLog,
+    continuity,
   });
   if (!result.status) return { error: result.error ?? "Could not finish the assessment." };
-  return { status: result.status, chunkCount: decision.summary.chunkCount, totalBytes: decision.summary.totalBytes };
+  return {
+    status: result.status,
+    chunkCount: decision.summary.chunkCount,
+    totalBytes: decision.summary.totalBytes,
+    continuity: continuity.continuity,
+    interruptionCount: continuity.interruptionCount,
+  };
 }
 
 // ─── Admin inspection for Test #1 ─────────────────────────────────────────────────────────────
@@ -268,6 +294,25 @@ export interface CapturedAudioInspection {
   summary: CapturedAudioSummary;
   chunks: { chunkIndex: number; runId: string | null; mimeType: string | null; size: number | null; createdAt: string | null }[];
   finalizedAt: string | null;
+  /** Recorded at Finish (null while still recording). */
+  continuity: {
+    continuity: string;
+    interruptionCount: number;
+    runs: { runId: string; startedAt: string | null; endedAt: string | null; endReason: string | null }[];
+    gapsBetweenRunsMs: number[];
+  } | null;
+}
+
+function readContinuity(payload: Record<string, unknown> | null): CapturedAudioInspection["continuity"] {
+  if (!payload || typeof payload.capture_continuity !== "string") return null;
+  const runLog = Array.isArray(payload.run_log) ? (payload.run_log as Record<string, unknown>[]) : [];
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
+  return {
+    continuity: payload.capture_continuity,
+    interruptionCount: typeof payload.interruption_count === "number" ? payload.interruption_count : 0,
+    runs: runLog.map((r) => ({ runId: String(r.run_id ?? ""), startedAt: str(r.started_at), endedAt: str(r.ended_at), endReason: str(r.end_reason) })),
+    gapsBetweenRunsMs: Array.isArray(payload.gaps_between_runs_ms) ? (payload.gaps_between_runs_ms as unknown[]).filter((g): g is number => typeof g === "number") : [],
+  };
 }
 
 export async function inspectNativeCapturedAudio(input: {
@@ -286,6 +331,7 @@ export async function inspectNativeCapturedAudio(input: {
       summary: summarizeStoredChunks(listing.chunks, listing.unrecognized.length),
       chunks: listing.chunks.map((c) => ({ chunkIndex: c.chunkIndex, runId: c.runId, mimeType: c.mimeType, size: c.size, createdAt: c.createdAt })),
       finalizedAt: typeof finalizedAt === "string" ? finalizedAt : null,
+      continuity: readContinuity(access.session.sourcePayload),
     },
   };
 }
