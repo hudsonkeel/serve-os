@@ -500,3 +500,44 @@ export function microphoneErrorMessage(errorName: string | null | undefined): st
       return "The microphone could not be started. Check microphone permission and try again.";
   }
 }
+
+// ─── Transcription progress labels (no AWS/queue jargon) ──────────────────────────────────────
+
+export type AudioTranscriptionDisplayState = "awaiting" | "transcribing" | "failed" | "transcribed";
+
+export const SAFE_TRANSCRIPTION_FAILURE_MESSAGE =
+  "The recording is saved, but it couldn't be transcribed. Retry, or contact an administrator.";
+
+/** Status label for one session, refined by its recorded-audio transcription progress when the
+ * assessment came from Serve OS capture. Falls back to the plain status label otherwise. */
+export function assessmentSessionDisplayLabel(status: string, transcription?: AudioTranscriptionDisplayState): string {
+  if (transcription) {
+    if (status === "captured") return transcription === "transcribing" ? "Transcribing assessment" : "Audio captured — awaiting transcription";
+    if ((status === "queued" || status === "processing") && transcription === "transcribed") return "Transcript ready — preparing assessment";
+    if (status === "failed" && transcription === "failed") return "Transcription needs attention";
+  }
+  return assessmentSessionStatusLabel(status);
+}
+
+// ─── Synthetic-test marking (the only way is_synthetic_test becomes true) ──────────────────────
+
+/** An admin explicitly attests that ONE finished Serve OS recording is a fictional role-play with
+ * no real client information, before any transcription. Never inferred (not from a resident's
+ * name or anything else), never applied to a session from another capture flow, and never after
+ * transcription has started. */
+export function decideSyntheticTestMarking(input: {
+  role: AuthRole | null | undefined;
+  sessionStatus: string;
+  isNativeCapture: boolean;
+  alreadySynthetic: boolean;
+  transcriptionStarted: boolean;
+  attestedNoRealClientData: boolean;
+}): CaptureAccessDecision {
+  if (input.role !== "admin") return { ok: false, error: "Only an administrator can mark a recording as a synthetic test." };
+  if (!input.isNativeCapture) return { ok: false, error: "Only a recording made in Serve OS can be marked as a synthetic test." };
+  if (input.alreadySynthetic) return { ok: false, error: "This recording is already marked as a synthetic test." };
+  if (input.sessionStatus !== CAPTURED_SESSION_STATUS) return { ok: false, error: "Only a finished recording that is awaiting transcription can be marked." };
+  if (input.transcriptionStarted) return { ok: false, error: "Transcription has already started for this recording; it can no longer be marked." };
+  if (input.attestedNoRealClientData !== true) return { ok: false, error: "Confirm that this recording is fictional and contains no real client information." };
+  return { ok: true };
+}

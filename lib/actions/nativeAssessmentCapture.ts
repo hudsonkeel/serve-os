@@ -19,6 +19,8 @@ import {
   type FinalizeManifestEntry,
 } from "@/lib/assessmentCapture/captureLogic";
 import { sanitizeRunLog, summarizeContinuity } from "@/lib/assessmentCapture/recordingHealth";
+import { decideSyntheticTestMarking } from "@/lib/assessmentCapture/captureLogic";
+import { parseTranscriptionState, transcriptionDisplayState } from "@/lib/assessmentIntelligence/backgroundCore/transcription/transcriptionState";
 import {
   isResidentInCaptureScope,
   lookupRecordingSessionsForResident,
@@ -29,6 +31,7 @@ import {
   markNativeSourceUploading,
   finalizeNativeCaptureSession,
   createChunkDownloadUrls,
+  markNativeSessionSyntheticTest,
   type NativeCaptureSessionState,
 } from "@/lib/data/nativeAssessmentCapture";
 
@@ -301,6 +304,81 @@ export interface CapturedAudioInspection {
     runs: { runId: string; startedAt: string | null; endedAt: string | null; endReason: string | null }[];
     gapsBetweenRunsMs: number[];
   } | null;
+  isSyntheticTest: boolean;
+  syntheticAttestation: { attestedBy: string | null; attestedAt: string | null } | null;
+  /** Admin diagnostics for AWS transcription (null until transcription starts). */
+  transcription: {
+    displayState: string;
+    status: string;
+    batchId: string;
+    failureReason: string | null;
+    cleanupStatus: string;
+    runs: { order: number; runId: string; chunkRange: string; mediaFormat: string; attempt: number; state: string; jobName: string | null; failureReason: string | null }[];
+  } | null;
+}
+
+function readTranscription(raw: unknown, transcriptPersisted: boolean): CapturedAudioInspection["transcription"] {
+  const parsed = parseTranscriptionState(raw);
+  if (parsed === null) return null;
+  const displayState = transcriptionDisplayState({ state: parsed, transcriptPersisted });
+  if (parsed === "unreadable") return { displayState, status: "unreadable", batchId: "", failureReason: "Stored transcription state is unreadable.", cleanupStatus: "unknown", runs: [] };
+  return {
+    displayState,
+    status: parsed.status,
+    batchId: parsed.batchId,
+    failureReason: parsed.failureReason,
+    cleanupStatus: parsed.cleanup.status,
+    runs: parsed.runs.map((r) => ({
+      order: r.order,
+      runId: r.runId,
+      chunkRange: `${r.chunkIndexes[0]}–${r.chunkIndexes[r.chunkIndexes.length - 1]} (${r.chunkIndexes.length})`,
+      mediaFormat: r.mediaFormat,
+      attempt: r.attempt,
+      state: r.state,
+      jobName: r.jobName,
+      failureReason: r.failureReason,
+    })),
+  };
+}
+
+/** Admin-only: attest that ONE finished Serve OS recording is a fictional role-play with no real
+ * client information, before transcription. This is the only way is_synthetic_test becomes true;
+ * it authorizes AWS processing for this session alone, and only on a deployment running in
+ * synthetic test mode. */
+export async function markNativeCaptureSessionSyntheticTest(input: {
+  residentId: string;
+  assessmentSessionId: string;
+  attestNoRealClientData: boolean;
+}): Promise<{ marked?: true; error?: string }> {
+  const access = await requireSessionAccess(input?.residentId, input?.assessmentSessionId, [CAPTURED_SESSION_STATUS], true);
+  if ("error" in access) return { error: access.error };
+  const decision = decideSyntheticTestMarking({
+    role: access.ctx.role,
+    sessionStatus: access.session.status,
+    isNativeCapture: access.session.isNativeCapture,
+    alreadySynthetic: access.session.isSyntheticTest,
+    transcriptionStarted: access.session.transcriptionState !== null || access.session.transcriptPersisted,
+    attestedNoRealClientData: input?.attestNoRealClientData === true,
+  });
+  if (!decision.ok) return { error: decision.error };
+  if (!access.session.sourceId) return { error: "No audio source found for this assessment." };
+  const result = await markNativeSessionSyntheticTest({
+    assessmentSessionId: access.session.id,
+    sourceId: access.session.sourceId,
+    existingPayload: access.session.sourcePayload,
+    attestedBy: access.ctx.actorLabel,
+  });
+  return result.ok ? { marked: true } : { error: result.error ?? "Could not mark this recording." };
+}
+
+// Read-only inspection of a NATIVE recording is useful at every stage (capture, transcription,
+// extraction, review); non-native sessions remain refused by requireSessionAccess.
+const INSPECTABLE_STATUSES = ["recording", "captured", "queued", "processing", "failed", "draft", "needs_review", "approved", "amended", "operationalized"];
+
+function readAttestation(payload: Record<string, unknown> | null): CapturedAudioInspection["syntheticAttestation"] {
+  const a = payload?.synthetic_test_attestation as { attested_by?: unknown; attested_at?: unknown } | undefined;
+  if (!a || typeof a !== "object") return null;
+  return { attestedBy: typeof a.attested_by === "string" ? a.attested_by : null, attestedAt: typeof a.attested_at === "string" ? a.attested_at : null };
 }
 
 function readContinuity(payload: Record<string, unknown> | null): CapturedAudioInspection["continuity"] {
@@ -319,7 +397,7 @@ export async function inspectNativeCapturedAudio(input: {
   residentId: string;
   assessmentSessionId: string;
 }): Promise<{ inspection?: CapturedAudioInspection; error?: string }> {
-  const access = await requireSessionAccess(input?.residentId, input?.assessmentSessionId, [RECORDING_SESSION_STATUS, CAPTURED_SESSION_STATUS], true);
+  const access = await requireSessionAccess(input?.residentId, input?.assessmentSessionId, INSPECTABLE_STATUSES, true);
   if ("error" in access) return { error: access.error };
   const listing = await listStoredChunksForSession(access.session.id);
   if (listing.error) return { error: listing.error };
@@ -332,6 +410,9 @@ export async function inspectNativeCapturedAudio(input: {
       chunks: listing.chunks.map((c) => ({ chunkIndex: c.chunkIndex, runId: c.runId, mimeType: c.mimeType, size: c.size, createdAt: c.createdAt })),
       finalizedAt: typeof finalizedAt === "string" ? finalizedAt : null,
       continuity: readContinuity(access.session.sourcePayload),
+      isSyntheticTest: access.session.isSyntheticTest,
+      syntheticAttestation: readAttestation(access.session.sourcePayload),
+      transcription: readTranscription(access.session.transcriptionState, access.session.transcriptPersisted),
     },
   };
 }
@@ -342,7 +423,7 @@ export async function createNativeCapturedAudioDownloadLinks(input: {
   residentId: string;
   assessmentSessionId: string;
 }): Promise<{ links?: { chunkIndex: number; runId: string | null; name: string; signedUrl: string }[]; error?: string }> {
-  const access = await requireSessionAccess(input?.residentId, input?.assessmentSessionId, [RECORDING_SESSION_STATUS, CAPTURED_SESSION_STATUS], true);
+  const access = await requireSessionAccess(input?.residentId, input?.assessmentSessionId, INSPECTABLE_STATUSES, true);
   if ("error" in access) return { error: access.error };
   const listing = await listStoredChunksForSession(access.session.id);
   if (listing.error) return { error: listing.error };

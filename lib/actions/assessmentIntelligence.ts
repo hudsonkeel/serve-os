@@ -45,6 +45,8 @@ import { getResidentById, setResidentCommunityId } from "@/lib/data/residents";
 import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 import { resolveAssessmentCommunity } from "@/lib/assessmentIntelligence/communityResolution";
 import { CAPTURED_SESSION_STATUS } from "@/lib/assessmentCapture/captureLogic";
+import { createSupabaseTranscriptionStore, restoreCapturedForTranscriptionRetry } from "@/lib/assessmentIntelligence/backgroundCore/transcription/transcriptionStore";
+import { decideRetryRoute, parseTranscriptionState, resetFailedRunsForRetry } from "@/lib/assessmentIntelligence/backgroundCore/transcription/transcriptionState";
 
 // Server actions for the assessment intelligence layer — see docs/architecture/
 // ASSESSMENT_TO_CLIENT_OPERATIONALIZATION.md. Distinct from lib/actions/assessmentCapture.ts
@@ -219,6 +221,23 @@ export async function retryFailedAssessmentProcessing(assessmentSessionId: strin
     processingClaimedAt: session.processing_claimed_at,
   });
   if (!eligibility.allowed) return { error: eligibility.reason };
+
+  // A recorded-audio assessment that failed before its transcript was persisted goes back to
+  // transcription ('captured'), never to 'queued' — extraction must never run on an audio-only
+  // session. Failed transcription runs get a fresh attempt; completed runs are kept.
+  const audioSource = await createSupabaseTranscriptionStore().getNativeAudioSource(assessmentSessionId);
+  const route = decideRetryRoute({ hasNativeAudioSource: Boolean(audioSource), transcriptPersisted: Boolean(audioSource?.transcriptText?.trim()) });
+  if (route === "transcription" && audioSource) {
+    const parsed = parseTranscriptionState(audioSource.metadata);
+    let resetState = null;
+    if (parsed && parsed !== "unreadable") {
+      const reset = resetFailedRunsForRetry(parsed, new Date().toISOString());
+      if (!reset.ok) return { error: reset.reason };
+      resetState = reset.state;
+    }
+    const restored = await restoreCapturedForTranscriptionRetry(assessmentSessionId, audioSource.id, resetState);
+    return restored ? { retried: true } : { error: "This assessment could not be returned to transcription. Refresh and try again." };
+  }
 
   // requeueSessionForRetry()'s own conditional update is the real idempotency guard — even if
   // it loses a race (someone else's retry, or the dispatcher, already moved this session), that

@@ -57,3 +57,55 @@ export function requirePhiOpenAiProcessingConfirmed(override?: PhiGateOverride):
     );
   }
 }
+
+// ─── AWS PHI gate (Assessment audio → AWS Transcribe → Bedrock) ───────────────────────────────
+// AWS is Serve's intended PHI-processing boundary for captured assessment audio. Before any real
+// assessment audio or transcript reaches AWS Transcribe/S3/Bedrock, a human must have attested
+// that the AWS posture is approved — BAA applicability for the account in use, HIPAA-eligible
+// services (Transcribe, S3, Bedrock), least-privilege IAM, encryption at rest, the pinned
+// us-east-1 region, logging reviewed for PHI capture, and a lifecycle/retention rule on the
+// temporary staging prefix — by setting PHI_AWS_PROCESSING_CONFIRMED to exactly "true". It is a
+// human attestation, never set or inferred by code (and never inferred from AWS credentials
+// existing). Independent of the OpenAI gate above in both directions.
+//
+// Synthetic (fictional, non-PHI) validation is SESSION-scoped: it requires BOTH the session's own
+// is_synthetic_test flag (set only through the admin-only, attested marking action — never
+// inferred from a resident's name) AND this deployment's PHI_SYNTHETIC_TEST_MODE. Marking one
+// session synthetic can never authorize any other session, and the deployment flag alone
+// authorizes nothing.
+
+const AWS_PHI_CONFIRMED_VALUE = "true";
+
+export type AwsAssessmentAuthorization =
+  | { allowed: true; basis: "phi_attested" | "synthetic_test" }
+  | { allowed: false; reason: string };
+
+export function isAwsPhiProcessingConfirmed(env: Record<string, string | undefined> = process.env): boolean {
+  return env.PHI_AWS_PROCESSING_CONFIRMED === AWS_PHI_CONFIRMED_VALUE;
+}
+
+export function isSyntheticTestModeEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.PHI_SYNTHETIC_TEST_MODE === SYNTHETIC_TEST_MODE_VALUE;
+}
+
+export function decideAwsAssessmentAuthorization(
+  session: { isSyntheticTest: boolean },
+  env: Record<string, string | undefined> = process.env
+): AwsAssessmentAuthorization {
+  if (isAwsPhiProcessingConfirmed(env)) return { allowed: true, basis: "phi_attested" };
+  if (session.isSyntheticTest === true && isSyntheticTestModeEnabled(env)) return { allowed: true, basis: "synthetic_test" };
+  return {
+    allowed: false,
+    reason:
+      "AWS processing of assessment audio is not authorized for this session: PHI_AWS_PROCESSING_CONFIRMED is not 'true', " +
+      "and the session is not an attested synthetic test on a deployment with PHI_SYNTHETIC_TEST_MODE enabled.",
+  };
+}
+
+/** Which captured sessions a dispatcher may even consider for AWS transcription. "none" means no
+ * captured session is dispatched at all, so a gate-blocked backlog can never be selected. */
+export function awsTranscriptionDispatchScope(env: Record<string, string | undefined> = process.env): "all_captured" | "synthetic_only" | "none" {
+  if (isAwsPhiProcessingConfirmed(env)) return "all_captured";
+  if (isSyntheticTestModeEnabled(env)) return "synthetic_only";
+  return "none";
+}

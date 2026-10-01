@@ -9,6 +9,7 @@ import { useState, useTransition } from "react";
 import {
   inspectNativeCapturedAudio,
   createNativeCapturedAudioDownloadLinks,
+  markNativeCaptureSessionSyntheticTest,
   type CapturedAudioInspection,
 } from "@/lib/actions/nativeAssessmentCapture";
 
@@ -24,6 +25,20 @@ export function CapturedAudioInspector({ residentId, assessmentSessionId }: { re
   const [inspection, setInspection] = useState<CapturedAudioInspection | null>(null);
   const [links, setLinks] = useState<{ chunkIndex: number; runId: string | null; name: string; signedUrl: string }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attest, setAttest] = useState(false);
+
+  function markSynthetic() {
+    setError(null);
+    startTransition(async () => {
+      const result = await markNativeCaptureSessionSyntheticTest({ residentId, assessmentSessionId, attestNoRealClientData: attest });
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      const refreshed = await inspectNativeCapturedAudio({ residentId, assessmentSessionId });
+      if (refreshed.inspection) setInspection(refreshed.inspection);
+    });
+  }
 
   function load() {
     setError(null);
@@ -114,6 +129,60 @@ export function CapturedAudioInspector({ residentId, assessmentSessionId }: { re
             ))}
           </tbody>
         </table>
+      )}
+      {inspection && (
+        <div className="space-y-1 border-t border-ivory-border pt-2">
+          <p>
+            <span className="text-muted">Synthetic test: </span>
+            {inspection.isSyntheticTest
+              ? `yes — attested by ${inspection.syntheticAttestation?.attestedBy ?? "unknown"}${inspection.syntheticAttestation?.attestedAt ? ` on ${new Date(inspection.syntheticAttestation.attestedAt).toLocaleString()}` : ""}`
+              : "no (real assessment — AWS processing requires the organization's PHI attestation)"}
+          </p>
+          {!inspection.isSyntheticTest && inspection.status === "captured" && !inspection.transcription && (
+            <div className="space-y-1 rounded border border-warning-text/30 bg-warning-surface p-2 text-warning-text">
+              <label className="flex items-start gap-2">
+                <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} className="mt-0.5" />
+                <span>I confirm this recording is a fictional role-play and contains no real client information.</span>
+              </label>
+              <button type="button" onClick={markSynthetic} disabled={!attest || isPending} className="font-semibold underline disabled:opacity-50">
+                Mark as synthetic test (administrators only)
+              </button>
+            </div>
+          )}
+          {inspection.transcription ? (
+            <div className="space-y-1">
+              <p>
+                <span className="text-muted">Transcription: </span>
+                {inspection.transcription.displayState} ({inspection.transcription.status}); cleanup {inspection.transcription.cleanupStatus}
+              </p>
+              {inspection.transcription.failureReason && <p className="text-danger-text">{inspection.transcription.failureReason}</p>}
+              <table className="w-full text-left">
+                <thead className="text-muted">
+                  <tr>
+                    <th className="font-medium">Part</th>
+                    <th className="font-medium">Chunks</th>
+                    <th className="font-medium">Format</th>
+                    <th className="font-medium">Attempt</th>
+                    <th className="font-medium">State</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  {inspection.transcription.runs.map((r) => (
+                    <tr key={r.runId} title={[r.jobName, r.failureReason].filter(Boolean).join(" — ")}>
+                      <td>{r.order}</td>
+                      <td>{r.chunkRange}</td>
+                      <td>{r.mediaFormat}</td>
+                      <td>{r.attempt}</td>
+                      <td>{r.state}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-muted">Transcription has not started.</p>
+          )}
+        </div>
       )}
       {inspection && (
         <div className="space-y-1">

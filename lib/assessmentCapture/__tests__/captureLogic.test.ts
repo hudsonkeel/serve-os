@@ -6,6 +6,8 @@ import {
   CAPTURED_SESSION_STATUS,
   ASSESSMENT_SESSION_STATUS_LABELS,
   nativeCaptureHref,
+  decideSyntheticTestMarking,
+  assessmentSessionDisplayLabel,
   assessmentSessionStatusLabel,
   normalizeMimeType,
   mimeTypeToExtension,
@@ -84,7 +86,17 @@ test("STATIC: existing queue selection, claim, and stale recovery still key on q
   const core = read("lib/assessmentIntelligence/backgroundCore/dataAccess.ts");
   const claim = /claimSessionForProcessing[\s\S]*?\.eq\("status", "([a-z_]+)"\)/.exec(core);
   assert.equal(claim?.[1], "queued");
-  assert.ok(!data.includes('"captured"') && !core.includes('"captured"'), "queue modules must not reference captured");
+  // The extraction queue's selection/claim/recovery functions never select 'captured'. (Admin
+  // diagnostics may READ captured sessions — that's display, not queue selection.)
+  const body = (src: string, fn: string) => src.split(`export async function ${fn}`)[1]?.split("export ")[0] ?? "";
+  for (const [src, fn] of [
+    [data, "getQueuedSessionsForDispatch"],
+    [data, "recoverStaleProcessingSessions"],
+    [core, "claimSessionForProcessing"],
+  ] as const) {
+    assert.ok(body(src, fn).length > 0, fn);
+    assert.ok(!body(src, fn).includes('"captured"'), `${fn} must not select captured`);
+  }
 });
 
 test("STATIC: no native-capture module can write status 'queued'", () => {
@@ -96,7 +108,9 @@ test("STATIC: no native-capture module can write status 'queued'", () => {
   ]) {
     // Comments explaining why 'queued' is never written are fine; code is what's checked.
     const code = read(file).replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
-    assert.ok(!/["'`]queued["'`]/.test(code), `${file} must not contain a 'queued' string literal in code`);
+    // Reading/comparing a status (e.g. labels) is fine; WRITING 'queued' is what's forbidden.
+    assert.ok(!/status\s*:\s*["'`]queued["'`]/.test(code), `${file} must not write status 'queued'`);
+    assert.ok(!/(updateAssessmentSessionStatus|queueForExtraction)\s*\(/.test(code), `${file} must not move a session to the queue`);
   }
 });
 
@@ -500,6 +514,55 @@ test("history: Assessment History still lists every session with its label, Revi
   assert.match(code, /Paste Transcript \(admin\/test fallback\)/);
   for (const status of ["recording", "queued", "processing", "failed", "draft", "needs_review", "approved", "amended", "operationalized"]) {
     assert.ok(ASSESSMENT_SESSION_STATUS_LABELS[status], status);
+  }
+});
+
+// ─── synthetic-test marking ─────────────────────────────────────────────────────────────────
+
+const markBase = {
+  role: "admin" as const,
+  sessionStatus: "captured",
+  isNativeCapture: true,
+  alreadySynthetic: false,
+  transcriptionStarted: false,
+  attestedNoRealClientData: true,
+};
+
+test("synthetic marking: an admin may mark ONE finished Serve OS recording, with explicit attestation, before transcription", () => {
+  assert.deepEqual(decideSyntheticTestMarking(markBase), { ok: true });
+});
+
+test("synthetic marking: refused for non-admins, other capture flows, unfinished/processed sessions, after transcription starts, or without attestation", () => {
+  for (const role of ["manager", "executive", "operations", "office_staff", null] as const) {
+    assert.equal(decideSyntheticTestMarking({ ...markBase, role }).ok, false, String(role));
+  }
+  assert.equal(decideSyntheticTestMarking({ ...markBase, isNativeCapture: false }).ok, false);
+  for (const sessionStatus of ["recording", "queued", "processing", "failed", "draft", "needs_review", "approved"]) {
+    assert.equal(decideSyntheticTestMarking({ ...markBase, sessionStatus }).ok, false, sessionStatus);
+  }
+  assert.equal(decideSyntheticTestMarking({ ...markBase, transcriptionStarted: true }).ok, false);
+  assert.equal(decideSyntheticTestMarking({ ...markBase, alreadySynthetic: true }).ok, false);
+  assert.equal(decideSyntheticTestMarking({ ...markBase, attestedNoRealClientData: false }).ok, false);
+});
+
+test("STATIC: is_synthetic_test is written in exactly one place, never inferred from a name", () => {
+  const writers = uiFiles.concat(walk("lib")).filter((f) => /is_synthetic_test: true/.test(codeOf(f)));
+  assert.deepEqual(writers, ["lib/data/nativeAssessmentCapture.ts"]);
+  assert.ok(!/display_name|residentName|full_name/.test(codeOf("lib/data/nativeAssessmentCapture.ts").split("markNativeSessionSyntheticTest")[1]?.split("export async function")[0] ?? ""));
+});
+
+// ─── transcription progress labels ──────────────────────────────────────────────────────────
+
+test("labels: transcription progress is shown in plain language, never AWS/queue jargon", () => {
+  assert.equal(assessmentSessionDisplayLabel("captured", "awaiting"), "Audio captured — awaiting transcription");
+  assert.equal(assessmentSessionDisplayLabel("captured", "transcribing"), "Transcribing assessment");
+  assert.equal(assessmentSessionDisplayLabel("queued", "transcribed"), "Transcript ready — preparing assessment");
+  assert.equal(assessmentSessionDisplayLabel("processing", "transcribed"), "Transcript ready — preparing assessment");
+  assert.equal(assessmentSessionDisplayLabel("failed", "failed"), "Transcription needs attention");
+  assert.equal(assessmentSessionDisplayLabel("needs_review", "transcribed"), "Needs review");
+  assert.equal(assessmentSessionDisplayLabel("queued"), "Queued", "pasted-transcript sessions unchanged");
+  for (const s of ["awaiting", "transcribing", "failed", "transcribed"] as const) {
+    for (const st of ["captured", "queued", "processing", "failed"]) assert.ok(!/aws|s3|transcribe job|queue/i.test(assessmentSessionDisplayLabel(st, s).replace(/^Queued$/, "")));
   }
 });
 

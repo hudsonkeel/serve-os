@@ -363,3 +363,14 @@ Deploy previews and production share one Supabase database, and production's sch
 
 ### Result
 New: `lib/assessmentCapture/captureLogic.ts` (pure decision core + 51 tests), `lib/assessmentCapture/idb.ts`, `lib/data/nativeAssessmentCapture.ts`, `lib/actions/nativeAssessmentCapture.ts`, the capture route and `CaptureScreen`, and an admin-only single-session `CapturedAudioInspector` (metadata + 5-minute raw-chunk download links, refused for any non-native session). A `captured` session cannot be opened for review or approved (review page notice + `approveAssessment` guard — the approval RPC does not itself check prior status). The migration is committed as a file only; it must be applied before the pilot is used on a shared deployment.
+
+---
+
+### Decision
+Assessment audio transcription (2026-10-01): captured Serve OS recordings are transcribed by AWS Transcribe — one job per recording run — inside the existing current-main processing architecture (scheduled dispatcher → `.mts` background worker → `backgroundCore`), not the old AWS branch's stage machine. A session stays `captured` (with a lease in `processing_claimed_at`) until its complete transcript is durably in `intake_sources.transcript_text`; only then does it move to `queued`, where the existing extraction worker runs. Durable per-run job state uses the existing `intake_sources.transcription_*` columns. Audio-derived assessments are AWS-only for extraction: `ASSESSMENT_EXTRACTION_PROVIDER` must be explicitly `bedrock` and the AWS PHI gate must pass — no OpenAI default. A transcription failure retries back to `captured`, never `queued`.
+
+### Reason
+Preserves "queued = transcript exists" for a queue shared by previews and production, makes multi-run (interrupted) recordings first-class without unvalidated media assembly, keeps AWS calls resumable across Netlify execution limits without duplicate jobs, and fails closed on PHI and provider configuration.
+
+### Result
+No schema change is required in the live database (all columns already exist there). The repository's migrations do not yet declare `intake_sources.transcription_*` or `intake_assessment_sessions.is_synthetic_test` (they were added to the live database by the old AWS branch); an idempotent `add column if not exists` migration is proposed, not created. Pasted-transcript extraction keeps its existing provider default; setting `ASSESSMENT_EXTRACTION_PROVIDER=bedrock` explicitly in every deployed context remains required to keep pasted transcripts off OpenAI.

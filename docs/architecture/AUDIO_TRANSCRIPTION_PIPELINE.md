@@ -305,3 +305,36 @@ iPhone/browser (MediaRecorder, one recorder per run, pause()/resume())
 - Code: `lib/assessmentCapture/captureLogic.ts`, `lib/assessmentCapture/idb.ts`,
   `lib/data/nativeAssessmentCapture.ts`, `lib/actions/nativeAssessmentCapture.ts`,
   `app/residents/[id]/assessment/capture/page.tsx`, `components/residents/assessment/*`.
+
+## 11. Captured audio → AWS Transcribe → transcript → existing extraction (2026-10-01)
+
+Capture-client agnostic: consumes only canonical server state (session + live_audio_stream source +
+private intake-audio objects + run metadata), never anything browser-specific.
+
+```
+captured ──(dispatcher, within the AWS PHI dispatch scope)──▶ worker: advanceAssessmentSession()
+  captured: lease (processing_claimed_at token; status stays 'captured')
+    → plan runs from stored objects (group by runId, order by chunk index, verify, per-run MIME)
+    → per run: persist job handle → reconstruct run media (WebM: byte concat; others: single
+      self-contained chunk only) → S3 temp staging (SSE) → StartTranscriptionJob (speaker labels)
+    → bounded polling (≤ 4 min/invocation); resume on the next dispatch from persisted state
+    → all runs COMPLETED → combine chronologically with neutral interruption boundaries
+    → intake_sources.transcript_text (written once) → cleanup temp S3/jobs (best effort)
+    → 'captured' → 'queued' (conditional) → existing advanceQueuedAssessmentProcessing()
+  queued: extraction policy first (no empty transcript; recorded audio = explicit bedrock + AWS
+          PHI gate) → runExtractionPipelineForSession() → draft / needs_review (unchanged review)
+  other:  retry pending temporary-artifact cleanup
+```
+
+- State lives in existing columns: intake_sources.transcription_provider / transcription_job_id /
+  transcription_provider_metadata (per-run jobs, results, cleanup). No session stage machine.
+- One Transcribe job per recording run; runs are never concatenated with each other.
+- Job names are deterministic: `serve-assessment-{session}-{run}-a{attempt}`. The
+  `serve-assessment-` prefix is required by IAM — ServeAssessmentAWSPipelinePolicy scopes
+  transcribe:GetTranscriptionJob / DeleteTranscriptionJob to `transcription-job/serve-assessment-*`.
+  Staging keys: `transcribe-staging/{session}/{run}/a{attempt}/input.{ext}` and `…/output.json`
+  (the bucket's `expire-transcribe-staging` lifecycle rule removes leftovers on day 2).
+- Real audio requires PHI_AWS_PROCESSING_CONFIRMED=true. Synthetic validation requires BOTH an
+  admin-attested is_synthetic_test session AND PHI_SYNTHETIC_TEST_MODE on the deployment.
+- Code: lib/assessmentIntelligence/backgroundCore/transcription/*, extractionPolicy.ts,
+  lib/ai/awsCredentials.ts, phiGovernance.ts (AWS gate).

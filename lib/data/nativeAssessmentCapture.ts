@@ -16,6 +16,11 @@ import {
   type StoredChunk,
 } from "../assessmentCapture/captureLogic.ts";
 import type { ContinuitySummary, RunLogEntry } from "../assessmentCapture/recordingHealth.ts";
+import {
+  parseTranscriptionState,
+  transcriptionDisplayState,
+  type TranscriptionDisplayState,
+} from "../assessmentIntelligence/backgroundCore/transcription/transcriptionState.ts";
 
 // Data access for Assessment Mobile Capture v0.1 (native in-browser capture). Deliberately a
 // separate module from lib/data/assessmentIntelligence.ts: nothing here participates in the
@@ -102,6 +107,10 @@ export interface NativeCaptureSessionState {
   isNativeCapture: boolean;
   sourceId: string | null;
   sourcePayload: Record<string, unknown> | null;
+  isSyntheticTest: boolean;
+  transcriptPersisted: boolean;
+  /** Raw transcription_provider_metadata (parsed by backgroundCore/transcription). */
+  transcriptionState: unknown;
 }
 
 export async function getNativeCaptureSessionState(
@@ -110,7 +119,7 @@ export async function getNativeCaptureSessionState(
   const supabase = createServerClient();
   const { data: session, error } = await supabase
     .from("intake_assessment_sessions")
-    .select("id, resident_id, status")
+    .select("*")
     .eq("id", assessmentSessionId)
     .maybeSingle();
   if (error) {
@@ -120,7 +129,7 @@ export async function getNativeCaptureSessionState(
   if (!session) return { session: null };
   const { data: source, error: sourceError } = await supabase
     .from("intake_sources")
-    .select("id, assessment_session_id, status, source_payload")
+    .select("id, assessment_session_id, status, source_payload, transcript_text, transcription_provider_metadata")
     .eq("assessment_session_id", assessmentSessionId)
     .eq("source_type", "live_audio_stream")
     .maybeSingle();
@@ -128,8 +137,8 @@ export async function getNativeCaptureSessionState(
     console.error("[getNativeCaptureSessionState] source", { assessmentSessionId, message: sourceError.message });
     return { session: null, error: "Could not load the assessment audio source." };
   }
-  const src = source as LiveAudioSourceRow | null;
-  const s = session as { id: string; resident_id: string; status: string };
+  const src = source as (LiveAudioSourceRow & { transcript_text: string | null; transcription_provider_metadata: unknown }) | null;
+  const s = session as { id: string; resident_id: string; status: string; is_synthetic_test?: boolean | null };
   return {
     session: {
       id: s.id,
@@ -138,8 +147,65 @@ export async function getNativeCaptureSessionState(
       isNativeCapture: isNativePayload(src?.source_payload),
       sourceId: src?.id ?? null,
       sourcePayload: src?.source_payload ?? null,
+      isSyntheticTest: s.is_synthetic_test === true,
+      transcriptPersisted: Boolean(src?.transcript_text?.trim()),
+      transcriptionState: src?.transcription_provider_metadata ?? null,
     },
   };
+}
+
+/** Marks ONE finished native recording as a synthetic (fictional, non-PHI) test — the only
+ * write path for is_synthetic_test. Records who attested and when in source_payload first, then
+ * flips the flag, conditional on the session still being 'captured' (before transcription). */
+export async function markNativeSessionSyntheticTest(input: {
+  assessmentSessionId: string;
+  sourceId: string;
+  existingPayload: Record<string, unknown> | null;
+  attestedBy: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const supabase = createServerClient();
+  const attestation = {
+    attested_by: input.attestedBy,
+    attested_at: new Date().toISOString(),
+    statement: "This recording is a fictional role-play containing no real client information.",
+  };
+  const { error: payloadError } = await supabase
+    .from("intake_sources")
+    .update({ source_payload: { ...(input.existingPayload ?? {}), synthetic_test_attestation: attestation } })
+    .eq("id", input.sourceId);
+  if (payloadError) return { ok: false, error: "Could not record the synthetic-test attestation." };
+  const { data, error } = await supabase
+    .from("intake_assessment_sessions")
+    .update({ is_synthetic_test: true })
+    .eq("id", input.assessmentSessionId)
+    .eq("status", CAPTURED_SESSION_STATUS)
+    .select("id");
+  if (error || (data?.length ?? 0) === 0) return { ok: false, error: "The assessment is no longer awaiting transcription; it was not marked." };
+  return { ok: true };
+}
+
+/** Operator-facing transcription progress for the sessions in an Assessment History list. */
+export async function getTranscriptionDisplayStates(sessionIds: readonly string[]): Promise<Record<string, TranscriptionDisplayState>> {
+  if (sessionIds.length === 0) return {};
+  const supabase = createServerClient();
+  const { data, error } = await supabase
+    .from("intake_sources")
+    .select("assessment_session_id, source_payload, transcript_text, transcription_provider_metadata")
+    .in("assessment_session_id", [...sessionIds])
+    .eq("source_type", "live_audio_stream");
+  if (error) {
+    console.error("[getTranscriptionDisplayStates]", { message: error.message });
+    return {};
+  }
+  const out: Record<string, TranscriptionDisplayState> = {};
+  for (const row of (data as { assessment_session_id: string; source_payload: Record<string, unknown> | null; transcript_text: string | null; transcription_provider_metadata: unknown }[] | null) ?? []) {
+    if (!isNativePayload(row.source_payload)) continue;
+    out[row.assessment_session_id] = transcriptionDisplayState({
+      state: parseTranscriptionState(row.transcription_provider_metadata),
+      transcriptPersisted: Boolean(row.transcript_text?.trim()),
+    });
+  }
+  return out;
 }
 
 /** Creates a new 'recording' session plus its native live_audio_stream source (the marker that

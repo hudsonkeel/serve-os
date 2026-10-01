@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { LinkButton } from "@/components/ui/Button";
 import { submitPastedTranscriptAndExtract, retryFailedAssessmentProcessing } from "@/lib/actions/assessmentIntelligence";
 import { decideRetryEligibility, SAFE_PROCESSING_FAILURE_MESSAGE } from "@/lib/assessmentIntelligence/processingQueue";
-import { assessmentSessionStatusLabel } from "@/lib/assessmentCapture/captureLogic";
+import {
+  assessmentSessionDisplayLabel,
+  SAFE_TRANSCRIPTION_FAILURE_MESSAGE,
+  type AudioTranscriptionDisplayState,
+} from "@/lib/assessmentCapture/captureLogic";
 import type { AssessmentSessionRecord } from "@/lib/data/assessmentIntelligence";
 import { CapturedAudioInspector } from "@/components/residents/assessment/CapturedAudioInspector";
 
@@ -16,9 +20,11 @@ interface AssessmentSectionProps {
   /** Admin/manager-only inspection of a native capture session's raw audio (see
    * canInspectCapturedAssessmentAudio). Off by default. */
   canInspectCapturedAudio?: boolean;
+  /** Transcription progress for sessions recorded in Serve OS (keyed by session id). */
+  transcriptionStates?: Record<string, AudioTranscriptionDisplayState>;
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, transcription }: { status: string; transcription?: AudioTranscriptionDisplayState }) {
   const tone =
     status === "approved" || status === "operationalized"
       ? "bg-success-surface text-success-text"
@@ -29,7 +35,7 @@ function StatusBadge({ status }: { status: string }) {
           : "bg-ivory text-muted";
   return (
     <span className={`inline-flex items-center rounded-full px-3 py-1 font-sans text-xs font-semibold ${tone}`}>
-      {assessmentSessionStatusLabel(status)}
+      {assessmentSessionDisplayLabel(status, transcription)}
     </span>
   );
 }
@@ -75,7 +81,7 @@ function RetrySessionButton({ session }: { session: AssessmentSessionRecord }) {
   );
 }
 
-export function AssessmentSection({ residentId, residentName, sessions, canInspectCapturedAudio = false }: AssessmentSectionProps) {
+export function AssessmentSection({ residentId, residentName, sessions, canInspectCapturedAudio = false, transcriptionStates = {} }: AssessmentSectionProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -134,7 +140,7 @@ export function AssessmentSection({ residentId, residentName, sessions, canInspe
                   {s.initiated_from === "new_provisional" ? "New prospect" : "Existing person"}
                 </p>
                 <div className="flex items-center gap-3">
-                  <StatusBadge status={s.status} />
+                  <StatusBadge status={s.status} transcription={transcriptionStates[s.id]} />
                   {(s.status === "draft" || s.status === "needs_review" || s.status === "approved") && (
                     <LinkButton href={`/residents/${residentId}/assessment/${s.id}`} size="small">
                       Review →
@@ -146,11 +152,13 @@ export function AssessmentSection({ residentId, residentName, sessions, canInspe
                   but not shown here. Only the fixed, safe message below. */}
               {s.status === "failed" && (
                 <div className="mt-2 flex items-center justify-between gap-3">
-                  <p className="font-sans text-xs text-danger-text">{SAFE_PROCESSING_FAILURE_MESSAGE}</p>
+                  <p className="font-sans text-xs text-danger-text">
+                    {transcriptionStates[s.id] === "failed" ? SAFE_TRANSCRIPTION_FAILURE_MESSAGE : SAFE_PROCESSING_FAILURE_MESSAGE}
+                  </p>
                   <RetrySessionButton session={s} />
                 </div>
               )}
-              {canInspectCapturedAudio && (s.status === "captured" || s.status === "recording") && (
+              {canInspectCapturedAudio && transcriptionStates[s.id] !== undefined && (
                 <CapturedAudioInspector residentId={residentId} assessmentSessionId={s.id} />
               )}
             </div>
