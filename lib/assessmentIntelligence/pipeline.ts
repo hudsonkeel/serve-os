@@ -11,7 +11,8 @@ import {
   recordProcessingDiagnosticStage,
 } from "../data/assessmentIntelligence.ts";
 import { transcribeAudioChunks } from "./transcription.ts";
-import { isPhiOpenAiProcessingConfirmed, type PhiGateOverride } from "./phiGovernance.ts";
+import { isPhiOpenAiProcessingConfirmed, awsTranscriptionDispatchScope, type PhiGateOverride } from "./phiGovernance.ts";
+import { getTranscriptionCleanupCandidates, getTranscriptionDispatchCandidates } from "./backgroundCore/transcription/transcriptionStore.ts";
 import { MAX_PROCESSING_ATTEMPTS, STALE_PROCESSING_AFTER_MS } from "./processingQueue.ts";
 import { GENERATED_DEPLOY_CONTEXT, type GeneratedDeployContext } from "./generatedDeployContext.ts";
 import {
@@ -259,5 +260,11 @@ async function invokeStageWorker(assessmentSessionId: string): Promise<DispatchO
 export async function dispatchEligibleAssessmentProcessing(limit = DEFAULT_DISPATCH_LIMIT): Promise<DispatchOutcome[]> {
   await recoverStaleProcessingSessions(STALE_PROCESSING_AFTER_MS, MAX_PROCESSING_ATTEMPTS);
   const sessions = await getQueuedSessionsForDispatch(limit);
-  return Promise.all(sessions.map((session) => invokeStageWorker(session.id)));
+  // Captured audio awaiting transcription — only within the AWS PHI dispatch scope (none unless
+  // PHI processing is attested; only attested synthetic sessions in synthetic test mode), so a
+  // gate-blocked backlog is never even selected. The worker routes each id by its durable status.
+  const captured = await getTranscriptionDispatchCandidates(limit, awsTranscriptionDispatchScope());
+  const cleanup = await getTranscriptionCleanupCandidates(5);
+  const ids = [...new Set([...sessions.map((s) => s.id), ...captured, ...cleanup])];
+  return Promise.all(ids.map((id) => invokeStageWorker(id)));
 }

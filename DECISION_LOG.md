@@ -353,3 +353,24 @@ Found during the Priority 2B Office Staff Workspace investigation (2026-09-19) w
 
 ### Result
 No schema, authorization predicate, or community-scoping behavior changed in this branch. This entry exists so a future community-assignment implementation starts from the already-completed investigation (current architecture, the security implications of the current unrestricted-selection design, and the `workforce_community_memberships` precedent) instead of rediscovering it.
+---
+
+### Decision
+Assessment Mobile Capture v0.1 — Capture-Only Slice (2026-09-30). Native in-browser assessment capture (`/residents/[id]/assessment/capture`) is manually ported from `feature/assessment-aws-transcription-pipeline` into current-main architecture, not cherry-picked. It terminates at a new durable session status, `captured` ("audio capture is complete and durably stored, but transcription has not begun"), added by the additive migration `20260930000000_add_captured_assessment_session_status.sql`. No AWS Transcribe, no processing-queue change, no dispatcher/worker change, no environment change. Pilot-only: admin/manager (`canUseMobileCapturePilot`), reached from a clearly marked "Record on this device — Mobile Capture Pilot" link in Assessment History; the production Assessment button is unchanged.
+
+### Reason
+Deploy previews and production share one Supabase database, and production's scheduled dispatcher claims any `queued` session every two minutes and runs text extraction over its transcript. An audio-only session queued there would be extracted from an empty transcript into an empty `draft`. `captured` is invisible to that queue by construction (dispatch selects `queued`, recovery selects `processing`, retry selects `failed`, review readiness selects `draft`/`needs_review`), and no native-capture code writes `queued`. The old branch's capture defects (resume reusing chunk indexes, "Finish Without Waiting" orphaning audio, stop/recreate on pause, audio/mp4 mislabelled as .webm, in-render session creation) are fixed rather than carried forward. Original recorded blobs are preserved exactly — no concatenation/remux — because byte-concatenation of MediaRecorder timeslice output is an assumption to be proven on a real iPhone first.
+
+### Result
+New: `lib/assessmentCapture/captureLogic.ts` (pure decision core + 51 tests), `lib/assessmentCapture/idb.ts`, `lib/data/nativeAssessmentCapture.ts`, `lib/actions/nativeAssessmentCapture.ts`, the capture route and `CaptureScreen`, and an admin-only single-session `CapturedAudioInspector` (metadata + 5-minute raw-chunk download links, refused for any non-native session). A `captured` session cannot be opened for review or approved (review page notice + `approveAssessment` guard — the approval RPC does not itself check prior status). The migration is committed as a file only; it must be applied before the pilot is used on a shared deployment.
+
+---
+
+### Decision
+Assessment audio transcription (2026-10-01): captured Serve OS recordings are transcribed by AWS Transcribe — one job per recording run — inside the existing current-main processing architecture (scheduled dispatcher → `.mts` background worker → `backgroundCore`), not the old AWS branch's stage machine. A session stays `captured` (with a lease in `processing_claimed_at`) until its complete transcript is durably in `intake_sources.transcript_text`; only then does it move to `queued`, where the existing extraction worker runs. Durable per-run job state uses the existing `intake_sources.transcription_*` columns. Audio-derived assessments are AWS-only for extraction: `ASSESSMENT_EXTRACTION_PROVIDER` must be explicitly `bedrock` and the AWS PHI gate must pass — no OpenAI default. A transcription failure retries back to `captured`, never `queued`.
+
+### Reason
+Preserves "queued = transcript exists" for a queue shared by previews and production, makes multi-run (interrupted) recordings first-class without unvalidated media assembly, keeps AWS calls resumable across Netlify execution limits without duplicate jobs, and fails closed on PHI and provider configuration.
+
+### Result
+No schema change is required in the live database (all columns already exist there). The repository's migrations do not yet declare `intake_sources.transcription_*` or `intake_assessment_sessions.is_synthetic_test` (they were added to the live database by the old AWS branch); an idempotent `add column if not exists` migration is proposed, not created. Pasted-transcript extraction keeps its existing provider default; setting `ASSESSMENT_EXTRACTION_PROVIDER=bedrock` explicitly in every deployed context remains required to keep pasted transcripts off OpenAI.

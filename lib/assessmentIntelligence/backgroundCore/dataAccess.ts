@@ -57,6 +57,10 @@ export interface AssessmentSessionRecord {
   // wrapper_fetch_outcome_diagnostic_stages.sql already applied to production; not worth a
   // destructive migration to remove). No code path writes this anymore.
   processing_diagnostic_wrapper_fetch_status: number | null;
+  // Session-scoped synthetic-test authorization for AWS processing (present in the live schema;
+  // set only by the admin-only, attested marking action — see phiGovernance.ts). Optional here
+  // because select("*") omits it where the column doesn't exist; absent means false.
+  is_synthetic_test?: boolean | null;
 }
 
 export async function getAssessmentSession(assessmentSessionId: string): Promise<AssessmentSessionRecord | null> {

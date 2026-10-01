@@ -251,7 +251,7 @@ export async function getSessionsWithProcessingDiagnostics(limit: number): Promi
   const { data, error } = await supabase
     .from("intake_assessment_sessions")
     .select("*, residents(display_name, full_name, first_name, last_name)")
-    .in("status", ["queued", "processing", "failed"])
+    .in("status", ["captured", "queued", "processing", "failed"])
     .order("started_at", { ascending: false })
     .limit(limit);
   if (error) {

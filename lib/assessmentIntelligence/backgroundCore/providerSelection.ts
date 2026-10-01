@@ -31,3 +31,13 @@ export function getConfiguredExtractionProvider(): AssessmentExtractionProvider 
   }
   return provider;
 }
+
+/** Exact lookup by key — used once extractionPolicy.ts has decided which provider is allowed for
+ * this assessment. Unknown keys throw (never a fallback). */
+export function getExtractionProviderByKey(key: string): AssessmentExtractionProvider {
+  const provider = PROVIDERS[key];
+  if (!provider) {
+    throw new Error(`Unknown assessment extraction provider "${key}" — expected one of: ${Object.keys(PROVIDERS).join(", ")}.`);
+  }
+  return provider;
+}

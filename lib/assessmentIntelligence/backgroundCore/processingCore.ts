@@ -10,8 +10,13 @@ import {
   getMostRecentSourceIdForSession,
   recordProcessingDiagnosticStage,
 } from "./dataAccess.ts";
-import { getConfiguredExtractionProvider } from "./providerSelection.ts";
+import { getConfiguredExtractionProvider, getExtractionProviderByKey } from "./providerSelection.ts";
 import { sanitizeFailureReason } from "../processingQueue.ts";
+import { decideExtractionPolicy } from "./extractionPolicy.ts";
+import { decideAwsAssessmentAuthorization } from "../phiGovernance.ts";
+import type { AssessmentExtractionProvider } from "../extractionProvider.ts";
+import { sessionHasLiveAudioSource } from "./transcription/transcriptionStore.ts";
+import { advanceCapturedAssessmentTranscription, retryCapturedAssessmentTranscriptionCleanup } from "./transcription/transcriptionRuntime.ts";
 
 // Background-safe processing core (2026-09-17 architecture change). Deliberately carries NO
 // `import "server-only"` and NO React/Next dependency — see dataAccess.ts's header comment for
@@ -43,10 +48,13 @@ export interface ExtractionPipelineResult {
 export async function runExtractionPipelineForSession(
   assessmentSessionId: string,
   residentId: string,
-  sourceId: string
+  sourceId: string,
+  /** The provider extractionPolicy.ts allowed for this assessment. Omitted only by the legacy
+   * webhook path (pipeline.ts transcribeAndExtractAssessmentAudio), which keeps its behavior. */
+  providerOverride?: AssessmentExtractionProvider
 ): Promise<ExtractionPipelineResult> {
   const combinedText = await getCombinedTranscriptText(assessmentSessionId);
-  const provider = getConfiguredExtractionProvider();
+  const provider = providerOverride ?? getConfiguredExtractionProvider();
   // A thrown error here (provider-level failure) is deliberately allowed to propagate — never
   // caught-and-rerouted to a different provider. See AssessmentExtractionProvider's contract.
   const extraction = await provider.extractFacts(combinedText);
@@ -107,12 +115,60 @@ export async function advanceQueuedAssessmentProcessing(assessmentSessionId: str
   await recordProcessingDiagnosticStage(assessmentSessionId, "extraction_started");
 
   try {
+    // Decide WHICH provider may see this transcript before any provider is called: never an
+    // empty transcript (no empty drafts); audio-derived assessments are AWS-only (explicit
+    // bedrock + AWS PHI gate), never a silent OpenAI default.
+    const policy = decideExtractionPolicy({
+      transcriptText: await getCombinedTranscriptText(assessmentSessionId),
+      audioDerived: await sessionHasLiveAudioSource(assessmentSessionId),
+      configuredProvider: process.env.ASSESSMENT_EXTRACTION_PROVIDER,
+      awsAuthorization: decideAwsAssessmentAuthorization({ isSyntheticTest: session.is_synthetic_test === true }),
+    });
+    if (!policy.ok) {
+      const reason = sanitizeFailureReason(new Error(policy.reason));
+      await markSessionFailed(assessmentSessionId, reason);
+      return { assessmentSessionId, outcome: "failed", error: reason };
+    }
     const sourceId = await getMostRecentSourceIdForSession(assessmentSessionId);
-    await runExtractionPipelineForSession(assessmentSessionId, session.resident_id, sourceId ?? "");
+    await runExtractionPipelineForSession(assessmentSessionId, session.resident_id, sourceId ?? "", getExtractionProviderByKey(policy.providerKey));
     return { assessmentSessionId, outcome: "processed" };
   } catch (err) {
     const reason = sanitizeFailureReason(err);
     await markSessionFailed(assessmentSessionId, reason);
     return { assessmentSessionId, outcome: "failed", error: reason };
   }
+}
+
+export interface AdvanceSessionResult {
+  assessmentSessionId: string;
+  route: "transcription" | "extraction" | "cleanup" | "none";
+  outcome: string;
+  error?: string;
+}
+
+/** The background worker's single entry point: routes by the session's durable status.
+ *   captured -> transcription step (and, once the transcript is durable and the session is
+ *               queued, straight into the existing extraction step in the same invocation);
+ *   queued   -> the existing extraction step, unchanged;
+ *   anything else -> retry any pending temporary-artifact cleanup (no-op otherwise). */
+export async function advanceAssessmentSession(assessmentSessionId: string): Promise<AdvanceSessionResult> {
+  const session = await getAssessmentSession(assessmentSessionId);
+  if (!session) return { assessmentSessionId, route: "none", outcome: "not_found" };
+
+  if (session.status === "captured") {
+    const t = await advanceCapturedAssessmentTranscription(assessmentSessionId);
+    if (t.outcome !== "queued") {
+      return { assessmentSessionId, route: "transcription", outcome: t.outcome, error: "reason" in t ? t.reason : undefined };
+    }
+    const e = await advanceQueuedAssessmentProcessing(assessmentSessionId);
+    return { assessmentSessionId, route: "extraction", outcome: e.outcome, error: e.error };
+  }
+
+  if (session.status === "queued") {
+    const e = await advanceQueuedAssessmentProcessing(assessmentSessionId);
+    return { assessmentSessionId, route: "extraction", outcome: e.outcome, error: e.error };
+  }
+
+  const c = await retryCapturedAssessmentTranscriptionCleanup(assessmentSessionId).catch(() => "pending" as const);
+  return { assessmentSessionId, route: "cleanup", outcome: c };
 }
