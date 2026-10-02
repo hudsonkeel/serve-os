@@ -14,6 +14,9 @@ import {
   distinctFactValues,
   getDispositionableExceptions,
   isReviewReadyForApproval,
+  hasExtractedAssessmentContent,
+  needsAttentionCount,
+  NO_EXTRACTED_ASSESSMENT_INFORMATION_MESSAGE,
   buildApprovedFactsForReview,
   type ApprovedFactInput,
   type DraftFactForReview,
@@ -255,15 +258,23 @@ export function AssessmentReviewPanel({
     });
   }
 
-  if (exceptions.length === 0 && clearFacts.length === 0) {
+  // Zero real facts (clear / conflicting / uncertain): nothing to review and nothing to approve.
+  // missing_required placeholders are generated from the absence of facts, so they don't count
+  // as content (hasExtractedAssessmentContent). Coverage stays visible as information only.
+  if (!approved && !hasExtractedAssessmentContent(clearFacts, exceptions)) {
     return (
       <div className="rounded-xl border border-ivory-border bg-surface p-6 shadow-card">
-        <p className="font-sans text-sm text-muted">
-          No facts have been extracted for this assessment yet.
+        <p className="font-sans text-sm font-semibold text-body">{NO_EXTRACTED_ASSESSMENT_INFORMATION_MESSAGE}</p>
+        <p className="mt-1 font-sans text-sm text-muted">
+          There is nothing to review, so this assessment can&rsquo;t be approved. The conversation may not have covered
+          assessment topics.
         </p>
+        {coverage.summary && <p className="mt-3 font-sans text-sm text-body">{coverage.summary}</p>}
       </div>
     );
   }
+
+  const attentionCount = needsAttentionCount(exceptions);
 
   return (
     <div className="space-y-6">
@@ -286,7 +297,7 @@ export function AssessmentReviewPanel({
                 activeTab === "needs_attention" ? "border-navy text-body" : "border-transparent text-muted hover:text-body"
               }`}
             >
-              Needs Attention ({exceptions.length})
+              Needs Attention ({attentionCount})
             </button>
           </div>
 
@@ -305,7 +316,7 @@ export function AssessmentReviewPanel({
                 {coverage.summary && <p className="mb-4 font-sans text-sm text-body">{coverage.summary}</p>}
 
                 <h3 className="mb-1 font-sans text-label font-semibold uppercase tracking-widest text-muted">
-                  Needs Your Attention ({exceptions.length})
+                  Needs Your Attention ({attentionCount})
                 </h3>
                 <p className="mb-4 font-sans text-sm text-muted">
                   {clearFacts.length} field{clearFacts.length === 1 ? "" : "s"} extracted with confidence and no

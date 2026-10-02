@@ -2,6 +2,7 @@ import { createServerClient } from "../../supabase/server.ts";
 import type { NormalizedDraftFact } from "../factTypes.ts";
 import { findConflictingFactPairs, findSelfFlaggedConflicts } from "../conflictDetection.ts";
 import { isRecordableDiagnosticStage, type ProcessingDiagnosticStage } from "../processingQueue.ts";
+import { mergeExtractionProvenance, type ExtractionProvenanceRecord } from "./extractionProvenance.ts";
 
 // Background-safe processing data access (2026-09-17 architecture change). Deliberately carries
 // NO `import "server-only"` and NO React/Next dependency -- this module is what makes
@@ -354,4 +355,29 @@ export async function getConflictsForSessionByStatus(
  * anyway (nothing has been resolved yet). */
 export async function getOpenConflictsForSession(assessmentSessionId: string): Promise<FactConflictRow[]> {
   return getConflictsForSessionByStatus(assessmentSessionId, "open");
+}
+
+/** Durably records extraction provenance on the source the extraction read, MERGED into its
+ * existing source_payload (capture metadata, run logs, attestation, etc. are preserved). Never
+ * throws — a provenance write must not change an extraction's outcome — but logs any failure. */
+export async function recordExtractionProvenance(sourceId: string, record: ExtractionProvenanceRecord): Promise<boolean> {
+  if (!sourceId) return false;
+  try {
+    const supabase = createServerClient();
+    const { data, error } = await supabase.from("intake_sources").select("source_payload").eq("id", sourceId).maybeSingle();
+    if (error || !data) {
+      console.error("[recordExtractionProvenance] read", { sourceId, message: error?.message ?? "source not found" });
+      return false;
+    }
+    const merged = mergeExtractionProvenance((data as { source_payload: Record<string, unknown> | null }).source_payload, record);
+    const { error: updateError } = await supabase.from("intake_sources").update({ source_payload: merged }).eq("id", sourceId);
+    if (updateError) {
+      console.error("[recordExtractionProvenance] write", { sourceId, message: updateError.message });
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[recordExtractionProvenance]", { sourceId, err });
+    return false;
+  }
 }

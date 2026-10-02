@@ -6,10 +6,17 @@ import {
   getDispositionableExceptions,
   isReviewReadyForApproval,
   buildApprovedFactsForReview,
+  hasExtractedAssessmentContent,
+  needsAttentionCount,
+  NO_EXTRACTED_ASSESSMENT_INFORMATION_MESSAGE,
   type DraftFactForReview,
   type FactConflictForReview,
   type ReviewException,
 } from "../reviewExceptions.ts";
+import { computeAssessmentCoverage, buildCanonicalCoverageFacts } from "../coverage.ts";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 type Test = { name: string; fn: () => void };
 const tests: Test[] = [];
@@ -403,6 +410,80 @@ test("buildApprovedFactsForReview: an unresolved conflicting exception contribut
   };
   const approved = buildApprovedFactsForReview([], [exception], {});
   assert.equal(approved.length, 0);
+});
+
+// ─── Zero-fact approval guard + Needs Attention count (2026-10-02, Test #1 follow-up) ────────
+
+const allRequiredMissing = (): ReviewException[] => computeReviewExceptions([], []).exceptions;
+
+test("ZERO FACTS: computeReviewExceptions yields only missing_required placeholders (Test #1 shape: 7)", () => {
+  const exceptions = allRequiredMissing();
+  assert.ok(exceptions.length > 0);
+  assert.ok(exceptions.every((e) => e.kind === "missing_required"));
+});
+
+test("ZERO FACTS: missing_required placeholders are NOT extracted content — approval is unavailable", () => {
+  const exceptions = allRequiredMissing();
+  assert.equal(hasExtractedAssessmentContent([], exceptions), false);
+  assert.equal(isReviewReadyForApproval([], exceptions, {}), false);
+  // even if someone recorded dispositions for placeholder paths, nothing becomes approvable
+  const resolutions = Object.fromEntries(exceptions.map((e) => [e.fieldPath, "leave_uncertain"]));
+  assert.equal(isReviewReadyForApproval([], exceptions, resolutions), false);
+});
+
+test("Needs Attention count excludes hidden missing_required placeholders (Test #1: 7 → 0)", () => {
+  assert.equal(needsAttentionCount(allRequiredMissing()), 0);
+  const mixed: ReviewException[] = [
+    conflictingException({ fieldPath: "field.a" }),
+    uncertainException({ fieldPath: "field.b" }),
+    ...allRequiredMissing(),
+  ];
+  assert.equal(needsAttentionCount(mixed), 2);
+});
+
+test("genuine content: an uncertain fact alone (no clear facts) IS content, and still requires disposition", () => {
+  const exceptions = [uncertainException({ fieldPath: "daily_life.laundry" }), ...allRequiredMissing()];
+  assert.equal(hasExtractedAssessmentContent([], exceptions), true);
+  assert.equal(isReviewReadyForApproval([], exceptions, {}), false, "undispositioned uncertainty blocks");
+  assert.equal(isReviewReadyForApproval([], exceptions, { "daily_life.laundry": "leave_uncertain" }), true, "Leave Unknown is a valid disposition");
+});
+
+test("genuine content: a conflict alone is content; 'Needs follow-up' (leave_uncertain) remains a valid disposition", () => {
+  const exceptions = [conflictingException({ fieldPath: "cognition.short_term_memory_change" })];
+  assert.equal(isReviewReadyForApproval([], exceptions, {}), false);
+  assert.equal(isReviewReadyForApproval([], exceptions, { "cognition.short_term_memory_change": "leave_uncertain" }), true);
+});
+
+test("populated assessment with missing_required placeholders still becomes approvable once real exceptions are dispositioned", () => {
+  const clearFacts = [draftFact({ id: "c1", fieldPath: "daily_life.bathing" })];
+  const exceptions = [uncertainException({ fieldPath: "daily_life.laundry" }), ...allRequiredMissing()];
+  assert.equal(isReviewReadyForApproval(clearFacts, exceptions, {}), false);
+  assert.equal(isReviewReadyForApproval(clearFacts, exceptions, { "daily_life.laundry": "confirmed_no" }), true);
+  assert.equal(isReviewReadyForApproval(clearFacts, allRequiredMissing(), {}), true, "clear facts + placeholders only: approvable (placeholders never gate)");
+});
+
+test("coverage remains independent: the zero-fact Test #1 shape still reports 33 informational topics", () => {
+  const canonical = buildCanonicalCoverageFacts({
+    dateOfBirth: "1940-01-01", phone: "555", communityId: "c", addressLine1: null, city: null, state: null, postalCode: null,
+    physicianName: null, physicianPhone: null, primaryContactName: null,
+  });
+  const coverage = computeAssessmentCoverage([], canonical);
+  assert.equal(coverage.missingTopics.length, 33);
+  assert.match(coverage.summary ?? "", /33 important topics still need clarification/);
+  assert.equal(needsAttentionCount(allRequiredMissing()), 0, "coverage never feeds the Needs Attention count");
+});
+
+test("STATIC: the review panel shows the zero-fact state, counts only dispositionable items, and the server action refuses zero-fact approval", () => {
+  const code = (rel: string) => readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", rel), "utf8");
+  const panel = code("components/assessment/AssessmentReviewPanel.tsx");
+  assert.match(panel, /if \(!approved && !hasExtractedAssessmentContent\(clearFacts, exceptions\)\) \{/);
+  assert.match(panel, /\{NO_EXTRACTED_ASSESSMENT_INFORMATION_MESSAGE\}/);
+  assert.match(panel, /Needs Attention \(\{attentionCount\}\)/);
+  assert.match(panel, /Needs Your Attention \(\{attentionCount\}\)/);
+  assert.ok(!/Needs (Your )?Attention \(\{exceptions\.length\}\)/.test(panel));
+  const action = code("lib/actions/assessmentIntelligence.ts");
+  assert.match(action, /const draftFactsForApproval = await getDraftFactsForSession\(input\.assessmentSessionId\);\s*if \(draftFactsForApproval\.length === 0\)/);
+  assert.equal(NO_EXTRACTED_ASSESSMENT_INFORMATION_MESSAGE, "No assessment information was extracted from this recording.");
 });
 
 let passed = 0;

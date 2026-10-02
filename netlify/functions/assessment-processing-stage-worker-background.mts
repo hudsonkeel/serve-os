@@ -80,7 +80,9 @@ const handler = async (req: Request): Promise<Response> => {
     // Routes by durable status: captured -> transcription (then extraction once queued),
     // queued -> extraction, otherwise pending transcription-artifact cleanup.
     const result = await advanceAssessmentSession(assessmentSessionId);
-    console.log(`[assessment-processing-stage-worker] ${assessmentSessionId}: ${result.route}/${result.outcome}${result.error ? ` — ${result.error}` : ""}`);
+    console.log(
+      `[assessment-processing-stage-worker] ${assessmentSessionId}: ${result.route}/${result.outcome}${result.detail ? ` [${result.detail}]` : ""}${result.error ? ` — ${result.error}` : ""}`
+    );
     return new Response(JSON.stringify({ ok: true, result }), { status: 200, headers: { "content-type": "application/json" } });
   } catch (err) {
     console.error(`[assessment-processing-stage-worker] ${assessmentSessionId} threw an unhandled error`, err);

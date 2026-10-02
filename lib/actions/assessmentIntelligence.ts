@@ -21,7 +21,7 @@ import {
   getAxisCareIdentityLinkState,
   type AssessmentSessionRecord,
 } from "@/lib/data/assessmentIntelligence";
-import { computeReviewExceptions, type ApprovedFactInput, type DraftFactForReview } from "@/lib/assessmentIntelligence/reviewExceptions";
+import { computeReviewExceptions, NO_EXTRACTED_ASSESSMENT_INFORMATION_MESSAGE, type ApprovedFactInput, type DraftFactForReview } from "@/lib/assessmentIntelligence/reviewExceptions";
 import { computeAssessmentCoverage, buildCanonicalCoverageFacts, type CanonicalResidentProfileFacts, type AssessmentCoverageSummary } from "@/lib/assessmentIntelligence/coverage";
 import { buildCanonicalProfileEffectiveFacts, approvedFactInputsToEffectiveFacts, type EffectiveFact } from "@/lib/assessmentIntelligence/assessmentProjection";
 import { buildApprovedAssessmentSnapshot, type AssessmentDocumentSnapshot } from "@/lib/assessmentIntelligence/assessmentSnapshot";
@@ -504,6 +504,13 @@ export async function approveAssessment(input: {
   const existing = await getAssessmentSession(input.assessmentSessionId);
   if (existing?.status === CAPTURED_SESSION_STATUS) {
     return { error: "This assessment's audio has not been transcribed yet, so there is nothing to approve." };
+  }
+  // Server-side half of the zero-fact guard (the panel's is UI only; this action is reachable by
+  // direct POST): every clear, conflicting, and uncertain fact is a draft fact, so zero draft facts
+  // means extraction produced no assessment information at all.
+  const draftFactsForApproval = await getDraftFactsForSession(input.assessmentSessionId);
+  if (draftFactsForApproval.length === 0) {
+    return { error: `${NO_EXTRACTED_ASSESSMENT_INFORMATION_MESSAGE} There is nothing to approve.` };
   }
 
   const result = await approveAssessmentSession({

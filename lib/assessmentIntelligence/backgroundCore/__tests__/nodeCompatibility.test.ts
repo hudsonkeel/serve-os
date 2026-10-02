@@ -35,6 +35,7 @@ const BACKGROUND_SAFE_MODULES = [
   "../providers/bedrockClaudeProvider.ts",
   "../processingCore.ts",
   "../extractionPolicy.ts",
+  "../extractionProvenance.ts",
   "../transcription/audioRuns.ts",
   "../transcription/transcriptFormat.ts",
   "../transcription/transcriptionState.ts",

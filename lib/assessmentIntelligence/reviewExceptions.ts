@@ -173,10 +173,30 @@ export function isReviewReadyForApproval(
   exceptions: readonly ReviewException[],
   resolutions: Readonly<Record<string, string | undefined>>
 ): boolean {
-  const hasAnyDraftFacts = clearFacts.length > 0 || exceptions.length > 0;
-  if (!hasAnyDraftFacts) return false;
+  if (!hasExtractedAssessmentContent(clearFacts, exceptions)) return false;
   return getDispositionableExceptions(exceptions).every((exception) => isExceptionDispositioned(exception, resolutions));
 }
+
+/** Whether extraction produced ANY real assessment information: clear facts, or conflicting /
+ * uncertain facts. "missing_required" placeholders are not information — they are generated from
+ * the ABSENCE of facts — so a session whose only exceptions are placeholders has nothing to review
+ * and must never be approvable (2026-10-02, Test #1 zero-fact finding: placeholders previously
+ * satisfied this check and enabled Approve on an empty assessment). */
+export function hasExtractedAssessmentContent(
+  clearFacts: readonly DraftFactForReview[],
+  exceptions: readonly ReviewException[]
+): boolean {
+  return clearFacts.length > 0 || getDispositionableExceptions(exceptions).length > 0;
+}
+
+/** The "Needs Attention (N)" count: only items a reviewer actually sees and must disposition
+ * (conflicting / uncertain). "missing_required" placeholders are deliberately not rendered (the
+ * informational coverage summary is the single missing-topics surface), so they are not counted. */
+export function needsAttentionCount(exceptions: readonly ReviewException[]): number {
+  return getDispositionableExceptions(exceptions).length;
+}
+
+export const NO_EXTRACTED_ASSESSMENT_INFORMATION_MESSAGE = "No assessment information was extracted from this recording.";
 
 export interface ApprovedFactInput {
   field_path: string;
