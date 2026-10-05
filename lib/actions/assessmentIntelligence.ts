@@ -40,7 +40,16 @@ import { getRequirementByCode } from "@/lib/data/personRequirements";
 import { getPersonEvidenceForSubject } from "@/lib/data/personEvidence";
 import { evaluateRequirementSetStatus } from "@/lib/compliance/requirementSetStatus";
 import { recordAssessmentEvidence, recordAssessmentIspEvidence } from "@/lib/clientReadiness/evidence";
-import { CR_ASSESSMENT_CURRENT, CR_ISP_ON_FILE_AND_CURRENT } from "@/lib/clientReadiness/constants";
+import { CR_ASSESSMENT_CURRENT, CR_ISP_ON_FILE_AND_CURRENT, CR_SERVICE_AGREEMENT_AND_DISCLOSURE_SIGNED } from "@/lib/clientReadiness/constants";
+import { getResidentServeRelationshipDetail } from "@/lib/data/residentServeRelationships";
+import {
+  approvedFactsForCurrentAssessment,
+  decideAxisCarePreviewSource,
+  describeSendLifecycleState,
+  type AxisCarePreviewSourceBlocker,
+  type SendLifecycleState,
+} from "@/lib/assessmentIntelligence/axiscarePreviewSource";
+import { classifyApprovedFactsForAxisCare, type NotSentFact, type SentFact } from "@/lib/assessmentIntelligence/axiscareFieldClassification";
 import { getResidentById, setResidentCommunityId } from "@/lib/data/residents";
 import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 import { resolveAssessmentCommunity } from "@/lib/assessmentIntelligence/communityResolution";
@@ -713,6 +722,17 @@ export interface AxisCareClientCreatePreviewResult {
   /** The exact AxisCare client-create request this evaluation would submit — null unless
    * technicallyReady. Never sent anywhere; see evaluateAxisCareClientCreate()'s own doc comment. */
   payload?: AxisCareClientCreateRequest | null;
+  /** Set when no projection could be generated from the requested session (nothing was evaluated
+   * or recorded). currentSessionId names the person's current assessment when one exists. */
+  sourceBlocker?: { reason: AxisCarePreviewSourceBlocker; message: string; currentSessionId: string | null };
+  /** The ONE current approved assessment this projection was generated from. */
+  source?: { assessmentSessionId: string; approvedAt: string | null; approvedBy: string | null };
+  sent?: SentFact[];
+  notSent?: NotSentFact[];
+  /** Facts that map to supported AxisCare fields when no payload can be built (e.g. update). */
+  mappableWithoutPayload?: SentFact[];
+  /** Informational only for preview: whether an eventual Send would be lifecycle-blocked. */
+  lifecycle?: SendLifecycleState;
 }
 
 /** AxisCare client-create readiness + real payload PREVIEW only (Slice B.1, 2026-09-18) — no
@@ -725,44 +745,99 @@ export async function generateAxisCarePreview(assessmentSessionId: string): Prom
   const authResult = await requireActor();
   if ("error" in authResult) return { error: authResult.error };
 
-  const session = await getAssessmentSession(assessmentSessionId);
-  if (!session) return { error: "Assessment session not found." };
+  const requested = await getAssessmentSession(assessmentSessionId);
+  if (!requested) return { error: "Assessment session not found." };
+  const residentId = requested.resident_id;
 
-  const resident = await getResidentById(session.resident_id);
+  // ── Authority: exactly one current approved assessment (canonical CR_ASSESSMENT_CURRENT) ──
+  // Decided server-side BEFORE any fact is read or any audit row is written. Same canonical
+  // evidence + latest-row rule as getCurrentAssessmentSummary(); this only refuses when the
+  // requested session isn't approved / isn't current, or the canonical record set is ambiguous.
+  const currentRequirement = await getRequirementByCode(CR_ASSESSMENT_CURRENT);
+  const evidence = currentRequirement ? await getPersonEvidenceForSubject("resident", residentId) : [];
+  const canonicalLatest = currentRequirement
+    ? (evaluateRequirementSetStatus([currentRequirement], evidence).requirements[0]?.latestEvidence ?? null)
+    : null;
+  const activeEvidence = currentRequirement
+    ? evidence
+        .filter((e) => e.requirement_id === currentRequirement.id && e.lifecycle_status !== "superseded")
+        .map((e) => ({ sessionId: e.external_reference ?? null, createdAt: e.created_at }))
+    : [];
+  const currentSessionRecord = canonicalLatest?.external_reference ? await getAssessmentSession(canonicalLatest.external_reference) : null;
+  const sourceDecision = decideAxisCarePreviewSource({
+    requested: { id: requested.id, residentId, status: requested.status },
+    canonicalLatest: canonicalLatest ? { sessionId: canonicalLatest.external_reference ?? null, createdAt: canonicalLatest.created_at } : null,
+    activeEvidence,
+    currentSession: currentSessionRecord
+      ? { id: currentSessionRecord.id, residentId: currentSessionRecord.resident_id, status: currentSessionRecord.status }
+      : null,
+  });
+  if (sourceDecision.kind === "blocked") {
+    return { sourceBlocker: { reason: sourceDecision.reason, message: sourceDecision.message, currentSessionId: sourceDecision.currentSessionId } };
+  }
+  const currentSessionId = sourceDecision.currentSessionId;
+  const currentSession = currentSessionRecord!;
+
+  const resident = await getResidentById(residentId);
   const residentIdentity: ResidentIdentityForAxisCare = {
     firstName: resident?.first_name ?? null,
     lastName: resident?.last_name ?? null,
   };
   const canonicalProfileFacts = resident ? residentToCanonicalProfileFacts(resident) : null;
 
-  const approvedFactRows = await getApprovedFactsForResident(session.resident_id);
+  // ONLY the current approved assessment's own facts — never the resident-wide historical set
+  // (approved facts aren't superseded across reassessments, so a merge lets older values win).
+  const approvedFactRows = approvedFactsForCurrentAssessment(await getApprovedFactsForSession(currentSessionId), currentSessionId);
   const facts = approvedFactRows.map((f) => ({
     fieldPath: f.field_path,
     assertionState: f.assertion_state as AssertionState,
     value: f.value,
   }));
 
-  const identityLink = await getAxisCareIdentityLinkState(session.resident_id);
+  const identityLink = await getAxisCareIdentityLinkState(residentId);
   const evaluation = evaluateAxisCareClientCreate({
-    residentId: session.resident_id,
+    residentId,
     resident: residentIdentity,
     approvedFacts: facts,
     canonicalProfileFacts,
     identityLink,
-    assessmentDate: session.finished_at ?? session.started_at,
+    assessmentDate: currentSession.finished_at ?? currentSession.started_at,
+  });
+  const classification = classifyApprovedFactsForAxisCare({ facts, payload: evaluation.payload });
+
+  // Informational only: the eventual Send's lifecycle gate (signed Service Agreement → enrolled
+  // inactive_client), from the canonical sources. Never blocks the preview.
+  const profile = await getCurrentAuthorizedUser();
+  const communityFilter = await resolveCurrentCommunityQueryFilter(profile);
+  const relationshipDetail = await getResidentServeRelationshipDetail(residentId, communityFilter);
+  const serviceAgreementRequirement = await getRequirementByCode(CR_SERVICE_AGREEMENT_AND_DISCLOSURE_SIGNED);
+  const serviceAgreementStatus = serviceAgreementRequirement
+    ? (evaluateRequirementSetStatus([serviceAgreementRequirement], evidence).requirements[0]?.status ?? null)
+    : null;
+  const lifecycle = describeSendLifecycleState({
+    serviceAgreementStatus,
+    relationship: relationshipDetail?.projection.relationship ?? null,
   });
 
+  const source = {
+    assessmentSessionId: currentSessionId,
+    approvedAt: canonicalLatest?.verified_at ?? canonicalLatest?.created_at ?? null,
+    approvedBy: canonicalLatest?.verified_by ?? canonicalLatest?.entered_by ?? null,
+  };
+
+  // Audit rows are attributed to the current approved assessment actually used (here, always the
+  // requested session — a non-current request was refused above). Each preview is its own row.
   await writeAssessmentDecision({
-    assessmentSessionId,
+    assessmentSessionId: currentSessionId,
     decisionType: "axiscare_readiness",
     inputFactIds: approvedFactRows.map((f) => f.id),
-    output: { evaluation },
+    output: { evaluation, source, classification, lifecycle },
   });
 
   await writeAssessmentOutput({
-    assessmentSessionId,
+    assessmentSessionId: currentSessionId,
     outputType: "axiscare_payload_preview",
-    content: { evaluation },
+    content: { evaluation, source, classification, lifecycle },
     generatedBy: authResult.actor,
   });
 
@@ -775,6 +850,11 @@ export async function generateAxisCarePreview(assessmentSessionId: string): Prom
     recommendedMissing: [...evaluation.recommendedMissing],
     integrationGaps: [...evaluation.integrationGaps],
     payload: evaluation.payload,
+    source,
+    sent: classification.sent,
+    notSent: classification.notSent,
+    mappableWithoutPayload: classification.mappableWithoutPayload,
+    lifecycle,
   };
 }
 

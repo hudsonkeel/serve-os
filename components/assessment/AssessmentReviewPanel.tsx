@@ -35,6 +35,7 @@ import {
 import type { AssessmentDocumentSnapshot } from "@/lib/assessmentIntelligence/assessmentSnapshot";
 import { formatCentralTimestamp } from "@/lib/utils/date";
 import { describeAxisCareClientCreatePayload } from "@/lib/integrations/axiscare/clientCreateSummary";
+import { NOT_SENT_REASON_LABELS, type NotSentReason } from "@/lib/assessmentIntelligence/axiscareFieldClassification";
 import { Badge } from "@/components/ui/Badge";
 import { SECONDARY_BUTTON_SMALL_CLASS } from "@/components/ui/actionButtonStyles";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -432,7 +433,7 @@ export function AssessmentReviewPanel({
               Print / Save as PDF
             </button>
           </div>
-          {axiscarePreview && <AxisCareClientCreatePreviewPanel preview={axiscarePreview} />}
+          {axiscarePreview && <AxisCareClientCreatePreviewPanel preview={axiscarePreview} residentId={residentId} />}
           {cinchGenerated && <p className="mt-3 font-sans text-sm text-success-text">Cinch projection generated (draft — not sent).</p>}
           <p className="mt-3 font-sans text-xs text-muted">
             Client enrollment happens when a signed Service Agreement is recorded on{" "}
@@ -673,7 +674,13 @@ function describeIntegrationGap(gap: string): { summary: string; detail: string 
 // same object rendered as JSON below it -- so the two views can never disagree; this component
 // never re-derives client data from anywhere else. The rendered JSON is the literal object a
 // future Send-to-AxisCare action would submit, never a re-derived or re-interpreted summary.
-function AxisCareClientCreatePreviewPanel({ preview }: { preview: AxisCareClientCreatePreviewResult }) {
+const NOT_SENT_REASON_ORDER: readonly NotSentReason[] = ["care_plan", "narrative", "contact", "incomplete_for_axiscare", "unknown_axiscare_capability", "serve_only"];
+
+function formatPreviewDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function AxisCareClientCreatePreviewPanel({ preview, residentId }: { preview: AxisCareClientCreatePreviewResult; residentId: string }) {
   const [isJsonExpanded, setIsJsonExpanded] = useState(false);
   const [isIntegrationDetailsExpanded, setIsIntegrationDetailsExpanded] = useState(false);
 
@@ -684,16 +691,50 @@ function AxisCareClientCreatePreviewPanel({ preview }: { preview: AxisCareClient
   const hasHardBlockers = apiHardBlockers.length > 0 || processHardBlockers.length > 0;
   const summary = preview.payload ? describeAxisCareClientCreatePayload(preview.payload) : null;
 
+  // No projection was generated: the requested session isn't the one current approved assessment
+  // (or there isn't exactly one). Nothing was evaluated or recorded.
+  if (preview.sourceBlocker) {
+    const current = preview.sourceBlocker.currentSessionId;
+    return (
+      <div className="mt-4 rounded-lg border border-warning-text/30 bg-warning-surface px-4 py-3">
+        <p className="font-sans text-sm font-semibold text-body">AxisCare preview not generated</p>
+        <p className="mt-1 font-sans text-sm text-body">{preview.sourceBlocker.message}</p>
+        {current && preview.sourceBlocker.reason === "requested_not_current" && (
+          <Link href={`/residents/${residentId}/assessment/${current}`} className="mt-2 inline-block font-sans text-sm font-semibold text-navy underline">
+            Open the current assessment
+          </Link>
+        )}
+      </div>
+    );
+  }
+  const notSent = preview.notSent ?? [];
+  const notSentByReason = NOT_SENT_REASON_ORDER.map((reason) => ({ reason, items: notSent.filter((f) => f.reason === reason) })).filter((g) => g.items.length > 0);
+  const lifecycle = preview.lifecycle;
+
   return (
     <div className="mt-4 rounded-lg border border-ivory-border bg-ivory px-4 py-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="font-sans text-sm font-semibold text-body">AxisCare Client Create Preview</p>
+        <p className="font-sans text-sm font-semibold text-body">AxisCare Preview</p>
         <div className="flex items-center gap-2">
           <span className="font-sans text-xs font-medium text-muted">Technical readiness</span>
           <Badge tone={preview.technicallyReady ? "success" : "danger"}>{preview.technicallyReady ? "Ready" : "Blocked"}</Badge>
         </div>
       </div>
 
+      {preview.source && (
+        <p className="mb-2 font-sans text-sm text-body">
+          <span className="text-muted">Based on current assessment approved</span>{" "}
+          {preview.source.approvedAt ? formatPreviewDate(preview.source.approvedAt) : "(date unavailable)"}
+          {preview.source.approvedBy ? ` by ${preview.source.approvedBy}` : ""}
+        </p>
+      )}
+      <p className="mb-3 font-sans text-sm font-semibold text-body">
+        {preview.proposedAction === "update"
+          ? `UPDATE existing AxisCare client ${preview.existingAxisCareClientId ?? ""} — not yet supported`
+          : preview.proposedAction === "create"
+            ? "CREATE new AxisCare client"
+            : "No AxisCare action can be proposed yet"}
+      </p>
       <div className={isJsonExpanded ? "grid gap-4 md:grid-cols-2" : ""}>
         <div className="min-w-0 space-y-3">
           {summary && (
@@ -783,6 +824,62 @@ function AxisCareClientCreatePreviewPanel({ preview }: { preview: AxisCareClient
                   ))}
                 </ul>
               )}
+            </div>
+          )}
+          {(preview.sent ?? []).length > 0 && (
+            <div>
+              <p className="font-sans text-xs font-semibold uppercase tracking-wide text-muted">From the approved assessment</p>
+              <ul className="ml-4 list-disc font-sans text-sm text-body">
+                {(preview.sent ?? []).map((f) => (
+                  <li key={f.fieldPath}>
+                    {f.label} → <span className="font-mono text-xs">{f.destination}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {(preview.mappableWithoutPayload ?? []).length > 0 && (
+            <div>
+              <p className="font-sans text-xs font-semibold uppercase tracking-wide text-muted">
+                Would map to AxisCare fields once a payload can be built
+              </p>
+              <ul className="ml-4 list-disc font-sans text-sm text-body">
+                {(preview.mappableWithoutPayload ?? []).map((f) => (
+                  <li key={f.fieldPath}>
+                    {f.label} → <span className="font-mono text-xs">{f.destination}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {notSentByReason.length > 0 && (
+            <div>
+              <p className="font-sans text-xs font-semibold uppercase tracking-wide text-body">Not sent to AxisCare</p>
+              <p className="font-sans text-xs text-muted">Approved in this assessment, but not part of what Serve would send.</p>
+              {notSentByReason.map((group) => (
+                <div key={group.reason} className="mt-1">
+                  <p className="font-sans text-xs font-medium text-muted">{NOT_SENT_REASON_LABELS[group.reason]}</p>
+                  <ul className="ml-4 list-disc font-sans text-sm text-body">
+                    {group.items.map((f) => (
+                      <li key={f.fieldPath}>{f.label}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+          {lifecycle && (
+            <div className="rounded-md border border-ivory-border bg-white px-3 py-2">
+              <p className="font-sans text-xs font-semibold uppercase tracking-wide text-muted">Enrollment status (information only)</p>
+              <p className="font-sans text-sm text-body">
+                Service Agreement: {lifecycle.serviceAgreementSigned ? "signed" : "not on file"} · Serve relationship:{" "}
+                {lifecycle.relationship ? lifecycle.relationship.replace(/_/g, " ") : "unknown"}
+              </p>
+              <p className="font-sans text-xs text-muted">
+                {lifecycle.sendWouldBeLifecycleBlocked
+                  ? `Sending to AxisCare would currently be blocked: ${lifecycle.reasons.join(" ")}`
+                  : "Enrollment requirements for sending to AxisCare are met."}
+              </p>
             </div>
           )}
         </div>
