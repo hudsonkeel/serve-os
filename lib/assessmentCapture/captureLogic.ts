@@ -13,6 +13,7 @@
 
 import { canCaptureResidentAssessment, canInspectCapturedAssessmentAudio } from "../auth/permissions.ts";
 import type { AuthRole } from "../auth/constants.ts";
+import { decideAwsAssessmentAuthorization } from "../assessmentIntelligence/phiGovernance.ts";
 
 export const CAPTURED_SESSION_STATUS = "captured" as const;
 export const RECORDING_SESSION_STATUS = "recording" as const;
@@ -503,7 +504,53 @@ export function microphoneErrorMessage(errorName: string | null | undefined): st
 
 // ─── Transcription progress labels (no AWS/queue jargon) ──────────────────────────────────────
 
-export type AudioTranscriptionDisplayState = "awaiting" | "transcribing" | "failed" | "transcribed";
+/** "not_enabled": captured audio this deployment is not authorized to transcribe (real-PHI AWS
+ * processing not attested, and not an attested synthetic test) — it will not move on its own. */
+export type AudioTranscriptionDisplayState = "awaiting" | "transcribing" | "failed" | "transcribed" | "not_enabled";
+
+export const CAPTURED_TRANSCRIPTION_NOT_ENABLED_LABEL = "Audio saved — transcription not yet enabled";
+
+/** Whether this deployment may transcribe/extract this captured session at all — the same AWS PHI
+ * gate the dispatcher and worker enforce (phiGovernance.ts), used here only to tell the operator
+ * the truth about what happens next. */
+export function isCapturedTranscriptionEnabled(
+  session: { isSyntheticTest: boolean },
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  return decideAwsAssessmentAuthorization(session, env).allowed;
+}
+
+/** Operator-facing notice for a finished recording, by whether it will actually be transcribed. */
+export function capturedAssessmentNotice(transcriptionEnabled: boolean): { title: string; detail: string } {
+  if (transcriptionEnabled) {
+    return {
+      title: "Audio captured — awaiting transcription",
+      detail: "This assessment can be reviewed once its conversation has been transcribed.",
+    };
+  }
+  return {
+    title: CAPTURED_TRANSCRIPTION_NOT_ENABLED_LABEL,
+    detail:
+      "The recording is saved securely in Serve. Transcription of real assessments is not currently enabled, so this assessment can't be reviewed yet. Nothing has been sent outside Serve.",
+  };
+}
+
+/** Refines per-session transcription display states for captured sessions this deployment is not
+ * authorized to transcribe, so the history never shows an indefinite "awaiting" for them. */
+export function refineCapturedDisplayStates(
+  sessions: readonly { id: string; status: string; is_synthetic_test?: boolean | null }[],
+  states: Readonly<Record<string, AudioTranscriptionDisplayState>>,
+  env: Record<string, string | undefined> = process.env
+): Record<string, AudioTranscriptionDisplayState> {
+  const out: Record<string, AudioTranscriptionDisplayState> = { ...states };
+  for (const s of sessions) {
+    if (s.status !== CAPTURED_SESSION_STATUS) continue;
+    const current = out[s.id];
+    if (current !== undefined && current !== "awaiting") continue;
+    if (!isCapturedTranscriptionEnabled({ isSyntheticTest: s.is_synthetic_test === true }, env)) out[s.id] = "not_enabled";
+  }
+  return out;
+}
 
 export const SAFE_TRANSCRIPTION_FAILURE_MESSAGE =
   "The recording is saved, but it couldn't be transcribed. Retry, or contact an administrator.";
@@ -512,7 +559,10 @@ export const SAFE_TRANSCRIPTION_FAILURE_MESSAGE =
  * assessment came from Serve OS capture. Falls back to the plain status label otherwise. */
 export function assessmentSessionDisplayLabel(status: string, transcription?: AudioTranscriptionDisplayState): string {
   if (transcription) {
-    if (status === "captured") return transcription === "transcribing" ? "Transcribing assessment" : "Audio captured — awaiting transcription";
+    if (status === "captured") {
+      if (transcription === "not_enabled") return CAPTURED_TRANSCRIPTION_NOT_ENABLED_LABEL;
+      return transcription === "transcribing" ? "Transcribing assessment" : "Audio captured — awaiting transcription";
+    }
     if ((status === "queued" || status === "processing") && transcription === "transcribed") return "Transcript ready — preparing assessment";
     if (status === "failed" && transcription === "failed") return "Transcription needs attention";
   }

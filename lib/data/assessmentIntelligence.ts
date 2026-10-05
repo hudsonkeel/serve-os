@@ -208,14 +208,19 @@ export async function recoverStaleProcessingSessions(staleAfterMs: number, maxAt
   return recovered;
 }
 
-export async function getQueuedSessionsForDispatch(limit: number): Promise<AssessmentSessionRecord[]> {
+/** Queued sessions the dispatcher may hand to the extraction worker, per the AWS PHI dispatch
+ * scope (phiGovernance.ts awsTranscriptionDispatchScope): none at all unless PHI processing is
+ * attested; only attested synthetic sessions in synthetic test mode. A session extraction would
+ * refuse is never selected (and so never failed) merely because the dispatcher ran. */
+export async function getQueuedSessionsForDispatch(
+  limit: number,
+  scope: "all_captured" | "synthetic_only" | "none"
+): Promise<AssessmentSessionRecord[]> {
+  if (scope === "none" || limit <= 0) return [];
   const supabase = createServerClient();
-  const { data, error } = await supabase
-    .from("intake_assessment_sessions")
-    .select("*")
-    .eq("status", "queued")
-    .order("started_at", { ascending: true })
-    .limit(limit);
+  let query = supabase.from("intake_assessment_sessions").select("*").eq("status", "queued");
+  if (scope === "synthetic_only") query = query.eq("is_synthetic_test", true);
+  const { data, error } = await query.order("started_at", { ascending: true }).limit(limit);
   if (error) {
     console.error("[getQueuedSessionsForDispatch]", { message: error.message });
     return [];

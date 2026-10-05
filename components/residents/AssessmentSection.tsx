@@ -22,6 +22,10 @@ interface AssessmentSectionProps {
   canInspectCapturedAudio?: boolean;
   /** Transcription progress for sessions recorded in Serve OS (keyed by session id). */
   transcriptionStates?: Record<string, AudioTranscriptionDisplayState>;
+  /** Admin/test pasted-transcript fallback. Shown only where extraction of a pasted (real, PHI)
+   * transcript is actually authorized — real-PHI AWS processing attested — since a pasted session
+   * can never be an attested synthetic test. submitPastedTranscriptAndExtract() enforces the same. */
+  canPasteTranscript?: boolean;
 }
 
 function StatusBadge({ status, transcription }: { status: string; transcription?: AudioTranscriptionDisplayState }) {
@@ -81,7 +85,7 @@ function RetrySessionButton({ session }: { session: AssessmentSessionRecord }) {
   );
 }
 
-export function AssessmentSection({ residentId, residentName, sessions, canInspectCapturedAudio = false, transcriptionStates = {} }: AssessmentSectionProps) {
+export function AssessmentSection({ residentId, residentName, sessions, canInspectCapturedAudio = false, transcriptionStates = {}, canPasteTranscript = false }: AssessmentSectionProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -174,17 +178,19 @@ export function AssessmentSection({ residentId, residentName, sessions, canInspe
           second entry point to the same action. This section keeps exactly
           what isn't duplicated: history/status above, and the admin/test
           fallback below. */}
-      <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={() => setShowPasteForm((v) => !v)}
-          className="inline-flex h-10 items-center rounded-lg border border-ivory-border bg-ivory px-5 font-sans text-sm font-semibold text-body transition-colors hover:bg-white"
-        >
-          {showPasteForm ? "Cancel" : "Paste Transcript (admin/test fallback)"}
-        </button>
-      </div>
+      {canPasteTranscript && (
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => setShowPasteForm((v) => !v)}
+            className="inline-flex h-10 items-center rounded-lg border border-ivory-border bg-ivory px-5 font-sans text-sm font-semibold text-body transition-colors hover:bg-white"
+          >
+            {showPasteForm ? "Cancel" : "Paste Transcript (admin/test fallback)"}
+          </button>
+        </div>
+      )}
 
-      {showPasteForm && (
+      {canPasteTranscript && showPasteForm && (
         <div className="mt-4">
           <p className="mb-2 font-sans text-xs text-muted">
             Admin/test fallback only — not the normal operator workflow. The normal path is the

@@ -72,11 +72,16 @@ export function canVerifyResidentEvidence(role: AuthRole | null | undefined): bo
 // live audio-capture Assessment session is care-plan territory, not
 // ordinary resident-note/operational-update administration. Unlike the
 // three roles-narrower predicates above (which exclude operations too),
-// this one only excludes office_staff: startAssessmentCapture had no
-// role check at all before this predicate existed, so every other role
-// — including operations — already had this capability and keeps it
-// unchanged.
-const RESIDENT_ASSESSMENT_CAPTURE_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "operations"];
+// this one originally only excluded office_staff.
+//
+// Browser-recorder pilot gate (merge-readiness B3): the normal Assessment/
+// Reassessment button now opens the Serve OS browser recorder, which is a
+// pilot — real-PHI AWS transcription is not yet enabled and native iOS
+// capture is deferred. Until both are production-ready, recording is
+// admin/manager pilot use only; executive and operations no longer receive
+// the recorder. Enforced server-side everywhere this predicate is checked
+// (the button, the capture page, every native-capture action).
+const RESIDENT_ASSESSMENT_CAPTURE_ROLES: readonly AuthRole[] = ["admin", "manager"];
 
 export function canCaptureResidentAssessment(role: AuthRole | null | undefined): boolean {
   return Boolean(role && RESIDENT_ASSESSMENT_CAPTURE_ROLES.includes(role));

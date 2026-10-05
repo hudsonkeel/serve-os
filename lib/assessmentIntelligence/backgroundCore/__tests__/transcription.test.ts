@@ -603,11 +603,9 @@ test("a transcript already persisted (died before queueing) → queued without r
   assert.equal(w.startCalls.length, 0);
 });
 
-test("extraction policy: an empty transcript is never extracted, for any source", () => {
-  for (const audioDerived of [true, false]) {
-    const d = decideExtractionPolicy({ transcriptText: "   ", audioDerived, configuredProvider: "bedrock", awsAuthorization: { allowed: true, basis: "phi_attested" } });
-    assert.equal(d.ok, false);
-  }
+test("extraction policy: an empty transcript is never extracted", () => {
+  const d = decideExtractionPolicy({ transcriptText: "   ", configuredProvider: "bedrock", awsAuthorization: { allowed: true, basis: "phi_attested" } });
+  assert.equal(d.ok, false);
 });
 
 // ─── cleanup ──────────────────────────────────────────────────────────────────────────────────
@@ -705,22 +703,94 @@ test("dispatch scope: nothing dispatched without authorization; only synthetic s
 
 const attested = { allowed: true as const, basis: "synthetic_test" as const };
 
-test("audio-derived extraction can never silently default to OpenAI", () => {
-  const base = { transcriptText: "words", audioDerived: true, awsAuthorization: attested };
+test("assessment extraction (recorded or pasted) can never silently default to OpenAI", () => {
+  const base = { transcriptText: "words", awsAuthorization: attested };
   assert.equal(decideExtractionPolicy({ ...base, configuredProvider: undefined }).ok, false, "unset → fail closed");
   assert.equal(decideExtractionPolicy({ ...base, configuredProvider: "" }).ok, false);
-  assert.equal(decideExtractionPolicy({ ...base, configuredProvider: "openai" }).ok, false, "even explicit openai is refused for recorded audio");
+  assert.equal(decideExtractionPolicy({ ...base, configuredProvider: "openai" }).ok, false, "even explicit openai is refused");
   assert.deepEqual(decideExtractionPolicy({ ...base, configuredProvider: "bedrock" }), { ok: true, providerKey: "bedrock" });
 });
 
-test("audio-derived extraction of a real session without the AWS PHI attestation fails closed", () => {
-  const d = decideExtractionPolicy({ transcriptText: "words", audioDerived: true, configuredProvider: "bedrock", awsAuthorization: decideAwsAssessmentAuthorization({ isSyntheticTest: false }, {}) });
+test("extraction of a real session without the AWS PHI attestation fails closed", () => {
+  const d = decideExtractionPolicy({ transcriptText: "words", configuredProvider: "bedrock", awsAuthorization: decideAwsAssessmentAuthorization({ isSyntheticTest: false }, {}) });
   assert.equal(d.ok, false);
 });
 
-test("boundary: the pasted-transcript path keeps its existing provider behavior (documented, unchanged)", () => {
-  const d = decideExtractionPolicy({ transcriptText: "words", audioDerived: false, configuredProvider: undefined, awsAuthorization: { allowed: false, reason: "x" } });
-  assert.deepEqual(d, { ok: true, providerKey: "openai" });
+test("B1: a pasted (non-audio) real transcript gets the SAME AWS PHI gate — no provider without attestation", () => {
+  const realNoAttestation = decideAwsAssessmentAuthorization({ isSyntheticTest: false }, { PHI_SYNTHETIC_TEST_MODE: "synthetic-only-not-for-production" });
+  for (const configuredProvider of ["bedrock", "openai", undefined, ""]) {
+    const d = decideExtractionPolicy({ transcriptText: "pasted words", configuredProvider, awsAuthorization: realNoAttestation });
+    assert.equal(d.ok, false, String(configuredProvider));
+  }
+  // Only explicit bedrock plus a passing gate is ever allowed.
+  assert.deepEqual(
+    decideExtractionPolicy({ transcriptText: "pasted words", configuredProvider: "bedrock", awsAuthorization: decideAwsAssessmentAuthorization({ isSyntheticTest: false }, { PHI_AWS_PROCESSING_CONFIRMED: "true" }) }),
+    { ok: true, providerKey: "bedrock" }
+  );
+});
+
+test("B1 STATIC: the policy no longer distinguishes audio-derived from pasted, and never names OpenAI as a result", () => {
+  const code = codeOf("lib/assessmentIntelligence/backgroundCore/extractionPolicy.ts");
+  assert.ok(!code.includes("audioDerived"));
+  assert.ok(!code.includes("DEFAULT_EXTRACTION_PROVIDER_ID"));
+  assert.ok(!/providerKey:\s*["']openai["']/.test(code));
+});
+
+test("B1 STATIC: extraction requires an explicit, policy-chosen provider — no configured/default fallback in any path", () => {
+  const core = codeOf("lib/assessmentIntelligence/backgroundCore/processingCore.ts");
+  assert.ok(!core.includes("getConfiguredExtractionProvider"), "processingCore must not fall back to the configured/default provider");
+  assert.ok(!core.includes("providerOverride"), "provider is a required parameter");
+  assert.match(core, /export async function runExtractionPipelineForSession\([\s\S]*?provider: AssessmentExtractionProvider\n?\s*\)/);
+  // The legacy webhook path (OpenAI transcription gate) also runs the same extraction policy before extracting.
+  const pipeline = codeOf("lib/assessmentIntelligence/pipeline.ts");
+  const legacy = pipeline.split("export async function transcribeAndExtractAssessmentAudio")[1].split("export ")[0];
+  const i = legacy.indexOf("decideExtractionPolicy(");
+  const j = legacy.indexOf("runExtractionPipelineForSession(");
+  assert.ok(i > 0 && j > i, "policy decided before extraction in the legacy path");
+  assert.match(legacy, /runExtractionPipelineForSession\([^)]*getExtractionProviderByKey\(policy\.providerKey\)\)/);
+  assert.match(legacy, /decideAwsAssessmentAuthorization\(/);
+  // No production code outside providerSelection.ts itself uses the configured/default selector.
+  for (const rel of [
+    "lib/assessmentIntelligence/pipeline.ts",
+    "lib/actions/assessmentIntelligence.ts",
+    "lib/actions/assessmentProcessingAdmin.ts",
+    "netlify/functions/assessment-processing-stage-worker-background.mts",
+    "netlify/functions/assessment-processing-dispatcher.mts",
+  ]) {
+    assert.ok(!codeOf(rel).includes("getConfiguredExtractionProvider"), rel);
+  }
+});
+
+test("B1 STATIC: queued dispatch selection applies the AWS PHI dispatch scope (blocked sessions are never selected)", () => {
+  const data = codeOf("lib/data/assessmentIntelligence.ts");
+  const body = data.split("export async function getQueuedSessionsForDispatch")[1].split("export ")[0];
+  assert.match(body, /if \(scope === "none"[^)]*\) return \[\];/);
+  assert.match(body, /scope === "synthetic_only"\) query = query\.eq\("is_synthetic_test", true\)/);
+  const pipeline = codeOf("lib/assessmentIntelligence/pipeline.ts");
+  const dispatch = pipeline.split("export async function dispatchEligibleAssessmentProcessing")[1];
+  assert.match(dispatch, /const scope = awsTranscriptionDispatchScope\(\);/);
+  assert.match(dispatch, /getQueuedSessionsForDispatch\(limit, scope\)/);
+  assert.match(dispatch, /getTranscriptionDispatchCandidates\(limit, scope\)/);
+});
+
+test("B1: without PHI attestation the dispatch scope is 'none' (production) / 'synthetic_only' (synthetic previews)", () => {
+  assert.equal(awsTranscriptionDispatchScope({}), "none");
+  assert.equal(awsTranscriptionDispatchScope({ ASSESSMENT_EXTRACTION_PROVIDER: "bedrock" }), "none");
+  assert.equal(awsTranscriptionDispatchScope(SYNTH_ENV), "synthetic_only");
+});
+
+test("B1 STATIC: a pasted transcript is refused server-side unless real-PHI AWS processing is attested", () => {
+  const actions = codeOf("lib/actions/assessmentIntelligence.ts");
+  const body = actions.split("export async function submitPastedTranscriptAndExtract")[1].split("export async function")[0];
+  const gate = body.indexOf("isAwsPhiProcessingConfirmed()");
+  assert.ok(gate > 0, "gate present");
+  assert.ok(gate < body.indexOf("createPastedTranscriptSource("), "refused before the transcript is stored");
+  assert.ok(gate < body.indexOf('updateAssessmentSessionStatus(assessmentSessionId, "queued")'), "refused before anything is queued");
+  const section = codeOf("components/residents/AssessmentSection.tsx");
+  assert.match(section, /\{canPasteTranscript && \(/);
+  assert.match(section, /canPasteTranscript = false/);
+  const page = codeOf("app/residents/[id]/page.tsx");
+  assert.match(page, /canPasteTranscript=\{canEditResidentProfile\(profile\?\.role\) && isAwsPhiProcessingConfirmed\(\)\}/);
 });
 
 test("Bedrock provider path: the policy's key resolves to the Bedrock provider; unknown keys throw", () => {

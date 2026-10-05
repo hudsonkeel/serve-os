@@ -19,7 +19,7 @@ import {
   type FinalizeManifestEntry,
 } from "@/lib/assessmentCapture/captureLogic";
 import { sanitizeRunLog, summarizeContinuity } from "@/lib/assessmentCapture/recordingHealth";
-import { decideSyntheticTestMarking } from "@/lib/assessmentCapture/captureLogic";
+import { decideSyntheticTestMarking, isCapturedTranscriptionEnabled } from "@/lib/assessmentCapture/captureLogic";
 import { parseTranscriptionState, transcriptionDisplayState } from "@/lib/assessmentIntelligence/backgroundCore/transcription/transcriptionState";
 import {
   isResidentInCaptureScope,
@@ -212,6 +212,8 @@ export type FinishNativeCaptureResult =
       totalBytes: number;
       continuity: "continuous" | "interrupted";
       interruptionCount: number;
+      /** Whether this deployment will actually transcribe it (AWS PHI gate) — drives the notice. */
+      transcriptionEnabled: boolean;
     }
   | { incompleteChunkIndexes: number[]; error: string }
   | { error: string };
@@ -259,6 +261,7 @@ export async function finishNativeCapture(input: {
       totalBytes: summary.totalBytes,
       continuity: prior?.capture_continuity === "continuous" ? "continuous" : "interrupted",
       interruptionCount: typeof prior?.interruption_count === "number" ? prior.interruption_count : 0,
+      transcriptionEnabled: isCapturedTranscriptionEnabled({ isSyntheticTest: access.session.isSyntheticTest }),
     };
   }
   if (decision.kind === "incomplete") return { incompleteChunkIndexes: decision.missingChunkIndexes, error: decision.reason };
@@ -283,6 +286,7 @@ export async function finishNativeCapture(input: {
     totalBytes: decision.summary.totalBytes,
     continuity: continuity.continuity,
     interruptionCount: continuity.interruptionCount,
+    transcriptionEnabled: isCapturedTranscriptionEnabled({ isSyntheticTest: access.session.isSyntheticTest }),
   };
 }
 

@@ -13,12 +13,11 @@ import {
 } from "./dataAccess.ts";
 import { buildExtractionProvenance, describeProvenanceForLog, type ExtractionOutcome, type ExtractionProvenanceRecord } from "./extractionProvenance.ts";
 import { GENERATED_DEPLOY_CONTEXT } from "../generatedDeployContext.ts";
-import { getConfiguredExtractionProvider, getExtractionProviderByKey } from "./providerSelection.ts";
+import { getExtractionProviderByKey } from "./providerSelection.ts";
 import { sanitizeFailureReason } from "../processingQueue.ts";
 import { decideExtractionPolicy } from "./extractionPolicy.ts";
 import { decideAwsAssessmentAuthorization } from "../phiGovernance.ts";
 import type { AssessmentExtractionProvider } from "../extractionProvider.ts";
-import { sessionHasLiveAudioSource } from "./transcription/transcriptionStore.ts";
 import { advanceCapturedAssessmentTranscription, retryCapturedAssessmentTranscriptionCleanup } from "./transcription/transcriptionRuntime.ts";
 
 // Background-safe processing core (2026-09-17 architecture change). Deliberately carries NO
@@ -54,12 +53,11 @@ export async function runExtractionPipelineForSession(
   assessmentSessionId: string,
   residentId: string,
   sourceId: string,
-  /** The provider extractionPolicy.ts allowed for this assessment. Omitted only by the legacy
-   * webhook path (pipeline.ts transcribeAndExtractAssessmentAudio), which keeps its behavior. */
-  providerOverride?: AssessmentExtractionProvider
+  /** The provider extractionPolicy.ts allowed for this assessment. Required — there is no
+   * configured/default provider fallback here, so every caller must have passed the policy. */
+  provider: AssessmentExtractionProvider
 ): Promise<ExtractionPipelineResult> {
   const combinedText = await getCombinedTranscriptText(assessmentSessionId);
-  const provider = providerOverride ?? getConfiguredExtractionProvider();
   const runRef = `extraction-${Date.now()}`;
   const provenance = (outcome: ExtractionOutcome, counts: { accepted: number | null; rejected: number | null }, error?: unknown, identity?: { provider: string; model: string }) =>
     buildExtractionProvenance({
@@ -151,11 +149,10 @@ export async function advanceQueuedAssessmentProcessing(assessmentSessionId: str
 
   try {
     // Decide WHICH provider may see this transcript before any provider is called: never an
-    // empty transcript (no empty drafts); audio-derived assessments are AWS-only (explicit
-    // bedrock + AWS PHI gate), never a silent OpenAI default.
+    // empty transcript (no empty drafts); every assessment — recorded or pasted — is AWS-only
+    // (explicit bedrock + AWS PHI gate), never a silent OpenAI default.
     const policy = decideExtractionPolicy({
       transcriptText: await getCombinedTranscriptText(assessmentSessionId),
-      audioDerived: await sessionHasLiveAudioSource(assessmentSessionId),
       configuredProvider: process.env.ASSESSMENT_EXTRACTION_PROVIDER,
       awsAuthorization: decideAwsAssessmentAuthorization({ isSyntheticTest: session.is_synthetic_test === true }),
     });

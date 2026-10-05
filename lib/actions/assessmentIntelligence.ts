@@ -54,6 +54,7 @@ import { getResidentById, setResidentCommunityId } from "@/lib/data/residents";
 import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
 import { resolveAssessmentCommunity } from "@/lib/assessmentIntelligence/communityResolution";
 import { CAPTURED_SESSION_STATUS } from "@/lib/assessmentCapture/captureLogic";
+import { isAwsPhiProcessingConfirmed } from "@/lib/assessmentIntelligence/phiGovernance";
 import { createSupabaseTranscriptionStore, restoreCapturedForTranscriptionRetry } from "@/lib/assessmentIntelligence/backgroundCore/transcription/transcriptionStore";
 import { decideRetryRoute, parseTranscriptionState, resetFailedRunsForRetry } from "@/lib/assessmentIntelligence/backgroundCore/transcription/transcriptionState";
 
@@ -199,6 +200,12 @@ export async function submitPastedTranscriptAndExtract(
   const authResult = await requireActor();
   if ("error" in authResult) return { error: authResult.error };
   if (!transcriptText || !transcriptText.trim()) return { error: "A transcript is required." };
+  // A pasted transcript is real client conversation (PHI) and can never be an attested synthetic
+  // test, so it may only be accepted where real-PHI AWS processing is attested — otherwise it
+  // would sit queued with no authorized way forward (merge-readiness B1).
+  if (!isAwsPhiProcessingConfirmed()) {
+    return { error: "Pasted-transcript processing is not enabled: processing of real assessments has not been authorized on this deployment." };
+  }
 
   const session = await getAssessmentSession(assessmentSessionId);
   if (!session) return { error: "Assessment session not found." };

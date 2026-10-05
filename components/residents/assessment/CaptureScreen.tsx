@@ -38,6 +38,7 @@ import {
   mimeTypeToExtension,
   microphoneErrorMessage,
   pickRecorderMimeType,
+  capturedAssessmentNotice,
 } from "@/lib/assessmentCapture/captureLogic";
 import {
   classifyCaptureHealth,
@@ -144,7 +145,7 @@ export function CaptureScreen({ residentId, residentDisplayName, initialState }:
   const [interruptionText, setInterruptionText] = useState<string | null>(null);
   const [interruptionCount, setInterruptionCount] = useState(0);
   const [wakeLockStatus, setWakeLockStatus] = useState<WakeLockStatus>("inactive");
-  const [done, setDone] = useState<{ summary: string; interrupted: boolean; interruptionCount: number } | null>(null);
+  const [done, setDone] = useState<{ summary: string; interrupted: boolean; interruptionCount: number; transcriptionEnabled: boolean } | null>(null);
   const [hasSession, setHasSession] = useState(initialState.kind === "resumable");
 
   const phaseRef = useRef<RecordingPhase>("ready");
@@ -653,6 +654,7 @@ export function CaptureScreen({ residentId, residentDisplayName, initialState }:
           summary: `${result.chunkCount} segment(s), ${formatBytes(result.totalBytes)}, saved securely.`,
           interrupted: result.continuity === "interrupted",
           interruptionCount: result.interruptionCount,
+          transcriptionEnabled: result.transcriptionEnabled,
         });
         dispatch({ type: "FINISH_SUCCEEDED" });
         return;
@@ -762,7 +764,10 @@ export function CaptureScreen({ residentId, residentDisplayName, initialState }:
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-4 text-center">
         {done.interrupted ? <AlertTriangle size={40} className="text-warning-text" /> : <CheckCircle2 size={40} className="text-success-text" />}
-        <p className="font-sans text-base font-semibold text-body">Audio captured — awaiting transcription</p>
+        <p className="font-sans text-base font-semibold text-body">{capturedAssessmentNotice(done.transcriptionEnabled).title}</p>
+        {!done.transcriptionEnabled && (
+          <p className="max-w-md font-sans text-sm text-body">{capturedAssessmentNotice(false).detail}</p>
+        )}
         {done.interrupted && (
           <p className="rounded-lg border border-warning-text/30 bg-warning-surface px-3 py-2 font-sans text-sm text-warning-text">
             This recording was interrupted{done.interruptionCount > 0 ? ` ${done.interruptionCount} time${done.interruptionCount === 1 ? "" : "s"}` : ""}. Some of

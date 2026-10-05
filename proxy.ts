@@ -8,30 +8,9 @@ import {
   AUTH_ROLES,
   isAuthRole,
 } from "@/lib/auth/constants";
-
-const PUBLIC_PATHS = [
-  "/login",
-  "/forgot-password",
-  "/reset-password",
-  "/get-started",
-  "/careers",
-  // Server-to-server only (Database Webhook + scheduled reconciliation) —
-  // never a browser session. Each route verifies its own shared-secret
-  // header (INTAKE_INTERNAL_SECRET) rather than relying on cookie auth —
-  // see docs/integrations/WEBSITE_TO_SERVE_INTAKE_CONTRACT.md.
-  "/api/intake",
-  // Same server-to-server pattern, for AxisCare Client Data Sync's
-  // scheduled entry point — verifies its own shared-secret header
-  // (AXISCARE_SYNC_INTERNAL_SECRET), never cookie auth. See
-  // app/api/axiscare/scheduled-sync/route.ts.
-  "/api/axiscare/scheduled-sync",
-];
-
-function isPublicPath(pathname: string) {
-  return PUBLIC_PATHS.some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`)
-  );
-}
+// The public-path list (including the secret-authenticated machine endpoints) lives in
+// lib/auth/publicPaths.ts so it's directly testable.
+import { isPublicPath } from "@/lib/auth/publicPaths";
 
 function redirectToLogin(request: NextRequest) {
   const loginUrl = new URL("/login", request.url);

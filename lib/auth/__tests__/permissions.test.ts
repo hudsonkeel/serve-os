@@ -93,10 +93,10 @@ test("null role cannot perform reconciliation actions", () => {
   assert.equal(canPerformReconciliationActions(null), false);
 });
 
-// canCaptureResidentAssessment — admin/manager/executive/operations
-// unchanged (startAssessmentCapture had no role check before this
-// predicate existed, so every one of them already had this capability);
-// office_staff is the only newly-excluded role.
+// canCaptureResidentAssessment — browser-recorder pilot gate
+// (merge-readiness B3): admin/manager only until real-PHI AWS processing
+// and native iOS capture are production-ready. executive and operations
+// (previously allowed) no longer receive the recorder.
 test("admin can capture a resident assessment", () => {
   assert.equal(canCaptureResidentAssessment("admin"), true);
 });
@@ -105,12 +105,12 @@ test("manager can capture a resident assessment", () => {
   assert.equal(canCaptureResidentAssessment("manager"), true);
 });
 
-test("executive can capture a resident assessment", () => {
-  assert.equal(canCaptureResidentAssessment("executive"), true);
+test("executive CANNOT capture a resident assessment (browser-recorder pilot gate)", () => {
+  assert.equal(canCaptureResidentAssessment("executive"), false);
 });
 
-test("operations can capture a resident assessment (unchanged pre-existing behavior)", () => {
-  assert.equal(canCaptureResidentAssessment("operations"), true);
+test("operations CANNOT capture a resident assessment (browser-recorder pilot gate)", () => {
+  assert.equal(canCaptureResidentAssessment("operations"), false);
 });
 
 test("office_staff CANNOT capture a resident assessment", () => {

@@ -23,6 +23,10 @@ import {
   decideCaptureAccess,
   summarizeStoredChunks,
   microphoneErrorMessage,
+  capturedAssessmentNotice,
+  isCapturedTranscriptionEnabled,
+  refineCapturedDisplayStates,
+  CAPTURED_TRANSCRIPTION_NOT_ENABLED_LABEL,
   type StoredChunk,
   type FinalizeManifestEntry,
 } from "../captureLogic.ts";
@@ -416,10 +420,13 @@ test("access: exactly the roles authorized for the normal Assessment button may 
       role
     );
   }
-  for (const role of ["admin", "manager", "executive", "operations"] as const) {
+  for (const role of ["admin", "manager"] as const) {
     assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, true, role);
   }
-  assert.equal(decideCaptureAccess({ role: "office_staff", residentInScope: true, residentId: RESIDENT }).ok, false);
+  // Browser-recorder pilot gate (merge-readiness B3): executive and operations no longer capture.
+  for (const role of ["executive", "operations", "office_staff"] as const) {
+    assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, false, role);
+  }
   assert.equal(decideCaptureAccess({ role: null, residentInScope: true, residentId: RESIDENT }).ok, false);
 });
 
@@ -573,6 +580,83 @@ test("microphone errors map to visible, plain-language messages", () => {
   assert.match(microphoneErrorMessage("NotReadableError"), /in use/);
   assert.match(microphoneErrorMessage("SecurityError"), /https/);
   assert.ok(microphoneErrorMessage(undefined).length > 0);
+});
+
+// ─── B3: browser-recorder pilot gate + honest captured state ─────────────────────────────────
+
+test("B3: only admin and manager receive the browser recorder; every other role is refused server-side", () => {
+  for (const role of AUTH_ROLES) {
+    const expected = role === "admin" || role === "manager";
+    assert.equal(canCaptureResidentAssessment(role), expected, role);
+    assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, expected, role);
+  }
+});
+
+test("B3 STATIC: the button, capture page, native-capture actions, and legacy handoff all use the one narrowed predicate", () => {
+  const page = codeOf("app/residents/[id]/page.tsx");
+  assert.match(page, /const canCaptureAssessment = canCaptureResidentAssessment\(profile\?\.role\);/);
+  assert.match(codeOf("app/residents/[id]/assessment/capture/page.tsx"), /canCaptureResidentAssessment\(profile\.role\)/);
+  assert.match(codeOf("lib/actions/nativeAssessmentCapture.ts"), /decideCaptureAccess\(/);
+  assert.match(codeOf("lib/actions/assessmentCapture.ts"), /canCaptureResidentAssessment\(profile\.role\)/);
+  assert.match(codeOf("lib/assessmentCapture/captureLogic.ts"), /if \(!canCaptureResidentAssessment\(input\.role\)\)/);
+});
+
+const REAL_PROD_ENV = { ASSESSMENT_EXTRACTION_PROVIDER: "bedrock" };
+const SYNTH_PREVIEW_ENV = { ASSESSMENT_EXTRACTION_PROVIDER: "bedrock", PHI_SYNTHETIC_TEST_MODE: "synthetic-only-not-for-production" };
+const ATTESTED_ENV = { ASSESSMENT_EXTRACTION_PROVIDER: "bedrock", PHI_AWS_PROCESSING_CONFIRMED: "true" };
+
+test("B3: a real recording is 'transcription not enabled' unless real-PHI AWS processing is attested", () => {
+  assert.equal(isCapturedTranscriptionEnabled({ isSyntheticTest: false }, REAL_PROD_ENV), false);
+  assert.equal(isCapturedTranscriptionEnabled({ isSyntheticTest: false }, SYNTH_PREVIEW_ENV), false, "synthetic mode never enables a real session");
+  assert.equal(isCapturedTranscriptionEnabled({ isSyntheticTest: false }, ATTESTED_ENV), true);
+});
+
+test("B3: synthetic deploy-preview testing is preserved — an attested synthetic recording is still 'awaiting transcription'", () => {
+  assert.equal(isCapturedTranscriptionEnabled({ isSyntheticTest: true }, SYNTH_PREVIEW_ENV), true);
+  assert.equal(isCapturedTranscriptionEnabled({ isSyntheticTest: true }, REAL_PROD_ENV), false, "the session flag alone authorizes nothing");
+});
+
+test("B3: the captured notice explains plainly that transcription of real assessments is not enabled", () => {
+  const off = capturedAssessmentNotice(false);
+  assert.equal(off.title, CAPTURED_TRANSCRIPTION_NOT_ENABLED_LABEL);
+  assert.match(off.detail, /Transcription of real assessments is not currently enabled/);
+  assert.match(off.detail, /saved securely/);
+  assert.match(off.detail, /Nothing has been sent outside Serve/);
+  assert.ok(!/awaiting/i.test(off.title + off.detail), "never an indefinite 'awaiting'");
+  assert.equal(capturedAssessmentNotice(true).title, "Audio captured — awaiting transcription");
+});
+
+test("B3: history labels a non-authorized captured session 'not yet enabled', leaves everything else unchanged", () => {
+  const sessions = [
+    { id: "real-captured", status: "captured", is_synthetic_test: false },
+    { id: "synthetic-captured", status: "captured", is_synthetic_test: true },
+    { id: "transcribing", status: "captured", is_synthetic_test: false },
+    { id: "draft", status: "draft", is_synthetic_test: false },
+    { id: "legacy-processing", status: "processing", is_synthetic_test: false },
+  ];
+  const states = { "real-captured": "awaiting", "synthetic-captured": "awaiting", transcribing: "transcribing", draft: "transcribed" } as const;
+  const prod = refineCapturedDisplayStates(sessions, states, REAL_PROD_ENV);
+  assert.equal(prod["real-captured"], "not_enabled");
+  assert.equal(prod["synthetic-captured"], "not_enabled");
+  assert.equal(prod.transcribing, "transcribing");
+  assert.equal(prod.draft, "transcribed");
+  assert.equal(prod["legacy-processing"], undefined, "non-captured sessions are never relabeled");
+  const preview = refineCapturedDisplayStates(sessions, states, SYNTH_PREVIEW_ENV);
+  assert.equal(preview["synthetic-captured"], "awaiting");
+  assert.equal(preview["real-captured"], "not_enabled");
+  assert.equal(assessmentSessionDisplayLabel("captured", "not_enabled"), CAPTURED_TRANSCRIPTION_NOT_ENABLED_LABEL);
+  assert.equal(assessmentSessionDisplayLabel("captured", "awaiting"), "Audio captured — awaiting transcription");
+});
+
+test("B3 STATIC: capture finish, the review page, and history all use the authorization-aware notice", () => {
+  const actions = codeOf("lib/actions/nativeAssessmentCapture.ts");
+  assert.equal((actions.match(/transcriptionEnabled: isCapturedTranscriptionEnabled\(\{ isSyntheticTest: access\.session\.isSyntheticTest \}\)/g) ?? []).length, 2);
+  const screen = codeOf("components/residents/assessment/CaptureScreen.tsx");
+  assert.match(screen, /capturedAssessmentNotice\(done\.transcriptionEnabled\)\.title/);
+  assert.ok(!screen.includes(">Audio captured — awaiting transcription<"), "no hard-coded awaiting text");
+  const review = codeOf("app/residents/[id]/assessment/[sessionId]/page.tsx");
+  assert.match(review, /capturedAssessmentNotice\(isCapturedTranscriptionEnabled\(\{ isSyntheticTest: reviewData\.session\.is_synthetic_test === true \}\)\)/);
+  assert.match(codeOf("app/residents/[id]/page.tsx"), /refineCapturedDisplayStates\(assessmentSessions, await getTranscriptionDisplayStates\(/);
 });
 
 let passed = 0;
