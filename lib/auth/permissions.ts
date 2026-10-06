@@ -74,14 +74,14 @@ export function canVerifyResidentEvidence(role: AuthRole | null | undefined): bo
 // three roles-narrower predicates above (which exclude operations too),
 // this one originally only excluded office_staff.
 //
-// Browser-recorder pilot gate (merge-readiness B3): the normal Assessment/
-// Reassessment button now opens the Serve OS browser recorder, which is a
-// pilot — real-PHI AWS transcription is not yet enabled and native iOS
-// capture is deferred. Until both are production-ready, recording is
-// admin/manager pilot use only; executive and operations no longer receive
-// the recorder. Enforced server-side everywhere this predicate is checked
-// (the button, the capture page, every native-capture action).
-const RESIDENT_ASSESSMENT_CAPTURE_ROLES: readonly AuthRole[] = ["admin", "manager"];
+// Serve OS assessment capture: admin, manager and operations (operations
+// staff conduct assessments). Executive is excluded. This is CAPTURE
+// permission only — whether a captured real assessment may leave Serve for
+// AWS/Bedrock processing is decided solely by the AWS PHI gate
+// (lib/assessmentIntelligence/phiGovernance.ts), never by the user's role.
+// Enforced server-side everywhere this predicate is checked (the button,
+// the capture page, every native-capture action, the legacy handoff).
+const RESIDENT_ASSESSMENT_CAPTURE_ROLES: readonly AuthRole[] = ["admin", "manager", "operations"];
 
 export function canCaptureResidentAssessment(role: AuthRole | null | undefined): boolean {
   return Boolean(role && RESIDENT_ASSESSMENT_CAPTURE_ROLES.includes(role));

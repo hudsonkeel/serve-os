@@ -34,6 +34,8 @@ import { isEligibleForDispatch, isStaleProcessing, decideRetryEligibility } from
 import { isReviewReadyStatus } from "../../assessmentIntelligence/currentAssessmentSelection.ts";
 import { canCaptureResidentAssessment, canInspectCapturedAssessmentAudio } from "../../auth/permissions.ts";
 import { AUTH_ROLES } from "../../auth/constants.ts";
+import { decideAwsAssessmentAuthorization, awsTranscriptionDispatchScope } from "../../assessmentIntelligence/phiGovernance.ts";
+import { decideExtractionPolicy } from "../../assessmentIntelligence/backgroundCore/extractionPolicy.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
 const tests: Test[] = [];
@@ -420,11 +422,10 @@ test("access: exactly the roles authorized for the normal Assessment button may 
       role
     );
   }
-  for (const role of ["admin", "manager"] as const) {
+  for (const role of ["admin", "manager", "operations"] as const) {
     assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, true, role);
   }
-  // Browser-recorder pilot gate (merge-readiness B3): executive and operations no longer capture.
-  for (const role of ["executive", "operations", "office_staff"] as const) {
+  for (const role of ["executive", "office_staff"] as const) {
     assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, false, role);
   }
   assert.equal(decideCaptureAccess({ role: null, residentInScope: true, residentId: RESIDENT }).ok, false);
@@ -584,15 +585,41 @@ test("microphone errors map to visible, plain-language messages", () => {
 
 // ─── B3: browser-recorder pilot gate + honest captured state ─────────────────────────────────
 
-test("B3: only admin and manager receive the browser recorder; every other role is refused server-side", () => {
+test("capture roles: admin, manager and operations capture; executive, office_staff and signed-out users cannot", () => {
   for (const role of AUTH_ROLES) {
-    const expected = role === "admin" || role === "manager";
+    const expected = role === "admin" || role === "manager" || role === "operations";
     assert.equal(canCaptureResidentAssessment(role), expected, role);
     assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, expected, role);
   }
 });
 
-test("B3 STATIC: the button, capture page, native-capture actions, and legacy handoff all use the one narrowed predicate", () => {
+test("capture roles: signed-out (no role) is refused by both the predicate and the access decision", () => {
+  for (const role of [null, undefined] as const) {
+    assert.equal(canCaptureResidentAssessment(role), false);
+    assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, false);
+  }
+});
+
+test("capture is permission only: an operations-captured REAL assessment still cannot pass the AWS processing gate without PHI attestation", () => {
+  assert.equal(canCaptureResidentAssessment("operations"), true);
+  // The gate takes no role at all — capture permission can never authorize processing.
+  for (const env of [REAL_PROD_ENV, SYNTH_PREVIEW_ENV]) {
+    assert.equal(decideAwsAssessmentAuthorization({ isSyntheticTest: false }, env).allowed, false);
+    assert.equal(isCapturedTranscriptionEnabled({ isSyntheticTest: false }, env), false);
+    assert.equal(
+      decideExtractionPolicy({ transcriptText: "words", configuredProvider: "bedrock", awsAuthorization: decideAwsAssessmentAuthorization({ isSyntheticTest: false }, env) }).ok,
+      false
+    );
+  }
+  assert.equal(awsTranscriptionDispatchScope(REAL_PROD_ENV), "none", "the dispatcher selects nothing for processing");
+  const gate = read("lib/assessmentIntelligence/phiGovernance.ts").split("export function decideAwsAssessmentAuthorization")[1].split("\n}\n")[0];
+  assert.ok(!/role/i.test(gate), "AWS authorization never consults a role");
+  // And the real-assessment notice is unchanged for whoever captured it.
+  assert.equal(capturedAssessmentNotice(false).title, "Audio saved — transcription not yet enabled");
+  assert.match(capturedAssessmentNotice(false).detail, /Nothing has been sent outside Serve/);
+});
+
+test("STATIC: the button, capture page, native-capture actions, and legacy handoff all use the one canonical predicate", () => {
   const page = codeOf("app/residents/[id]/page.tsx");
   assert.match(page, /const canCaptureAssessment = canCaptureResidentAssessment\(profile\?\.role\);/);
   assert.match(codeOf("app/residents/[id]/assessment/capture/page.tsx"), /canCaptureResidentAssessment\(profile\.role\)/);
