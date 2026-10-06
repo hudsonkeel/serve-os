@@ -34,7 +34,10 @@ import { isEligibleForDispatch, isStaleProcessing, decideRetryEligibility } from
 import { isReviewReadyStatus } from "../../assessmentIntelligence/currentAssessmentSelection.ts";
 import { canCaptureResidentAssessment, canInspectCapturedAssessmentAudio } from "../../auth/permissions.ts";
 import { AUTH_ROLES } from "../../auth/constants.ts";
-import { decideAwsAssessmentAuthorization, awsTranscriptionDispatchScope } from "../../assessmentIntelligence/phiGovernance.ts";
+import { decideAwsAssessmentAuthorization, awsTranscriptionDispatchScope, isAwsPhiProcessingConfirmed } from "../../assessmentIntelligence/phiGovernance.ts";
+
+// Serve's assessor roles — an intentional product authorization decision (office_staff excluded).
+const ASSESSOR_ROLES = ["admin", "manager", "executive", "operations"] as const;
 import { decideExtractionPolicy } from "../../assessmentIntelligence/backgroundCore/extractionPolicy.ts";
 
 type Test = { name: string; fn: () => void | Promise<void> };
@@ -422,12 +425,10 @@ test("access: exactly the roles authorized for the normal Assessment button may 
       role
     );
   }
-  for (const role of ["admin", "manager", "operations"] as const) {
+  for (const role of ASSESSOR_ROLES) {
     assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, true, role);
   }
-  for (const role of ["executive", "office_staff"] as const) {
-    assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, false, role);
-  }
+  assert.equal(decideCaptureAccess({ role: "office_staff", residentInScope: true, residentId: RESIDENT }).ok, false);
   assert.equal(decideCaptureAccess({ role: null, residentInScope: true, residentId: RESIDENT }).ok, false);
 });
 
@@ -585,9 +586,10 @@ test("microphone errors map to visible, plain-language messages", () => {
 
 // ─── B3: browser-recorder pilot gate + honest captured state ─────────────────────────────────
 
-test("capture roles: admin, manager and operations capture; executive, office_staff and signed-out users cannot", () => {
+test("capture roles: admin, manager, executive and operations capture; office_staff and signed-out users cannot", () => {
+  assert.deepEqual([...AUTH_ROLES].filter((r) => canCaptureResidentAssessment(r)).sort(), [...ASSESSOR_ROLES].sort());
   for (const role of AUTH_ROLES) {
-    const expected = role === "admin" || role === "manager" || role === "operations";
+    const expected = (ASSESSOR_ROLES as readonly string[]).includes(role);
     assert.equal(canCaptureResidentAssessment(role), expected, role);
     assert.equal(decideCaptureAccess({ role, residentInScope: true, residentId: RESIDENT }).ok, expected, role);
   }
@@ -600,10 +602,12 @@ test("capture roles: signed-out (no role) is refused by both the predicate and t
   }
 });
 
-test("capture is permission only: an operations-captured REAL assessment still cannot pass the AWS processing gate without PHI attestation", () => {
-  assert.equal(canCaptureResidentAssessment("operations"), true);
-  // The gate takes no role at all — capture permission can never authorize processing.
+test("capture is permission only: a REAL assessment captured by ANY of the four assessor roles cannot pass the AWS processing gate without PHI attestation", () => {
+  for (const role of ASSESSOR_ROLES) assert.equal(canCaptureResidentAssessment(role), true, role);
+  // The gate takes no role at all — capture permission can never authorize processing, for any role.
   for (const env of [REAL_PROD_ENV, SYNTH_PREVIEW_ENV]) {
+    // Paste Transcript is offered/accepted only with real-PHI AWS attestation — absent here.
+    assert.equal(isAwsPhiProcessingConfirmed(env), false);
     assert.equal(decideAwsAssessmentAuthorization({ isSyntheticTest: false }, env).allowed, false);
     assert.equal(isCapturedTranscriptionEnabled({ isSyntheticTest: false }, env), false);
     assert.equal(
