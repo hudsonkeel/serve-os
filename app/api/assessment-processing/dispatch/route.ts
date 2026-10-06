@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { dispatchEligibleAssessmentProcessing } from "@/lib/assessmentIntelligence/pipeline";
+import { isAuthorizedWorkerSecret } from "@/lib/assessmentIntelligence/processingQueue";
 
 // Assessment-processing dispatch — the scheduled/manual entry point. Server-to-server only,
 // mirrors app/api/axiscare/scheduled-sync/route.ts's exact pattern (shared-secret header,
@@ -34,8 +35,9 @@ import { dispatchEligibleAssessmentProcessing } from "@/lib/assessmentIntelligen
 // dispatch-specific logic lives here or there.
 
 export async function POST(request: Request) {
-  const secret = request.headers.get("x-assessment-worker-secret");
-  if (!secret || secret !== process.env.ASSESSMENT_PROCESSING_WORKER_SECRET) {
+  // The proxy lets this path through without a user session (lib/auth/publicPaths.ts); this
+  // shared-secret check is the route's whole authorization, and runs before anything else.
+  if (!isAuthorizedWorkerSecret(request.headers.get("x-assessment-worker-secret"), process.env.ASSESSMENT_PROCESSING_WORKER_SECRET)) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 

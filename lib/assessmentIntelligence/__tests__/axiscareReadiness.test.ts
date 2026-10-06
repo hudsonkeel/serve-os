@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   evaluateAxisCareClientCreate,
   buildAxisCareClientCreatePayload,
+  AXISCARE_UPDATE_NOT_IMPLEMENTED,
   type ApprovedFactForReadiness,
   type AxisCareClientCreateEvaluationInput,
   type ResidentIdentityForAxisCare,
@@ -231,13 +232,15 @@ test("H: a rejected identity link is a PROCESS hard blocker, never falls through
   assert.ok(result.processHardBlockers.length > 0);
 });
 
-test("a confirmed identity link proposes UPDATE and carries the existing AxisCare client id", () => {
+test("a confirmed identity link proposes UPDATE, carries the existing AxisCare client id, and is blocked (update preview not implemented)", () => {
   const result = evaluateAxisCareClientCreate(
     baseInput({ identityLink: { status: "confirmed", axiscareClientId: "12345", matchConfidence: "high" } })
   );
-  assert.equal(result.technicallyReady, true);
   assert.equal(result.proposedAction, "update");
   assert.equal(result.existingAxisCareClientId, "12345");
+  assert.equal(result.technicallyReady, false);
+  assert.ok(result.processHardBlockers.includes(AXISCARE_UPDATE_NOT_IMPLEMENTED));
+  assert.equal(result.payload, null, "no update payload is fabricated from the create body");
 });
 
 // ─── I. Payload preview still renders when only recommended information is missing ─────────────
@@ -258,13 +261,13 @@ test("K: every technically-ready payload explicitly sets status to the documente
   assert.equal(result.payload!.status!.label, "Inactive");
 });
 
-test("K: status is inactive regardless of proposedAction (create or update)", () => {
+test("K: a create payload is always INACTIVE; an update produces no payload at all (never a create body labelled update)", () => {
   const createResult = evaluateAxisCareClientCreate(baseInput());
+  assert.deepEqual(createResult.payload!.status, AXISCARE_INACTIVE_STATUS);
   const updateResult = evaluateAxisCareClientCreate(
     baseInput({ identityLink: { status: "confirmed", axiscareClientId: "999", matchConfidence: "high" } })
   );
-  assert.deepEqual(createResult.payload!.status, AXISCARE_INACTIVE_STATUS);
-  assert.deepEqual(updateResult.payload!.status, AXISCARE_INACTIVE_STATUS);
+  assert.equal(updateResult.payload, null);
 });
 
 test("buildAxisCareClientCreatePayload itself cannot be called without producing an explicit inactive status -- there is no code path that omits `status`", () => {

@@ -11,7 +11,10 @@ import {
   recordProcessingDiagnosticStage,
 } from "../data/assessmentIntelligence.ts";
 import { transcribeAudioChunks } from "./transcription.ts";
-import { isPhiOpenAiProcessingConfirmed, type PhiGateOverride } from "./phiGovernance.ts";
+import { isPhiOpenAiProcessingConfirmed, awsTranscriptionDispatchScope, decideAwsAssessmentAuthorization, type PhiGateOverride } from "./phiGovernance.ts";
+import { decideExtractionPolicy } from "./backgroundCore/extractionPolicy.ts";
+import { getExtractionProviderByKey } from "./backgroundCore/providerSelection.ts";
+import { getTranscriptionCleanupCandidates, getTranscriptionDispatchCandidates } from "./backgroundCore/transcription/transcriptionStore.ts";
 import { MAX_PROCESSING_ATTEMPTS, STALE_PROCESSING_AFTER_MS } from "./processingQueue.ts";
 import { GENERATED_DEPLOY_CONTEXT, type GeneratedDeployContext } from "./generatedDeployContext.ts";
 import {
@@ -131,7 +134,18 @@ export async function transcribeAndExtractAssessmentAudio(
     failedChunkPaths: transcription.failedChunks.map((f) => f.path),
   });
 
-  const pipelineResult = await runExtractionPipelineForSession(assessmentSessionId, session.resident_id, source.id);
+  // Same single extraction policy as the queued worker (merge-readiness B1): passing the OpenAI
+  // transcription gate above never authorizes extraction — that still requires explicit bedrock
+  // plus the AWS PHI gate for this session, with no configured/default provider fallback.
+  const policy = decideExtractionPolicy({
+    transcriptText: combinedText,
+    configuredProvider: process.env.ASSESSMENT_EXTRACTION_PROVIDER,
+    awsAuthorization: decideAwsAssessmentAuthorization({ isSyntheticTest: session.is_synthetic_test === true }),
+  });
+  if (!policy.ok) {
+    return { error: policy.reason, chunksTranscribed: transcription.segments.length, chunksFailed: transcription.failedChunks.length, partial: isPartial };
+  }
+  const pipelineResult = await runExtractionPipelineForSession(assessmentSessionId, session.resident_id, source.id, getExtractionProviderByKey(policy.providerKey));
 
   return {
     ...pipelineResult,
@@ -258,6 +272,14 @@ async function invokeStageWorker(assessmentSessionId: string): Promise<DispatchO
  * invocation of the background worker for each. Never awaits the provider call itself. */
 export async function dispatchEligibleAssessmentProcessing(limit = DEFAULT_DISPATCH_LIMIT): Promise<DispatchOutcome[]> {
   await recoverStaleProcessingSessions(STALE_PROCESSING_AFTER_MS, MAX_PROCESSING_ATTEMPTS);
-  const sessions = await getQueuedSessionsForDispatch(limit);
-  return Promise.all(sessions.map((session) => invokeStageWorker(session.id)));
+  // Queued transcripts (to extraction) and captured audio (to transcription) are both selected
+  // only within the AWS PHI dispatch scope (none unless PHI processing is attested; only attested
+  // synthetic sessions in synthetic test mode), so a gate-blocked session is never even selected
+  // — never picked up merely to be failed. The worker routes each id by its durable status.
+  const scope = awsTranscriptionDispatchScope();
+  const sessions = await getQueuedSessionsForDispatch(limit, scope);
+  const captured = await getTranscriptionDispatchCandidates(limit, scope);
+  const cleanup = await getTranscriptionCleanupCandidates(5);
+  const ids = [...new Set([...sessions.map((s) => s.id), ...captured, ...cleanup])];
+  return Promise.all(ids.map((id) => invokeStageWorker(id)));
 }

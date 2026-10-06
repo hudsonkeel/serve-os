@@ -40,10 +40,26 @@ const handler = async (): Promise<Response> => {
     return new Response("No site URL available.", { status: 500 });
   }
 
+  // redirect: "manual" — a machine call must never silently follow a redirect. Production's
+  // sign-in proxy once 307-redirected every scheduled run to /login, fetch followed it, and the
+  // login page's markup was logged as if it were the dispatch result (merge-readiness B2). Any
+  // non-JSON response is now reported as a failure by status only — never its body.
   const response = await fetch(`${baseUrl}/api/assessment-processing/dispatch`, {
     method: "POST",
     headers: { "x-assessment-worker-secret": secret },
+    redirect: "manual",
   });
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    console.error(
+      `[assessment-processing-dispatcher] dispatch route did not return JSON (status ${response.status}${response.headers.get("location") ? ", redirected" : ""}) — not the dispatch route's response.`
+    );
+    return new Response(JSON.stringify({ ok: false, error: "Dispatch route did not return JSON.", status: response.status }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    });
+  }
 
   const body = await response.text();
   console.log(`[assessment-processing-dispatcher] ${response.status} ${body}`);

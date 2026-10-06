@@ -218,3 +218,13 @@ export async function runDispatchTrigger(
     return { error: "Could not run the processing dispatcher. Check server logs for detail." };
   }
 }
+
+/** The machine-to-machine authorization for the dispatch route (and the same rule the background
+ * worker applies): the request must present the configured ASSESSMENT_PROCESSING_WORKER_SECRET
+ * exactly. Fails closed when the secret isn't configured or the header is missing/empty — the
+ * proxy lets this route through without a user session (lib/auth/publicPaths.ts), so this check
+ * is the route's entire authorization. */
+export function isAuthorizedWorkerSecret(provided: string | null | undefined, expected: string | null | undefined): boolean {
+  if (!expected || !provided) return false;
+  return provided === expected;
+}

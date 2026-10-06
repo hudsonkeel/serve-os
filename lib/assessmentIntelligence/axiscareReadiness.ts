@@ -37,6 +37,8 @@ import {
   type AxisCareClientCreateRequest,
 } from "../integrations/axiscare/clientCreateRequest.ts";
 
+export const AXISCARE_UPDATE_NOT_IMPLEMENTED = "AxisCare update preview is not implemented yet.";
+
 export interface ApprovedFactForReadiness {
   fieldPath: string;
   assertionState: AssertionState;
@@ -243,6 +245,9 @@ export function evaluateAxisCareClientCreate(input: AxisCareClientCreateEvaluati
   } else if (input.identityLink.status === "confirmed" && input.identityLink.axiscareClientId) {
     proposedAction = "update";
     existingAxisCareClientId = input.identityLink.axiscareClientId;
+    // A client-CREATE body is not an update. No update (PATCH) contract or diff exists yet, so an
+    // update is reported as blocked rather than presenting a create payload in its place.
+    processHardBlockers.push(AXISCARE_UPDATE_NOT_IMPLEMENTED);
   } else if (!input.identityLink.status || input.identityLink.status === "deferred") {
     proposedAction = "create";
   } else {

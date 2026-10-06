@@ -34,6 +34,15 @@ const BACKGROUND_SAFE_MODULES = [
   "../extraction.ts",
   "../providers/bedrockClaudeProvider.ts",
   "../processingCore.ts",
+  "../extractionPolicy.ts",
+  "../extractionProvenance.ts",
+  "../transcription/audioRuns.ts",
+  "../transcription/transcriptFormat.ts",
+  "../transcription/transcriptionState.ts",
+  "../transcription/transcriptionOrchestrator.ts",
+  "../transcription/awsTranscribeBackend.ts",
+  "../transcription/transcriptionStore.ts",
+  "../transcription/transcriptionRuntime.ts",
 ];
 
 for (const relPath of BACKGROUND_SAFE_MODULES) {
@@ -46,6 +55,7 @@ test("processingCore.ts: exports the real advanceQueuedAssessmentProcessing func
   const mod = await import("../processingCore.ts");
   assert.equal(typeof mod.advanceQueuedAssessmentProcessing, "function");
   assert.equal(typeof mod.runExtractionPipelineForSession, "function");
+  assert.equal(typeof mod.advanceAssessmentSession, "function");
 });
 
 // ─── The Next-facing guard is still intact on the ORIGINAL files ──────────────────────────────

@@ -93,10 +93,10 @@ test("null role cannot perform reconciliation actions", () => {
   assert.equal(canPerformReconciliationActions(null), false);
 });
 
-// canCaptureResidentAssessment — admin/manager/executive/operations
-// unchanged (startAssessmentCapture had no role check before this
-// predicate existed, so every one of them already had this capability);
-// office_staff is the only newly-excluded role.
+// canCaptureResidentAssessment — Serve's assessor roles (admin, manager,
+// executive, operations) capture; office_staff does not. Capture permission
+// only: AWS/Bedrock processing of a real assessment is governed by the PHI
+// gate, never by role.
 test("admin can capture a resident assessment", () => {
   assert.equal(canCaptureResidentAssessment("admin"), true);
 });
@@ -109,7 +109,7 @@ test("executive can capture a resident assessment", () => {
   assert.equal(canCaptureResidentAssessment("executive"), true);
 });
 
-test("operations can capture a resident assessment (unchanged pre-existing behavior)", () => {
+test("operations can capture a resident assessment", () => {
   assert.equal(canCaptureResidentAssessment("operations"), true);
 });
 

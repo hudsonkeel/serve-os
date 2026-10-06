@@ -6,6 +6,7 @@ import { AssessmentReviewPanel } from "@/components/assessment/AssessmentReviewP
 import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import { canEditResidentProfile } from "@/lib/auth/permissions";
 import { resolveCurrentCommunityQueryFilter } from "@/lib/auth/currentCommunity";
+import { CAPTURED_SESSION_STATUS, capturedAssessmentNotice, isCapturedTranscriptionEnabled } from "@/lib/assessmentCapture/captureLogic";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -36,6 +37,19 @@ export default async function AssessmentReviewPage({
 
   const reviewData = await getAssessmentReviewData(sessionId);
   if (!reviewData || !reviewData.session || reviewData.session.resident_id !== id) notFound();
+
+  // Assessment Mobile Capture v0.1: a 'captured' session has audio but no transcript or facts
+  // yet — there is nothing to review, and it must never be approvable as an empty assessment.
+  if (reviewData.session.status === CAPTURED_SESSION_STATUS) {
+    const notice = capturedAssessmentNotice(isCapturedTranscriptionEnabled({ isSyntheticTest: reviewData.session.is_synthetic_test === true }));
+    return (
+      <PageContainer title={`Assessment Review — ${record.residentDisplayName}`}>
+        <p className="font-sans text-sm text-body">
+          {notice.title}. {notice.detail}
+        </p>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer title={`Assessment Review — ${record.residentDisplayName}`}>

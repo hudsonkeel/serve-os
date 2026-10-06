@@ -72,12 +72,31 @@ export function canVerifyResidentEvidence(role: AuthRole | null | undefined): bo
 // live audio-capture Assessment session is care-plan territory, not
 // ordinary resident-note/operational-update administration. Unlike the
 // three roles-narrower predicates above (which exclude operations too),
-// this one only excludes office_staff: startAssessmentCapture had no
-// role check at all before this predicate existed, so every other role
-// — including operations — already had this capability and keeps it
-// unchanged.
+// this one originally only excluded office_staff.
+//
+// Serve OS assessment capture: admin, manager, executive and operations —
+// the roles of Serve's actual assessors (an intentional product
+// authorization decision). office_staff is excluded. This is CAPTURE
+// permission only — whether a captured real assessment may leave Serve for
+// AWS/Bedrock processing is decided solely by the AWS PHI gate
+// (lib/assessmentIntelligence/phiGovernance.ts), never by the user's role.
+// Enforced server-side everywhere this predicate is checked (the button,
+// the capture page, every native-capture action, the legacy handoff).
 const RESIDENT_ASSESSMENT_CAPTURE_ROLES: readonly AuthRole[] = ["admin", "manager", "executive", "operations"];
 
 export function canCaptureResidentAssessment(role: AuthRole | null | undefined): boolean {
   return Boolean(role && RESIDENT_ASSESSMENT_CAPTURE_ROLES.includes(role));
+}
+
+// Assessment Mobile Capture — recording itself is governed by
+// canCaptureResidentAssessment above (the same predicate as the normal
+// Assessment button, which now opens native capture). This narrower
+// predicate governs only the admin inspection tool for one session's raw
+// captured audio (metadata + short-lived download links of the original
+// blobs) — direct access to raw recordings is kept to admin/manager, and is
+// always a subset of the capture roles.
+const CAPTURED_AUDIO_INSPECTION_ROLES: readonly AuthRole[] = ["admin", "manager"];
+
+export function canInspectCapturedAssessmentAudio(role: AuthRole | null | undefined): boolean {
+  return Boolean(role && CAPTURED_AUDIO_INSPECTION_ROLES.includes(role) && canCaptureResidentAssessment(role));
 }

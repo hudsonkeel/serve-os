@@ -3,7 +3,7 @@ import {
   BEDROCK_REGION,
   CLAUDE_MODEL_ID,
   extractTextFromConverseResponse,
-  getBedrockClient,
+  getAssessmentBedrockClient,
   type BedrockConverseClient,
 } from "../../../ai/bedrockClaude.ts";
 import { buildExtractionSystemPrompt, buildExtractionUserPrompt } from "../../extractionPrompt.ts";
@@ -42,7 +42,7 @@ const PROVIDER_ID = "bedrock-claude";
  * __tests__/bedrockClaudeProvider.test.ts. */
 export async function extractFactsViaBedrockClaude(
   transcriptText: string,
-  client: BedrockConverseClient = getBedrockClient()
+  client: BedrockConverseClient = getAssessmentBedrockClient()
 ): Promise<ExtractionResult> {
   if (!transcriptText || !transcriptText.trim()) {
     return { accepted: [], rejected: [], provider: PROVIDER_ID, modelId: MODEL_ID, rawResponseParseError: null };

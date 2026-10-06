@@ -46,7 +46,7 @@
 // Still declared `config.background = true` -- the real reason this needs the extended
 // execution budget (one real OpenAI/Bedrock extraction call plus draft-fact/conflict-detection
 // writes) is unchanged from the very first version of this file.
-import { advanceQueuedAssessmentProcessing } from "../../lib/assessmentIntelligence/backgroundCore/processingCore.ts";
+import { advanceAssessmentSession } from "../../lib/assessmentIntelligence/backgroundCore/processingCore.ts";
 
 function parseSessionId(rawBody: string): string | null {
   try {
@@ -77,8 +77,12 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
-    const result = await advanceQueuedAssessmentProcessing(assessmentSessionId);
-    console.log(`[assessment-processing-stage-worker] ${assessmentSessionId}: ${result.outcome}${result.error ? ` — ${result.error}` : ""}`);
+    // Routes by durable status: captured -> transcription (then extraction once queued),
+    // queued -> extraction, otherwise pending transcription-artifact cleanup.
+    const result = await advanceAssessmentSession(assessmentSessionId);
+    console.log(
+      `[assessment-processing-stage-worker] ${assessmentSessionId}: ${result.route}/${result.outcome}${result.detail ? ` [${result.detail}]` : ""}${result.error ? ` — ${result.error}` : ""}`
+    );
     return new Response(JSON.stringify({ ok: true, result }), { status: 200, headers: { "content-type": "application/json" } });
   } catch (err) {
     console.error(`[assessment-processing-stage-worker] ${assessmentSessionId} threw an unhandled error`, err);

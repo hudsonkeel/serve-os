@@ -9,9 +9,16 @@ import {
   markSessionFailed,
   getMostRecentSourceIdForSession,
   recordProcessingDiagnosticStage,
+  recordExtractionProvenance,
 } from "./dataAccess.ts";
-import { getConfiguredExtractionProvider } from "./providerSelection.ts";
+import { buildExtractionProvenance, describeProvenanceForLog, type ExtractionOutcome, type ExtractionProvenanceRecord } from "./extractionProvenance.ts";
+import { GENERATED_DEPLOY_CONTEXT } from "../generatedDeployContext.ts";
+import { getExtractionProviderByKey } from "./providerSelection.ts";
 import { sanitizeFailureReason } from "../processingQueue.ts";
+import { decideExtractionPolicy } from "./extractionPolicy.ts";
+import { decideAwsAssessmentAuthorization } from "../phiGovernance.ts";
+import type { AssessmentExtractionProvider } from "../extractionProvider.ts";
+import { advanceCapturedAssessmentTranscription, retryCapturedAssessmentTranscriptionCleanup } from "./transcription/transcriptionRuntime.ts";
 
 // Background-safe processing core (2026-09-17 architecture change). Deliberately carries NO
 // `import "server-only"` and NO React/Next dependency — see dataAccess.ts's header comment for
@@ -31,6 +38,8 @@ export interface ExtractionPipelineResult {
   error?: string;
   draftFactCount?: number;
   rejectedCount?: number;
+  /** The durable provenance record written for this attempt (when the provider returned). */
+  provenance?: ExtractionProvenanceRecord;
 }
 
 /** The shared tail of both entry points into extraction (pasted-transcript admin/test fallback,
@@ -43,19 +52,44 @@ export interface ExtractionPipelineResult {
 export async function runExtractionPipelineForSession(
   assessmentSessionId: string,
   residentId: string,
-  sourceId: string
+  sourceId: string,
+  /** The provider extractionPolicy.ts allowed for this assessment. Required — there is no
+   * configured/default provider fallback here, so every caller must have passed the policy. */
+  provider: AssessmentExtractionProvider
 ): Promise<ExtractionPipelineResult> {
   const combinedText = await getCombinedTranscriptText(assessmentSessionId);
-  const provider = getConfiguredExtractionProvider();
+  const runRef = `extraction-${Date.now()}`;
+  const provenance = (outcome: ExtractionOutcome, counts: { accepted: number | null; rejected: number | null }, error?: unknown, identity?: { provider: string; model: string }) =>
+    buildExtractionProvenance({
+      provider: identity?.provider ?? provider.providerId,
+      model: identity?.model ?? provider.modelId,
+      outcome,
+      at: new Date(),
+      acceptedCount: counts.accepted,
+      rejectedCount: counts.rejected,
+      runRef,
+      deployContext: GENERATED_DEPLOY_CONTEXT,
+      error,
+    });
+
   // A thrown error here (provider-level failure) is deliberately allowed to propagate — never
   // caught-and-rerouted to a different provider. See AssessmentExtractionProvider's contract.
-  const extraction = await provider.extractFacts(combinedText);
+  // It is durably attributed to the provider that failed first.
+  let extraction: Awaited<ReturnType<typeof provider.extractFacts>>;
+  try {
+    extraction = await provider.extractFacts(combinedText);
+  } catch (err) {
+    await recordExtractionProvenance(sourceId, provenance("provider_error", { accepted: null, rejected: null }, err));
+    throw err;
+  }
+  const identity = { provider: extraction.provider, model: extraction.modelId };
 
   if (extraction.rawResponseParseError) {
-    return { error: `Extraction failed to parse a valid response: ${extraction.rawResponseParseError}` };
+    const record = provenance("parse_error", { accepted: 0, rejected: 0 }, extraction.rawResponseParseError, identity);
+    await recordExtractionProvenance(sourceId, record);
+    return { error: `Extraction failed to parse a valid response: ${extraction.rawResponseParseError}`, provenance: record };
   }
 
-  const runRef = `extraction-${Date.now()}`;
   await writeDraftFacts({
     assessmentSessionId,
     sourceId,
@@ -66,16 +100,23 @@ export async function runExtractionPipelineForSession(
 
   await detectAndRecordConflicts(residentId, assessmentSessionId);
 
+  // Durable provenance BEFORE the status moves on — so a 'draft'/'needs_review' session always has
+  // a record of which provider/model produced it, even with zero accepted facts.
+  const record = provenance("succeeded", { accepted: extraction.accepted.length, rejected: extraction.rejected.length }, undefined, identity);
+  await recordExtractionProvenance(sourceId, record);
+
   const openConflicts = await getOpenConflictsForSession(assessmentSessionId);
   await updateAssessmentSessionStatus(assessmentSessionId, openConflicts.length > 0 ? "needs_review" : "draft");
 
-  return { draftFactCount: extraction.accepted.length, rejectedCount: extraction.rejected.length };
+  return { draftFactCount: extraction.accepted.length, rejectedCount: extraction.rejected.length, provenance: record };
 }
 
 export interface AdvanceProcessingResult {
   assessmentSessionId: string;
   outcome: "processed" | "not_eligible" | "failed";
   error?: string;
+  /** Diagnostic summary for the worker log: provider/model/outcome/counts. */
+  detail?: string;
 }
 
 /** The background worker's entire job: claim one queued session, run the existing extraction
@@ -107,12 +148,69 @@ export async function advanceQueuedAssessmentProcessing(assessmentSessionId: str
   await recordProcessingDiagnosticStage(assessmentSessionId, "extraction_started");
 
   try {
+    // Decide WHICH provider may see this transcript before any provider is called: never an
+    // empty transcript (no empty drafts); every assessment — recorded or pasted — is AWS-only
+    // (explicit bedrock + AWS PHI gate), never a silent OpenAI default.
+    const policy = decideExtractionPolicy({
+      transcriptText: await getCombinedTranscriptText(assessmentSessionId),
+      configuredProvider: process.env.ASSESSMENT_EXTRACTION_PROVIDER,
+      awsAuthorization: decideAwsAssessmentAuthorization({ isSyntheticTest: session.is_synthetic_test === true }),
+    });
+    if (!policy.ok) {
+      const reason = sanitizeFailureReason(new Error(policy.reason));
+      await markSessionFailed(assessmentSessionId, reason);
+      return { assessmentSessionId, outcome: "failed", error: reason };
+    }
     const sourceId = await getMostRecentSourceIdForSession(assessmentSessionId);
-    await runExtractionPipelineForSession(assessmentSessionId, session.resident_id, sourceId ?? "");
-    return { assessmentSessionId, outcome: "processed" };
+    const result = await runExtractionPipelineForSession(assessmentSessionId, session.resident_id, sourceId ?? "", getExtractionProviderByKey(policy.providerKey));
+    const detail = result.provenance ? describeProvenanceForLog(result.provenance) : undefined;
+    if (result.error) {
+      // An unusable provider response is a FAILED extraction, not "processed": it goes through the
+      // existing visible failure/Retry path instead of leaving the session stranded in
+      // 'processing'. The sanitized reason and the provenance record keep the diagnostic detail.
+      const reason = sanitizeFailureReason(new Error(result.error));
+      await markSessionFailed(assessmentSessionId, reason);
+      return { assessmentSessionId, outcome: "failed", error: reason, detail };
+    }
+    return { assessmentSessionId, outcome: "processed", detail };
   } catch (err) {
     const reason = sanitizeFailureReason(err);
     await markSessionFailed(assessmentSessionId, reason);
     return { assessmentSessionId, outcome: "failed", error: reason };
   }
+}
+
+export interface AdvanceSessionResult {
+  assessmentSessionId: string;
+  route: "transcription" | "extraction" | "cleanup" | "none";
+  outcome: string;
+  error?: string;
+  detail?: string;
+}
+
+/** The background worker's single entry point: routes by the session's durable status.
+ *   captured -> transcription step (and, once the transcript is durable and the session is
+ *               queued, straight into the existing extraction step in the same invocation);
+ *   queued   -> the existing extraction step, unchanged;
+ *   anything else -> retry any pending temporary-artifact cleanup (no-op otherwise). */
+export async function advanceAssessmentSession(assessmentSessionId: string): Promise<AdvanceSessionResult> {
+  const session = await getAssessmentSession(assessmentSessionId);
+  if (!session) return { assessmentSessionId, route: "none", outcome: "not_found" };
+
+  if (session.status === "captured") {
+    const t = await advanceCapturedAssessmentTranscription(assessmentSessionId);
+    if (t.outcome !== "queued") {
+      return { assessmentSessionId, route: "transcription", outcome: t.outcome, error: "reason" in t ? t.reason : undefined };
+    }
+    const e = await advanceQueuedAssessmentProcessing(assessmentSessionId);
+    return { assessmentSessionId, route: "extraction", outcome: e.outcome, error: e.error, detail: e.detail };
+  }
+
+  if (session.status === "queued") {
+    const e = await advanceQueuedAssessmentProcessing(assessmentSessionId);
+    return { assessmentSessionId, route: "extraction", outcome: e.outcome, error: e.error, detail: e.detail };
+  }
+
+  const c = await retryCapturedAssessmentTranscriptionCleanup(assessmentSessionId).catch(() => "pending" as const);
+  return { assessmentSessionId, route: "cleanup", outcome: c };
 }

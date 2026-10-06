@@ -12,31 +12,19 @@
 // profile (see docs/architecture/BEDROCK_CLAUDE_PROVIDER.md). Changing
 // either is a deliberate code change, not a runtime config toggle.
 import { BedrockRuntimeClient, ConverseCommand, type ConverseCommandOutput } from "@aws-sdk/client-bedrock-runtime";
+import { resolveAssessmentPipelineAwsCredentials, resolveServeAwsCredentials, SERVE_AWS_REGION, type ServeAwsCredentials } from "./awsCredentials.ts";
 
-export const BEDROCK_REGION = "us-east-1";
+export const BEDROCK_REGION = SERVE_AWS_REGION;
 export const CLAUDE_MODEL_ID = "us.anthropic.claude-sonnet-4-6";
 
 let cachedClient: BedrockRuntimeClient | null = null;
+let cachedStrictClient: BedrockRuntimeClient | null = null;
 
 /** Explicit credential shape for the production Netlify path — the IAM
  *  user `serve-netlify-assessment-pipeline`'s access key, already scoped
  *  (via the `ServeAssessmentAWSPipelinePolicy` customer-managed policy)
  *  to exactly this inference profile. */
-interface StaticBedrockCredentials {
-  accessKeyId: string;
-  secretAccessKey: string;
-}
-
-// Matches this codebase's established "trim and treat blank as absent"
-// convention for optional string env/field values (see e.g.
-// lib/workforce/resolvers.ts, lib/workforce/axiscareFieldAllowlist.ts) —
-// an env var set to "" or whitespace by a misconfigured Netlify context
-// must be treated the same as unset, never as a present-but-empty value.
-function nonBlank(value: string | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
+type StaticBedrockCredentials = ServeAwsCredentials;
 
 /**
  * Resolves which credential path getBedrockClient() should use:
@@ -61,20 +49,17 @@ function nonBlank(value: string | undefined): string | null {
  *      whichever one is present.
  */
 export function resolveBedrockCredentials(): StaticBedrockCredentials | undefined {
-  const accessKeyId = nonBlank(process.env.SERVE_AWS_ACCESS_KEY_ID);
-  const secretAccessKey = nonBlank(process.env.SERVE_AWS_SECRET_ACCESS_KEY);
+  // Shared convention (lib/ai/awsCredentials.ts), lenient mode — unchanged behavior for Ask Serve.
+  return resolveServeAwsCredentials({ allowDefaultChain: true, label: "Bedrock" });
+}
 
-  if (accessKeyId && secretAccessKey) {
-    return { accessKeyId, secretAccessKey };
-  }
-  if (!accessKeyId && !secretAccessKey) {
-    return undefined;
-  }
-
-  const missingVarName = accessKeyId ? "SERVE_AWS_SECRET_ACCESS_KEY" : "SERVE_AWS_ACCESS_KEY_ID";
-  throw new Error(
-    `Bedrock credential misconfiguration: ${missingVarName} is not set. SERVE_AWS_ACCESS_KEY_ID and SERVE_AWS_SECRET_ACCESS_KEY must either both be set together (production) or both be left unset (local development via the AWS default credential chain).`
-  );
+/** Strict Bedrock client for assessment extraction (real assessment content): explicit
+ * SERVE_AWS_* credentials required; never the ambient/default chain on a deployed site. */
+export function getAssessmentBedrockClient(): BedrockRuntimeClient {
+  if (cachedStrictClient) return cachedStrictClient;
+  const credentials = resolveAssessmentPipelineAwsCredentials(process.env, "Bedrock (assessment extraction)");
+  cachedStrictClient = new BedrockRuntimeClient({ region: BEDROCK_REGION, ...(credentials ? { credentials } : {}) });
+  return cachedStrictClient;
 }
 
 export function getBedrockClient(): BedrockRuntimeClient {
@@ -95,6 +80,7 @@ export function getBedrockClient(): BedrockRuntimeClient {
  *  process. Never called from application code. */
 export function __resetBedrockClientForTests(): void {
   cachedClient = null;
+  cachedStrictClient = null;
 }
 
 /** Minimal shape callers need from a Bedrock client — lets tests inject a

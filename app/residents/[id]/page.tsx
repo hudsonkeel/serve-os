@@ -22,7 +22,10 @@ import { WorkWithThisPersonStrip } from "@/components/residents/WorkWithThisPers
 import { ResidentTimeline } from "@/components/residents/ResidentTimeline";
 import { AssessmentSection } from "@/components/residents/AssessmentSection";
 import { getAssessmentSessionsForResident } from "@/lib/data/assessmentIntelligence";
+import { getTranscriptionDisplayStates } from "@/lib/data/nativeAssessmentCapture";
 import { getCurrentAssessmentSummary } from "@/lib/actions/assessmentIntelligence";
+import { refineCapturedDisplayStates } from "@/lib/assessmentCapture/captureLogic";
+import { isAwsPhiProcessingConfirmed } from "@/lib/assessmentIntelligence/phiGovernance";
 import { getImportantPeopleReviewData } from "@/lib/actions/importantPeople";
 import { ImportantPeoplePanel } from "@/components/residents/ImportantPeoplePanel";
 import { Badge } from "@/components/ui/Badge";
@@ -31,6 +34,7 @@ import { getCurrentAuthorizedUser } from "@/lib/auth/session";
 import {
   canAccessResidentEvidence,
   canCaptureResidentAssessment,
+  canInspectCapturedAssessmentAudio,
   canEditResidentProfile,
   canManageResidentDocuments,
   canPerformReconciliationActions,
@@ -189,6 +193,8 @@ export default async function ResidentDetailPage({
   const timelineEvents = await getResidentTimeline(id);
   const relationships = await getRelationshipsByResident(id);
   const assessmentSessions = await getAssessmentSessionsForResident(id);
+  // Captured recordings this deployment may not transcribe say so, instead of an indefinite "awaiting".
+  const transcriptionStates = refineCapturedDisplayStates(assessmentSessions, await getTranscriptionDisplayStates(assessmentSessions.map((s) => s.id)));
   const importantPeopleData = await getImportantPeopleReviewData(id);
   const currentAssessmentState = await getCurrentAssessmentSummary(id);
   const residentDocuments = canManageDocuments ? await getPersonDocumentsForSubject(SUBJECT_TYPE_RESIDENT, id) : [];
@@ -541,7 +547,14 @@ export default async function ResidentDetailPage({
               <ResidentTimeline events={timelineEvents} />
             </div>
 
-            <AssessmentSection residentId={id} residentName={record.residentDisplayName} sessions={assessmentSessions} />
+            <AssessmentSection
+              residentId={id}
+              residentName={record.residentDisplayName}
+              sessions={assessmentSessions}
+              transcriptionStates={transcriptionStates}
+              canInspectCapturedAudio={canInspectCapturedAssessmentAudio(profile?.role)}
+              canPasteTranscript={canEditResidentProfile(profile?.role) && isAwsPhiProcessingConfirmed()}
+            />
 
             <WellnessNotes residentId={id} notes={wellnessNotes} openFollowUps={openFollowUps} />
 
